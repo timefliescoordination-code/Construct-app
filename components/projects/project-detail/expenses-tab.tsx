@@ -1,0 +1,466 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Plus, Upload, Filter, Loader2 } from "lucide-react"
+import { format } from "date-fns"
+import { createClient } from "@/lib/supabase/client"
+import { toast } from "sonner"
+import { useParams } from "next/navigation"
+import { useAuth } from "@/lib/hooks/use-auth"
+
+const categories = ["Materials", "Labour", "Equipment", "Miscellaneous"]
+const subcategories: Record<string, string[]> = {
+  Materials: ["Cement", "Steel", "Sand", "Bricks", "Tiles", "Paint", "Plumbing", "Electrical"],
+  Labour: ["Mason", "Carpenter", "Painter", "Electrician", "Plumber", "Helper"],
+  Equipment: ["Excavator", "Crane", "Mixer", "Compactor", "Generator"],
+  Miscellaneous: ["Transportation", "Permits", "Insurance", "Utilities", "Other"],
+}
+const statuses = ["pending", "approved", "rejected"]
+
+interface Expense {
+  id: string
+  expense_date: string
+  category: string
+  description: string
+  vendor_name: string | null
+  amount: number
+  bill_number: string | null
+  status: string
+  milestone_id: string | null
+  milestones?: { name: string } | null
+}
+
+interface Milestone {
+  id: string
+  name: string
+}
+
+interface ExpensesTabProps {
+  projectId?: string
+}
+
+export function ExpensesTab({ projectId: propProjectId }: ExpensesTabProps) {
+  const params = useParams()
+  const projectId = propProjectId || (params?.id as string)
+  const { user, canEnterData, profile } = useAuth()
+  
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [milestones, setMilestones] = useState<Milestone[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [filterCategory, setFilterCategory] = useState<string>("all")
+  const [filterStatus, setFilterStatus] = useState<string>("all")
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [newExpense, setNewExpense] = useState({
+    date: format(new Date(), 'yyyy-MM-dd'),
+    category: "",
+    subcategory: "",
+    description: "",
+    vendor: "",
+    amount: "",
+    billNumber: "",
+    milestoneId: "",
+  })
+
+  // Fetch expenses and milestones from Supabase
+  useEffect(() => {
+    async function fetchData() {
+      if (!projectId) return
+      
+      setIsLoading(true)
+      const supabase = createClient()
+      
+      // Fetch expenses
+      const { data: expensesData, error: expensesError } = await supabase
+        .from('expenses')
+        .select('*, milestones(name)')
+        .eq('project_id', projectId)
+        .order('expense_date', { ascending: false })
+      
+      if (expensesError) {
+        console.error("[v0] Error fetching expenses:", expensesError)
+        toast.error("Failed to load expenses")
+      } else {
+        setExpenses(expensesData || [])
+      }
+      
+      // Fetch milestones for dropdown
+      const { data: milestonesData, error: milestonesError } = await supabase
+        .from('milestones')
+        .select('id, name')
+        .eq('project_id', projectId)
+        .order('sort_order')
+      
+      if (milestonesError) {
+        console.error("[v0] Error fetching milestones:", milestonesError)
+      } else {
+        setMilestones(milestonesData || [])
+      }
+      
+      setIsLoading(false)
+    }
+    
+    fetchData()
+  }, [projectId])
+
+  const handleAddExpense = async () => {
+    if (!projectId) {
+      toast.error("Project ID not found")
+      return
+    }
+    
+    if (!newExpense.category || !newExpense.description || !newExpense.amount) {
+      toast.error("Please fill in all required fields")
+      return
+    }
+    
+    setIsSubmitting(true)
+    const supabase = createClient()
+    
+    const expenseData = {
+      project_id: projectId,
+      milestone_id: newExpense.milestoneId || null,
+      category: newExpense.category,
+      description: `${newExpense.subcategory ? newExpense.subcategory + ' - ' : ''}${newExpense.description}`,
+      amount: parseFloat(newExpense.amount),
+      vendor_name: newExpense.vendor || null,
+      bill_number: newExpense.billNumber || null,
+      expense_date: newExpense.date,
+      status: 'pending',
+      entered_by: user?.id || null,
+    }
+    
+    console.log("[v0] Adding expense:", expenseData)
+    
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert(expenseData)
+      .select('*, milestones(name)')
+      .single()
+    
+    if (error) {
+      console.error("[v0] Error adding expense:", error)
+      toast.error(`Failed to add expense: ${error.message}`)
+    } else {
+      console.log("[v0] Expense added successfully:", data)
+      toast.success("Expense added successfully!")
+      setExpenses(prev => [data, ...prev])
+      setNewExpense({
+        date: format(new Date(), 'yyyy-MM-dd'),
+        category: "",
+        subcategory: "",
+        description: "",
+        vendor: "",
+        amount: "",
+        billNumber: "",
+        milestoneId: "",
+      })
+      setIsAddDialogOpen(false)
+    }
+    
+    setIsSubmitting(false)
+  }
+
+  const filteredExpenses = expenses.filter((expense) => {
+    if (filterCategory !== "all" && expense.category !== filterCategory) return false
+    if (filterStatus !== "all" && expense.status !== filterStatus) return false
+    return true
+  })
+
+  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0)
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "approved":
+        return <Badge className="bg-green-500/20 text-green-500 border-green-500/30">Approved</Badge>
+      case "pending":
+        return <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">Pending</Badge>
+      case "rejected":
+        return <Badge className="bg-destructive/20 text-destructive border-destructive/30">Rejected</Badge>
+      default:
+        return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Manage Expenses Table - Primary Section */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row gap-4 justify-between">
+            <CardTitle>Manage Expenses</CardTitle>
+            <div className="flex gap-2 flex-wrap">
+              <Select value={filterCategory} onValueChange={setFilterCategory}>
+                <SelectTrigger className="w-[150px] bg-muted border-border">
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-[140px] bg-muted border-border">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  {statuses.map((status) => (
+                    <SelectItem key={status} value={status}>{status.charAt(0).toUpperCase() + status.slice(1)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Add Expense
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[600px] bg-card border-border">
+                  <DialogHeader>
+                    <DialogTitle>Add New Expense</DialogTitle>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Date *</Label>
+                        <Input 
+                          type="date" 
+                          value={newExpense.date}
+                          onChange={(e) => setNewExpense({...newExpense, date: e.target.value})}
+                          className="bg-muted border-border"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Category *</Label>
+                        <Select 
+                          value={newExpense.category}
+                          onValueChange={(val) => setNewExpense({...newExpense, category: val, subcategory: ""})}
+                        >
+                          <SelectTrigger className="bg-muted border-border">
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((cat) => (
+                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Subcategory</Label>
+                        <Select 
+                          value={newExpense.subcategory}
+                          onValueChange={(val) => setNewExpense({...newExpense, subcategory: val})}
+                          disabled={!newExpense.category}
+                        >
+                          <SelectTrigger className="bg-muted border-border">
+                            <SelectValue placeholder="Select subcategory" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {newExpense.category && subcategories[newExpense.category]?.map((sub) => (
+                              <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Stage/Milestone</Label>
+                        <Select 
+                          value={newExpense.milestoneId}
+                          onValueChange={(val) => setNewExpense({...newExpense, milestoneId: val})}
+                        >
+                          <SelectTrigger className="bg-muted border-border">
+                            <SelectValue placeholder="Select milestone" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {milestones.map((milestone) => (
+                              <SelectItem key={milestone.id} value={milestone.id}>{milestone.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Description *</Label>
+                      <Textarea 
+                        value={newExpense.description}
+                        onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
+                        placeholder="Enter expense description..."
+                        className="bg-muted border-border"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Vendor</Label>
+                        <Input 
+                          value={newExpense.vendor}
+                          onChange={(e) => setNewExpense({...newExpense, vendor: e.target.value})}
+                          placeholder="Vendor name"
+                          className="bg-muted border-border"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Amount *</Label>
+                        <Input 
+                          type="number"
+                          value={newExpense.amount}
+                          onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
+                          placeholder="0.00"
+                          className="bg-muted border-border"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Bill Number</Label>
+                        <Input 
+                          value={newExpense.billNumber}
+                          onChange={(e) => setNewExpense({...newExpense, billNumber: e.target.value})}
+                          placeholder="INV-001"
+                          className="bg-muted border-border"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Bill Upload</Label>
+                        <Button variant="outline" className="w-full gap-2 bg-muted border-border">
+                          <Upload className="h-4 w-4" />
+                          Upload Bill
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isSubmitting}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleAddExpense} disabled={isSubmitting}>
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Adding...
+                        </>
+                      ) : (
+                        "Add Expense"
+                      )}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border border-border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border hover:bg-muted/50">
+                  <TableHead>Date</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead>Stage</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredExpenses.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      No expenses found. Click "Add Expense" to create one.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredExpenses.map((expense) => (
+                    <TableRow key={expense.id} className="border-border hover:bg-muted/50">
+                      <TableCell className="font-medium">
+                        {format(new Date(expense.expense_date), "MMM dd, yyyy")}
+                      </TableCell>
+                      <TableCell>
+                        <p className="font-medium">{expense.category}</p>
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        {expense.description}
+                      </TableCell>
+                      <TableCell>{expense.vendor_name || '-'}</TableCell>
+                      <TableCell>
+                        {expense.milestones?.name ? (
+                          <Badge variant="outline" className="bg-muted">
+                            {expense.milestones.name}
+                          </Badge>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        Rs {Number(expense.amount).toLocaleString()}
+                      </TableCell>
+                      <TableCell>{getStatusBadge(expense.status)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Summary Card */}
+      <Card className="bg-card border-border">
+        <CardContent className="pt-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-sm text-muted-foreground">Total Expenses (Filtered)</p>
+              <p className="text-2xl font-bold">Rs {totalExpenses.toLocaleString()}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-muted-foreground">Entries</p>
+              <p className="text-2xl font-bold">{filteredExpenses.length}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

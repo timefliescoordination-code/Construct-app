@@ -1,0 +1,486 @@
+"use client"
+
+import { useState, useEffect, useMemo, useCallback } from "react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import {
+  ArrowLeft,
+  LayoutDashboard,
+  Receipt,
+  CreditCard,
+  Flag,
+  PlusCircle,
+  FileBarChart,
+  Camera,
+  Save,
+  X,
+  AlertCircle,
+  Loader2,
+} from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+import { format } from "date-fns"
+import { createClient } from "@/lib/supabase/client"
+import { useProject, useProjectMetrics } from "@/lib/hooks/use-project-data"
+import { calculateProjectMetrics, type MilestoneData } from "@/lib/financial-calculations"
+import type { ProjectStatus } from "@/lib/types/database"
+import { useAuth } from "@/lib/hooks/use-auth"
+import {
+  canViewProjectFinancials,
+  ENGINEER_RESTRICTED_PROJECT_TABS,
+} from "@/lib/permissions"
+import { EditOverviewTab } from "./edit-project/edit-overview-tab"
+import { ExpensesTab } from "./project-detail/expenses-tab"
+import { PaymentsTab } from "./project-detail/payments-tab"
+import { MilestonesTab } from "./project-detail/milestones-tab"
+import { AdditionalWorksTab } from "./project-detail/additional-works-tab"
+import { ReportsTab } from "./project-detail/reports-tab"
+import { PhotosTab } from "./project-detail/photos-tab"
+
+interface EditProjectContentProps {
+  projectId: string
+}
+
+interface ProjectEditForm {
+  name: string
+  client_name: string
+  site_address: string
+  contract_value: number
+  additional_works_value: number
+  expected_margin_percent: number
+  start_date: string
+  expected_completion_date: string
+  status: ProjectStatus
+}
+
+function toDateInput(value: string | null): string {
+  if (!value) return ""
+  return value.slice(0, 10)
+}
+
+export function EditProjectContent({ projectId }: EditProjectContentProps) {
+  const router = useRouter()
+  const { role, canManageProjects } = useAuth()
+  const showFinancials = canViewProjectFinancials(role)
+  const { project, isLoading, mutate } = useProject(projectId)
+  const metrics = useProjectMetrics(project)
+
+  const [activeTab, setActiveTab] = useState("overview")
+  const [form, setForm] = useState<ProjectEditForm | null>(null)
+  const [hasChanges, setHasChanges] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
+
+  useEffect(() => {
+    if (!project) return
+    setForm({
+      name: project.name,
+      client_name: project.client_name,
+      site_address: project.site_address,
+      contract_value: Number(project.contract_value),
+      additional_works_value: Number(project.additional_works_value),
+      expected_margin_percent: Number(project.expected_margin_percent),
+      start_date: toDateInput(project.start_date),
+      expected_completion_date: toDateInput(project.expected_completion_date),
+      status: project.status,
+    })
+    setHasChanges(false)
+  }, [project?.id, project?.updated_at])
+
+  const overviewMetrics = useMemo(() => {
+    if (!project || !form) return null
+
+    const additionalWorksApproved = project.additional_works
+      .filter((aw) => aw.approval_status === "approved")
+      .reduce((sum, aw) => sum + Number(aw.amount), 0)
+
+    const milestonesForCalc: MilestoneData[] = project.milestones.map((ms) => ({
+      name: ms.name,
+      expectedCostPercent: Number(ms.expected_cost_percent),
+      actualCompletionPercent: ms.actual_completion_percent,
+      targetBudget: Number(ms.target_budget),
+      actualExpenses: Number(ms.actual_expenses),
+      status: ms.status,
+    }))
+
+    const calculated = calculateProjectMetrics({
+      contractValue: form.contract_value,
+      additionalWorks: additionalWorksApproved,
+      expectedMarginPercent: form.expected_margin_percent,
+      totalExpenses: metrics.totalExpenses,
+      totalClientPaymentsReceived: metrics.totalClientPaymentsReceived,
+      totalClientPaymentsPending: metrics.totalClientPaymentsPending,
+      totalVendorPaymentsDue: metrics.totalVendorPaymentsDue,
+      totalVendorPaymentsPaid: 0,
+      milestones: milestonesForCalc,
+    })
+
+    return {
+      contractValue: calculated.totalContractValue,
+      currentSpending: calculated.totalExpenses,
+      remainingBudget: calculated.remainingBudget,
+      currentProfit: calculated.currentProfit,
+      completionPercent: calculated.completionPercent,
+      budgetUsagePercent: calculated.budgetUsagePercent,
+      startDate: form.start_date,
+      expectedEndDate: form.expected_completion_date,
+    }
+  }, [project, form, metrics])
+
+  const tabs = useMemo(
+    () =>
+      [
+        { id: "overview", label: "Overview", icon: LayoutDashboard },
+        { id: "expenses", label: "Expenses", icon: Receipt },
+        { id: "payments", label: "Payments", icon: CreditCard },
+        { id: "milestones", label: "Milestones", icon: Flag },
+        { id: "additional-works", label: "Additional Works", icon: PlusCircle },
+        { id: "reports", label: "Reports", icon: FileBarChart },
+        { id: "photos", label: "Photos", icon: Camera },
+      ].filter((tab) => showFinancials || !ENGINEER_RESTRICTED_PROJECT_TABS.has(tab.id)),
+    [showFinancials],
+  )
+
+  useEffect(() => {
+    if (!showFinancials && ENGINEER_RESTRICTED_PROJECT_TABS.has(activeTab)) {
+      setActiveTab("overview")
+    }
+  }, [showFinancials, activeTab])
+
+  const updateField = useCallback((field: keyof ProjectEditForm, value: string | number) => {
+    setForm((prev) => (prev ? { ...prev, [field]: value } : prev))
+    setHasChanges(true)
+  }, [])
+
+  const updateOverviewField = useCallback(
+    (field: string, value: unknown) => {
+      if (!form) return
+      switch (field) {
+        case "contractValue":
+          updateField("contract_value", Number(value))
+          break
+        case "startDate":
+          updateField("start_date", String(value))
+          break
+        case "expectedEndDate":
+          updateField("expected_completion_date", String(value))
+          break
+        default:
+          break
+      }
+    },
+    [form, updateField],
+  )
+
+  const handleSave = async () => {
+    if (!form || !canManageProjects) return
+
+    setIsSaving(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("projects")
+        .update({
+          name: form.name.trim(),
+          client_name: form.client_name.trim(),
+          site_address: form.site_address.trim(),
+          contract_value: form.contract_value,
+          additional_works_value: form.additional_works_value,
+          expected_margin_percent: form.expected_margin_percent,
+          start_date: form.start_date || null,
+          expected_completion_date: form.expected_completion_date || null,
+          status: form.status,
+        })
+        .eq("id", projectId)
+
+      if (error) {
+        toast.error(`Failed to save project: ${error.message}`)
+        return
+      }
+
+      await mutate()
+      setHasChanges(false)
+      toast.success("Project updated successfully")
+    } catch (err) {
+      console.error("[edit-project] save error:", err)
+      toast.error("Failed to save project")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleCancel = () => {
+    if (hasChanges) {
+      setShowUnsavedDialog(true)
+    } else {
+      router.push(`/projects/${projectId}`)
+    }
+  }
+
+  if (!canManageProjects) {
+    return (
+      <main className="p-4 md:p-6 lg:p-8">
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">You do not have permission to edit projects.</p>
+          <Button variant="outline" className="mt-4" asChild>
+            <Link href={`/projects/${projectId}`}>Back to Project</Link>
+          </Button>
+        </div>
+      </main>
+    )
+  }
+
+  if (isLoading || !form) {
+    return (
+      <main className="p-4 md:p-6 lg:p-8 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading project...</p>
+        </div>
+      </main>
+    )
+  }
+
+  if (!project) {
+    return (
+      <main className="p-4 md:p-6 lg:p-8">
+        <div className="flex items-center gap-2 mb-4">
+          <Button variant="ghost" size="icon" asChild>
+            <Link href="/projects">
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+          </Button>
+          <span className="text-muted-foreground">Back to Projects</span>
+        </div>
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Project not found</p>
+        </div>
+      </main>
+    )
+  }
+
+  return (
+    <main className="p-4 md:p-6 lg:p-8">
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Button variant="ghost" size="icon" onClick={handleCancel}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <span className="text-muted-foreground">Back to Project</span>
+        </div>
+
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Edit Project</h1>
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+              {project.name}
+            </Badge>
+            {hasChanges && (
+              <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/30">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                Unsaved Changes
+              </Badge>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
+              <X className="h-4 w-4 mr-2" />
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={!hasChanges || isSaving}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <Card className="bg-card border-border mb-6">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Project Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="projectName">Project Name</Label>
+              <Input
+                id="projectName"
+                value={form.name}
+                onChange={(e) => updateField("name", e.target.value)}
+                className="bg-background"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="clientName">Client Name</Label>
+              <Input
+                id="clientName"
+                value={form.client_name}
+                onChange={(e) => updateField("client_name", e.target.value)}
+                className="bg-background"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="siteAddress">Site Address</Label>
+              <Input
+                id="siteAddress"
+                value={form.site_address}
+                onChange={(e) => updateField("site_address", e.target.value)}
+                className="bg-background"
+              />
+            </div>
+            {showFinancials && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="contractValue">Contract Value (₹)</Label>
+                  <Input
+                    id="contractValue"
+                    type="number"
+                    value={form.contract_value}
+                    onChange={(e) => updateField("contract_value", Number(e.target.value))}
+                    className="bg-background"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="expectedMargin">Expected Margin (%)</Label>
+                  <Input
+                    id="expectedMargin"
+                    type="number"
+                    value={form.expected_margin_percent}
+                    onChange={(e) =>
+                      updateField("expected_margin_percent", Number(e.target.value))
+                    }
+                    className="bg-background"
+                  />
+                </div>
+              </>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="startDate">Start Date</Label>
+              <Input
+                id="startDate"
+                type="date"
+                value={form.start_date}
+                onChange={(e) => updateField("start_date", e.target.value)}
+                className="bg-background"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="expectedEndDate">Expected Completion</Label>
+              <Input
+                id="expectedEndDate"
+                type="date"
+                value={form.expected_completion_date}
+                onChange={(e) => updateField("expected_completion_date", e.target.value)}
+                className="bg-background"
+              />
+            </div>
+          </div>
+          {project.updated_at && (
+            <p className="text-xs text-muted-foreground mt-4">
+              Last updated {format(new Date(project.updated_at), "MMM d, yyyy 'at' h:mm a")}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="bg-muted/50 border border-border p-1 h-auto flex-wrap gap-1">
+          {tabs.map((tab) => (
+            <TabsTrigger
+              key={tab.id}
+              value={tab.id}
+              className="gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              <tab.icon className="h-4 w-4" />
+              <span className="hidden sm:inline">{tab.label}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-6">
+          {overviewMetrics && (
+            <EditOverviewTab project={overviewMetrics} onUpdate={updateOverviewField} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="expenses" className="mt-6">
+          <ExpensesTab projectId={projectId} />
+        </TabsContent>
+
+        {showFinancials && (
+          <TabsContent value="payments" className="mt-6">
+            <PaymentsTab projectId={projectId} />
+          </TabsContent>
+        )}
+
+        <TabsContent value="milestones" className="mt-6">
+          <MilestonesTab projectId={projectId} />
+        </TabsContent>
+
+        {showFinancials && (
+          <>
+            <TabsContent value="additional-works" className="mt-6">
+              <AdditionalWorksTab projectId={projectId} />
+            </TabsContent>
+            <TabsContent value="reports" className="mt-6">
+              <ReportsTab projectId={projectId} />
+            </TabsContent>
+          </>
+        )}
+
+        <TabsContent value="photos" className="mt-6">
+          <PhotosTab projectId={projectId} />
+        </TabsContent>
+      </Tabs>
+
+      <AlertDialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Are you sure you want to leave? Your changes will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue Editing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => router.push(`/projects/${projectId}`)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard Changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </main>
+  )
+}
