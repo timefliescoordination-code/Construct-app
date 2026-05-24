@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { isSupabaseConfigured } from "@/lib/supabase/env"
 import type { User } from "@supabase/supabase-js"
 
 export type UserRole = "admin" | "pm" | "engineer" | "customer"
@@ -43,6 +44,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   })
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setAuthState({
+        user: null,
+        profile: null,
+        isLoading: false,
+        isAuthenticated: false,
+        role: null,
+      })
+      return
+    }
+
     const supabase = createClient()
 
     async function loadProfile(user: User) {
@@ -114,8 +126,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const value = useMemo<AuthContextValue>(() => {
-    const supabase = createClient()
     const role = authState.role
+    const notConfiguredError = {
+      data: { user: null, session: null },
+      error: {
+        message:
+          "Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel (or .env.local locally).",
+      },
+    } as const
+
+    if (!isSupabaseConfigured()) {
+      return {
+        ...authState,
+        signIn: async () => notConfiguredError,
+        signOut: async () => ({ error: null }),
+        canEnterData: false,
+        isAdmin: false,
+        canManageProjects: false,
+      }
+    }
+
+    const supabase = createClient()
 
     return {
       ...authState,
