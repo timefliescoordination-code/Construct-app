@@ -35,8 +35,10 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format } from "date-fns"
-import { createClient } from "@/lib/supabase/client"
 import { useProject, useProjectMetrics } from "@/lib/hooks/use-project-data"
+import { updateProjectAction } from "@/lib/projects/actions"
+import { StaffAssignmentFields } from "@/components/projects/staff-assignment-fields"
+import { useStaffProfiles } from "@/lib/hooks/use-staff-profiles"
 import { calculateProjectMetrics, type MilestoneData } from "@/lib/financial-calculations"
 import type { ProjectStatus } from "@/lib/types/database"
 import { useAuth } from "@/lib/hooks/use-auth"
@@ -66,6 +68,9 @@ interface ProjectEditForm {
   start_date: string
   expected_completion_date: string
   status: ProjectStatus
+  pm_id: string
+  customer_id: string
+  assigned_engineer_ids: string[]
 }
 
 function toDateInput(value: string | null): string {
@@ -75,9 +80,11 @@ function toDateInput(value: string | null): string {
 
 export function EditProjectContent({ projectId }: EditProjectContentProps) {
   const router = useRouter()
-  const { role, canManageProjects } = useAuth()
+  const { role, canManageProjects, isAdmin } = useAuth()
+  const canEdit = canManageProjects || isAdmin
   const showFinancials = canViewProjectFinancials(role)
   const { project, isLoading, mutate } = useProject(projectId)
+  const { customers } = useStaffProfiles()
   const metrics = useProjectMetrics(project)
 
   const [activeTab, setActiveTab] = useState("overview")
@@ -98,6 +105,10 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
       start_date: toDateInput(project.start_date),
       expected_completion_date: toDateInput(project.expected_completion_date),
       status: project.status,
+      pm_id: project.pm_id ?? "",
+      customer_id: project.customer_id ?? "",
+      assigned_engineer_ids:
+        project.project_engineers?.map((a) => a.engineer_id) ?? [],
     })
     setHasChanges(false)
   }, [project?.id, project?.updated_at])
@@ -187,29 +198,59 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
     [form, updateField],
   )
 
+  const handleCustomerChange = (customerId: string) => {
+    setForm((prev) => {
+      if (!prev) return prev
+      const next = { ...prev, customer_id: customerId }
+      const customer = customers.find((c) => c.id === customerId)
+      if (customer?.full_name?.trim()) {
+        next.client_name = customer.full_name
+      }
+      return next
+    })
+    setHasChanges(true)
+  }
+
+  const handlePMChange = (pmId: string) => {
+    setForm((prev) => (prev ? { ...prev, pm_id: pmId } : prev))
+    setHasChanges(true)
+  }
+
+  const toggleEngineer = (engineerId: string) => {
+    setForm((prev) => {
+      if (!prev) return prev
+      const ids = prev.assigned_engineer_ids
+      const assigned_engineer_ids = ids.includes(engineerId)
+        ? ids.filter((id) => id !== engineerId)
+        : [...ids, engineerId]
+      return { ...prev, assigned_engineer_ids }
+    })
+    setHasChanges(true)
+  }
+
   const handleSave = async () => {
-    if (!form || !canManageProjects) return
+    if (!form || !canEdit) return
 
     setIsSaving(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("projects")
-        .update({
-          name: form.name.trim(),
-          client_name: form.client_name.trim(),
-          site_address: form.site_address.trim(),
-          contract_value: form.contract_value,
-          additional_works_value: form.additional_works_value,
-          expected_margin_percent: form.expected_margin_percent,
-          start_date: form.start_date || null,
-          expected_completion_date: form.expected_completion_date || null,
-          status: form.status,
-        })
-        .eq("id", projectId)
+      const result = await updateProjectAction({
+        projectId,
+        name: form.name,
+        client_name: form.client_name,
+        site_address: form.site_address,
+        contract_value: form.contract_value,
+        additional_works_value: form.additional_works_value,
+        expected_margin_percent: form.expected_margin_percent,
+        start_date: form.start_date || null,
+        expected_completion_date: form.expected_completion_date || null,
+        status: form.status,
+        pm_id: form.pm_id || null,
+        customer_id: form.customer_id || null,
+        assigned_engineer_ids: form.assigned_engineer_ids,
+      })
 
-      if (error) {
-        toast.error(`Failed to save project: ${error.message}`)
+      if (!result.ok) {
+        toast.error(result.error)
         return
       }
 
@@ -218,7 +259,7 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
       toast.success("Project updated successfully")
     } catch (err) {
       console.error("[edit-project] save error:", err)
-      toast.error("Failed to save project")
+      toast.error(err instanceof Error ? err.message : "Failed to save project")
     } finally {
       setIsSaving(false)
     }
@@ -232,7 +273,7 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
     }
   }
 
-  if (!canManageProjects) {
+  if (!canEdit) {
     return (
       <main className="p-4 md:p-6 lg:p-8">
         <div className="text-center py-12">
@@ -411,6 +452,17 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
           )}
         </CardContent>
       </Card>
+
+      <div className="mb-6">
+        <StaffAssignmentFields
+          assignedCustomer={form.customer_id}
+          assignedPM={form.pm_id}
+          assignedEngineers={form.assigned_engineer_ids}
+          onCustomerChange={handleCustomerChange}
+          onPMChange={handlePMChange}
+          onToggleEngineer={toggleEngineer}
+        />
+      </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="bg-muted/50 border border-border p-1 h-auto flex-wrap gap-1">

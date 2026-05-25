@@ -23,6 +23,56 @@ export type CreateProjectResult =
   | { ok: true; projectId: string }
   | { ok: false; error: string }
 
+export type UpdateProjectInput = {
+  projectId: string
+  name: string
+  client_name: string
+  site_address: string
+  contract_value: number
+  additional_works_value: number
+  expected_margin_percent: number
+  start_date: string | null
+  expected_completion_date: string | null
+  status: 'active' | 'completed' | 'on-hold' | 'pending'
+  pm_id: string | null
+  customer_id: string | null
+  assigned_engineer_ids: string[]
+}
+
+export type UpdateProjectResult = { ok: true } | { ok: false; error: string }
+
+async function assertCanManageProjects(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { ok: false, error: 'You must be signed in.' }
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (profileError) {
+    return { ok: false, error: getSupabaseErrorMessage(profileError) }
+  }
+
+  const role = profile?.role
+  if (role !== 'admin' && role !== 'pm') {
+    return {
+      ok: false,
+      error: 'Only admins and project managers can update project assignments.',
+    }
+  }
+
+  return { ok: true }
+}
+
 const DEFAULT_MILESTONES = [
   { name: 'Foundation', expected_cost_percent: 15, sort_order: 1 },
   { name: 'Plinth', expected_cost_percent: 10, sort_order: 2 },
@@ -139,6 +189,74 @@ export async function createProjectAction(
     return {
       ok: false,
       error: err instanceof Error ? err.message : 'Failed to create project',
+    }
+  }
+}
+
+export async function updateProjectAction(
+  input: UpdateProjectInput,
+): Promise<UpdateProjectResult> {
+  try {
+    const supabase = await createClient()
+    const auth = await assertCanManageProjects(supabase)
+    if (!auth.ok) return auth
+
+    const { error: projectError } = await supabase
+      .from('projects')
+      .update({
+        name: input.name.trim(),
+        client_name: input.client_name.trim(),
+        site_address: input.site_address.trim(),
+        contract_value: input.contract_value,
+        additional_works_value: input.additional_works_value,
+        expected_margin_percent: input.expected_margin_percent,
+        start_date: input.start_date,
+        expected_completion_date: input.expected_completion_date,
+        status: input.status,
+        pm_id: input.pm_id,
+        customer_id: input.customer_id,
+      })
+      .eq('id', input.projectId)
+
+    if (projectError) {
+      return { ok: false, error: getSupabaseErrorMessage(projectError) }
+    }
+
+    const { error: deleteError } = await supabase
+      .from('project_engineers')
+      .delete()
+      .eq('project_id', input.projectId)
+
+    if (deleteError) {
+      console.error('[updateProjectAction] delete engineers:', deleteError)
+      return { ok: false, error: getSupabaseErrorMessage(deleteError) }
+    }
+
+    if (input.assigned_engineer_ids.length > 0) {
+      const rows = input.assigned_engineer_ids.map((engineerId) => ({
+        project_id: input.projectId,
+        engineer_id: engineerId,
+      }))
+      const { error: insertError } = await supabase
+        .from('project_engineers')
+        .insert(rows)
+
+      if (insertError) {
+        console.error('[updateProjectAction] insert engineers:', insertError)
+        return { ok: false, error: getSupabaseErrorMessage(insertError) }
+      }
+    }
+
+    revalidatePath('/projects')
+    revalidatePath(`/projects/${input.projectId}`)
+    revalidatePath(`/projects/${input.projectId}/edit`)
+
+    return { ok: true }
+  } catch (err) {
+    console.error('[updateProjectAction]', err)
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Failed to update project',
     }
   }
 }
