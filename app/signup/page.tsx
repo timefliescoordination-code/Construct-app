@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { createClient } from "@/lib/supabase/client"
+import { signUpAdminAction } from "@/lib/auth/actions"
 import { toast } from "sonner"
 
 export default function AdminSignupPage() {
@@ -39,49 +39,30 @@ export default function AdminSignupPage() {
     setIsLoading(true)
     
     try {
-      const supabase = createClient()
-      
-      const { data, error } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? 
-            `${window.location.origin}/auth/callback`,
-          data: {
-            full_name: formData.fullName,
-            role: "admin",
-          },
-        },
-      })
-      
-      console.log("[v0] Signup response:", { data, error })
-      
-      if (error) {
-        console.log("[v0] Signup error:", error)
-        toast.error(error.message)
+      const result = await signUpAdminAction(
+        formData.email,
+        formData.password,
+        formData.fullName,
+      )
+
+      if (!result.ok) {
+        toast.error(result.error)
         return
       }
-      
-      if (data.user) {
-        console.log("[v0] User created:", data.user)
-        // Check if email confirmation is required
-        if (data.user.identities && data.user.identities.length === 0) {
-          toast.error("This email is already registered. Please login instead.")
-          return
-        }
-        
-        if (data.session) {
-          // User is immediately logged in (email confirmation disabled)
-          toast.success("Admin account created successfully!")
-          router.push("/admin")
-        } else {
-          // Email confirmation required
-          toast.success("Admin account created! Please check your email to confirm.")
-          router.push("/login")
-        }
+
+      if (result.redirectTo === "/login") {
+        toast.success("Account created! Check your email to confirm, then sign in.")
+        router.push("/login")
+      } else {
+        toast.success("Admin account created successfully!")
+        router.push(result.redirectTo)
+        router.refresh()
       }
     } catch (error) {
-      toast.error("Failed to create account")
+      console.error("Signup error:", error)
+      const message =
+        error instanceof Error ? error.message : "Failed to create account"
+      toast.error(message)
     } finally {
       setIsLoading(false)
     }

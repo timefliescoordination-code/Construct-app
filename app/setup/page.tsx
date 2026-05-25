@@ -3,9 +3,10 @@ import { AlertCircle, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
-  getSupabaseAnonKeyStatus,
-  getSupabaseUrlStatus,
-  isSupabaseConfigured,
+  getBrowserSupabaseAnonKeyStatus,
+  getBrowserSupabaseUrlStatus,
+  getSupabaseEnvDiagnostics,
+  isSupabaseConfiguredForBrowser,
 } from "@/lib/supabase/env"
 
 export const dynamic = "force-dynamic"
@@ -28,10 +29,25 @@ function StatusRow({ label, status }: { label: string; status: string }) {
   )
 }
 
+function VarRow({ name, present }: { name: string; present: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2 font-mono text-[11px]">
+      <span className="text-muted-foreground truncate">{name}</span>
+      <span className={present ? "text-emerald-600 shrink-0" : "text-amber-600 shrink-0"}>
+        {present ? "found" : "missing"}
+      </span>
+    </div>
+  )
+}
+
 export default function SetupPage() {
-  const urlStatus = getSupabaseUrlStatus()
-  const keyStatus = getSupabaseAnonKeyStatus()
-  const configured = isSupabaseConfigured()
+  const urlStatus = getBrowserSupabaseUrlStatus()
+  const keyStatus = getBrowserSupabaseAnonKeyStatus()
+  const configured = isSupabaseConfiguredForBrowser()
+  const diagnostics = getSupabaseEnvDiagnostics()
+  const hasServerOnlyVars =
+    diagnostics.serverOnly.keyCandidates.some((v) => v.present) &&
+    !diagnostics.browser.keyCandidates.some((v) => v.present)
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -44,15 +60,19 @@ export default function SetupPage() {
           <CardTitle>Connect Supabase</CardTitle>
           <CardDescription>
             {configured
-              ? "Environment variables are set. If you still see this page, redeploy Vercel or hard-refresh the browser."
-              : "Add Supabase keys in Vercel, then redeploy. .env.local only affects your computer, not the live site."}
+              ? "Login and signup can use Supabase. Go to the login page."
+              : hasServerOnlyVars
+                ? "Integration added server-only keys (SUPABASE_ANON_KEY). Login needs NEXT_PUBLIC_* keys — add them below, then redeploy."
+                : "Add NEXT_PUBLIC_* Supabase keys in Vercel, then redeploy. .env.local only affects your computer."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-sm text-muted-foreground">
           <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
-            <p className="text-xs font-medium text-foreground">Live deployment check</p>
-            <StatusRow label="Supabase URL" status={urlStatus} />
-            <StatusRow label="Supabase anon / publishable key" status={keyStatus} />
+            <p className="text-xs font-medium text-foreground">
+              Browser check (required for login / signup)
+            </p>
+            <StatusRow label="NEXT_PUBLIC_SUPABASE_URL" status={urlStatus} />
+            <StatusRow label="NEXT_PUBLIC anon or publishable key" status={keyStatus} />
             {urlStatus === "invalid" && (
               <p className="text-xs text-amber-600">
                 URL must look like{" "}
@@ -60,6 +80,37 @@ export default function SetupPage() {
                 trailing slash, no <code className="rounded bg-muted px-1">/auth/v1</code>, no
                 quotes.
               </p>
+            )}
+            {!configured && (
+              <div className="pt-2 space-y-2 border-t border-border">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-foreground">NEXT_PUBLIC (browser)</p>
+                  {diagnostics.browser.urlCandidates.map((v) => (
+                    <VarRow key={v.name} name={v.name} present={v.present} />
+                  ))}
+                  {diagnostics.browser.keyCandidates.map((v) => (
+                    <VarRow key={v.name} name={v.name} present={v.present} />
+                  ))}
+                </div>
+                {(diagnostics.serverOnly.urlCandidates.some((v) => v.present) ||
+                  diagnostics.serverOnly.keyCandidates.some((v) => v.present)) && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium text-muted-foreground">
+                      Server-only (not enough for login)
+                    </p>
+                    {diagnostics.serverOnly.urlCandidates.map((v) => (
+                      <VarRow key={v.name} name={v.name} present={v.present} />
+                    ))}
+                    {diagnostics.serverOnly.keyCandidates.map((v) => (
+                      <VarRow key={v.name} name={v.name} present={v.present} />
+                    ))}
+                  </div>
+                )}
+                <p className="text-[11px] text-amber-600">
+                  Copy values from Supabase API into <strong>NEXT_PUBLIC_*</strong> names, save, then{" "}
+                  <strong>Redeploy</strong>.
+                </p>
+              </div>
             )}
           </div>
 
