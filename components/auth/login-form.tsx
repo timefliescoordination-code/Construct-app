@@ -12,8 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import { createClient } from "@/lib/supabase/client"
-import { ensureUserProfile } from "@/lib/supabase/ensure-profile"
+import { signInWithPasswordAction } from "@/lib/auth/actions"
 import { toast } from "sonner"
 
 function getDashboardPath(role: UserRole | null): string {
@@ -95,50 +94,25 @@ export function LoginForm() {
     setIsLoading(true)
 
     try {
-      const supabase = createClient()
-      
-      // Sign in with Supabase
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: formData.password,
-      })
+      const result = await signInWithPasswordAction(
+        formData.email,
+        formData.password,
+      )
 
-      if (error) {
-        toast.error(error.message)
+      if (!result.ok) {
+        toast.error(result.error)
         setIsLoading(false)
         return
       }
 
-      if (data.user) {
-        const { role: userRole, error: profileError } = await ensureUserProfile(
-          supabase,
-          data.user,
-        )
-
-        if (profileError) {
-          toast.error(profileError)
-          setIsLoading(false)
-          return
-        }
-
-        toast.success("Signed in successfully!")
-
-        // Redirect based on role
-        if (userRole === "customer") {
-          router.push("/customer")
-        } else if (userRole === "engineer") {
-          router.push("/engineer")
-        } else if (userRole === "admin") {
-          router.push("/admin")
-        } else if (userRole === "pm") {
-          router.push("/pm")
-        } else {
-          router.push("/")
-        }
-      }
+      toast.success("Signed in successfully!")
+      router.push(result.redirectTo)
+      router.refresh()
     } catch (error) {
       console.error("Login error:", error)
-      toast.error("An unexpected error occurred")
+      const message =
+        error instanceof Error ? error.message : "An unexpected error occurred"
+      toast.error(message)
     } finally {
       setIsLoading(false)
     }

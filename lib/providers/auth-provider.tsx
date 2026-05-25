@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { isSupabaseConfigured } from "@/lib/supabase/env"
+import { isSupabaseConfiguredForBrowser } from "@/lib/supabase/env"
 import type { User } from "@supabase/supabase-js"
 
 export type UserRole = "admin" | "pm" | "engineer" | "customer"
@@ -44,36 +44,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   })
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) {
-      setAuthState({
-        user: null,
-        profile: null,
-        isLoading: false,
-        isAuthenticated: false,
-        role: null,
-      })
-      return
+    let subscription: { unsubscribe: () => void } | undefined
+
+    async function loadFromSessionApi() {
+      try {
+        const res = await fetch("/api/auth/session", { credentials: "include" })
+        const json = await res.json()
+        if (json.user && json.profile) {
+          setAuthState({
+            user: { id: json.user.id, email: json.user.email ?? "" } as User,
+            profile: json.profile,
+            isLoading: false,
+            isAuthenticated: true,
+            role: json.profile.role ?? null,
+          })
+          return true
+        }
+      } catch (error) {
+        console.error("Error loading session from API:", error)
+      }
+      return false
     }
 
-    const supabase = createClient()
+    async function init() {
+      if (!isSupabaseConfiguredForBrowser()) {
+        const loaded = await loadFromSessionApi()
+        if (!loaded) {
+          setAuthState({
+            user: null,
+            profile: null,
+            isLoading: false,
+            isAuthenticated: false,
+            role: null,
+          })
+        }
+        return
+      }
 
-    async function loadProfile(user: User) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single()
+      const supabase = createClient()
 
-      setAuthState({
-        user,
-        profile,
-        isLoading: false,
-        isAuthenticated: true,
-        role: profile?.role || null,
-      })
-    }
+      async function loadProfile(user: User) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single()
 
-    async function getInitialSession() {
+        setAuthState({
+          user,
+          profile,
+          isLoading: false,
+          isAuthenticated: true,
+          role: profile?.role || null,
+        })
+      }
+
       try {
         const {
           data: { user },
@@ -92,36 +117,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         console.error("Error getting session:", error)
-        setAuthState({
-          user: null,
-          profile: null,
-          isLoading: false,
-          isAuthenticated: false,
-          role: null,
-        })
+        await loadFromSessionApi()
+        setAuthState((prev) =>
+          prev.isAuthenticated
+            ? prev
+            : {
+                user: null,
+                profile: null,
+                isLoading: false,
+                isAuthenticated: false,
+                role: null,
+              },
+        )
       }
+
+      const {
+        data: { subscription: sub },
+      } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (session?.user) {
+          await loadProfile(session.user)
+        } else {
+          setAuthState({
+            user: null,
+            profile: null,
+            isLoading: false,
+            isAuthenticated: false,
+            role: null,
+          })
+        }
+      })
+      subscription = sub
     }
 
-    getInitialSession()
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        await loadProfile(session.user)
-      } else {
-        setAuthState({
-          user: null,
-          profile: null,
-          isLoading: false,
-          isAuthenticated: false,
-          role: null,
-        })
-      }
-    })
+    init()
 
     return () => {
-      subscription.unsubscribe()
+      subscription?.unsubscribe()
     }
   }, [])
 
@@ -135,11 +166,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     } as const
 
-    if (!isSupabaseConfigured()) {
+    if (!isSupabaseConfiguredForBrowser()) {
       return {
         ...authState,
         signIn: async () => notConfiguredError,
-        signOut: async () => ({ error: null }),
+        signOut: async () => {
+          window.location.href = "/auth/signout"
+          return { error: null }
+        },
         canEnterData: false,
         isAdmin: false,
         canManageProjects: false,

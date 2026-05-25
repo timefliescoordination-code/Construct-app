@@ -16,7 +16,20 @@ function readEnv(...names: string[]): string | undefined {
   return undefined
 }
 
-/** Vercel ↔ Supabase integration may use different variable names than .env.example */
+/** Browser / client bundle — only NEXT_PUBLIC_* (inlined at build time on Vercel) */
+function resolveSupabaseUrlForBrowser(): string | undefined {
+  return readEnv('NEXT_PUBLIC_SUPABASE_URL')
+}
+
+function resolveSupabaseAnonKeyForBrowser(): string | undefined {
+  return readEnv(
+    'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+    'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+    'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY',
+  )
+}
+
+/** Server / middleware — Vercel integration may sync non-public names */
 function resolveSupabaseUrl(): string | undefined {
   return readEnv('NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL')
 }
@@ -72,6 +85,22 @@ function keyStatusFromResolved(key: string | undefined): SupabaseEnvFieldStatus 
   return 'set'
 }
 
+/** Status for login/signup in the browser — must use NEXT_PUBLIC_* */
+export function getBrowserSupabaseUrlStatus(): SupabaseEnvFieldStatus {
+  return urlStatusFromResolved(resolveSupabaseUrlForBrowser())
+}
+
+export function getBrowserSupabaseAnonKeyStatus(): SupabaseEnvFieldStatus {
+  return keyStatusFromResolved(resolveSupabaseAnonKeyForBrowser())
+}
+
+export function isSupabaseConfiguredForBrowser(): boolean {
+  return (
+    getBrowserSupabaseUrlStatus() === 'set' && getBrowserSupabaseAnonKeyStatus() === 'set'
+  )
+}
+
+/** Server-side (includes integration-only SUPABASE_* names) */
 export function getSupabaseUrlStatus(): SupabaseEnvFieldStatus {
   return urlStatusFromResolved(resolveSupabaseUrl())
 }
@@ -80,21 +109,81 @@ export function getSupabaseAnonKeyStatus(): SupabaseEnvFieldStatus {
   return keyStatusFromResolved(resolveSupabaseAnonKey())
 }
 
+/** Server / middleware — accepts integration vars like SUPABASE_ANON_KEY */
 export function isSupabaseConfigured(): boolean {
-  return getSupabaseUrlStatus() === 'set' && getSupabaseAnonKeyStatus() === 'set'
+  return (
+    urlStatusFromResolved(resolveSupabaseUrl()) === 'set' &&
+    keyStatusFromResolved(resolveSupabaseAnonKey()) === 'set'
+  )
+}
+
+export function getSupabaseEnvForBrowser() {
+  const rawUrl = resolveSupabaseUrlForBrowser()
+  const key = resolveSupabaseAnonKeyForBrowser()
+
+  if (!isSupabaseConfiguredForBrowser() || !rawUrl || !key) {
+    const hasServerOnlyKey =
+      Boolean(process.env.SUPABASE_ANON_KEY?.trim()) &&
+      !resolveSupabaseAnonKeyForBrowser()
+
+    throw new Error(
+      hasServerOnlyKey
+        ? 'Supabase keys exist as SUPABASE_ANON_KEY but login needs NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) in Vercel, then redeploy.'
+        : 'Supabase is not configured for the browser. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel → Environment Variables, then redeploy.',
+    )
+  }
+
+  return { url: normalizeSupabaseUrl(rawUrl), key }
 }
 
 export function getSupabaseEnv() {
   const rawUrl = resolveSupabaseUrl()
   const key = resolveSupabaseAnonKey()
 
-  if (!isSupabaseConfigured() || !rawUrl || !key) {
+  if (
+    urlStatusFromResolved(rawUrl) !== 'set' ||
+    keyStatusFromResolved(key) !== 'set' ||
+    !rawUrl ||
+    !key
+  ) {
     throw new Error(
-      'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY from the Vercel integration) in Vercel → Environment Variables, then redeploy.',
+      'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel → Environment Variables, then redeploy.',
     )
   }
 
   return { url: normalizeSupabaseUrl(rawUrl), key }
+}
+
+export function getSupabaseEnvDiagnostics(): {
+  browser: {
+    urlCandidates: { name: string; present: boolean }[]
+    keyCandidates: { name: string; present: boolean }[]
+  }
+  serverOnly: {
+    urlCandidates: { name: string; present: boolean }[]
+    keyCandidates: { name: string; present: boolean }[]
+  }
+} {
+  const map = (names: readonly string[]) =>
+    names.map((name) => ({
+      name,
+      present: Boolean(process.env[name]?.trim()),
+    }))
+
+  return {
+    browser: {
+      urlCandidates: map(['NEXT_PUBLIC_SUPABASE_URL'] as const),
+      keyCandidates: map([
+        'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+        'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+        'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY',
+      ] as const),
+    },
+    serverOnly: {
+      urlCandidates: map(['SUPABASE_URL'] as const),
+      keyCandidates: map(['SUPABASE_ANON_KEY'] as const),
+    },
+  }
 }
 
 export function getServiceRoleKey(): string {
