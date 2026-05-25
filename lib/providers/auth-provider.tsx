@@ -90,13 +90,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .eq("id", user.id)
           .single()
 
-        setAuthState({
-          user,
-          profile,
-          isLoading: false,
-          isAuthenticated: true,
-          role: profile?.role || null,
-        })
+        if (profile?.role) {
+          setAuthState({
+            user,
+            profile,
+            isLoading: false,
+            isAuthenticated: true,
+            role: profile.role,
+          })
+          return
+        }
+
+        const loaded = await loadFromSessionApi()
+        if (!loaded) {
+          setAuthState({
+            user,
+            profile: profile ?? null,
+            isLoading: false,
+            isAuthenticated: true,
+            role: profile?.role ?? null,
+          })
+        }
       }
 
       try {
@@ -158,6 +172,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => {
     const role = authState.role
+    const permissions = {
+      canEnterData: role === "admin" || role === "pm" || role === "engineer",
+      isAdmin: role === "admin",
+      canManageProjects: role === "admin" || role === "pm",
+    }
     const notConfiguredError = {
       data: { user: null, session: null },
       error: {
@@ -174,9 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           window.location.href = "/auth/signout"
           return { error: null }
         },
-        canEnterData: false,
-        isAdmin: false,
-        canManageProjects: false,
+        ...permissions,
       }
     }
 
@@ -187,9 +204,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn: (email: string, password: string) =>
         supabase.auth.signInWithPassword({ email, password }),
       signOut: () => supabase.auth.signOut(),
-      canEnterData: role === "admin" || role === "pm" || role === "engineer",
-      isAdmin: role === "admin",
-      canManageProjects: role === "admin" || role === "pm",
+      ...permissions,
     }
   }, [authState])
 

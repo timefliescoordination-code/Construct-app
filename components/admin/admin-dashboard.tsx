@@ -27,9 +27,12 @@ import {
   ArrowUpRight,
   ArrowDownRight,
 } from "lucide-react"
+import Link from "next/link"
+import { Plus } from "lucide-react"
 import { useAdminDashboard } from "@/lib/hooks/use-admin-dashboard"
 import { PM_NOT_CREATED } from "@/lib/staff-labels"
 import { DashboardHeader } from "@/components/dashboard/header"
+import { useAuth } from "@/lib/hooks/use-auth"
 
 function StatCardSkeleton() {
   return (
@@ -85,6 +88,8 @@ function PmCardSkeleton() {
 export function AdminDashboard() {
   const [selectedPeriod, setSelectedPeriod] = useState("30d")
   const { projects, company, projectManagers, isLoading, error } = useAdminDashboard()
+  const { isAdmin, canManageProjects, isLoading: authLoading } = useAuth()
+  const showCreateProject = !authLoading && (isAdmin || canManageProjects)
 
   const cashflowWarnings = company?.cashflowWarnings ?? 0
 
@@ -113,6 +118,19 @@ export function AdminDashboard() {
                 <SelectItem value="1y">Last year</SelectItem>
               </SelectContent>
             </Select>
+
+            <Button variant="outline" className="border-border" asChild>
+              <Link href="/projects">View Projects</Link>
+            </Button>
+
+            {showCreateProject && (
+              <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
+                <Link href="/projects/new">
+                  <Plus className="h-4 w-4" />
+                  New Project
+                </Link>
+              </Button>
+            )}
 
             <Button variant="outline" className="border-border">
               <Calendar className="mr-2 h-4 w-4" />
