@@ -1,23 +1,19 @@
 "use client"
 
 import useSWR from "swr"
-import { createClient } from "@/lib/supabase/client"
 import type { Profile } from "@/lib/types/database"
-import { getSupabaseErrorMessage } from "@/lib/supabase/db-errors"
 
 async function fetchStaffProfiles(): Promise<Profile[]> {
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, email, full_name, role, phone, company_name, created_at, updated_at")
-    .in("role", ["pm", "engineer", "customer"])
-    .order("full_name", { ascending: true })
+  const res = await fetch("/api/staff-profiles", { credentials: "include" })
+  const json = await res.json().catch(() => ({}))
 
-  if (error) {
-    throw new Error(getSupabaseErrorMessage(error))
+  if (!res.ok) {
+    throw new Error(
+      typeof json.error === "string" ? json.error : `Request failed (${res.status})`,
+    )
   }
 
-  return (data ?? []) as Profile[]
+  return (json.data ?? []) as Profile[]
 }
 
 export function useStaffProfiles() {

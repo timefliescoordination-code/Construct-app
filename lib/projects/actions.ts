@@ -1,0 +1,144 @@
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { createClient } from '@/lib/supabase/server'
+import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
+
+export type CreateProjectInput = {
+  name: string
+  client_name: string
+  site_address: string
+  contract_value: number
+  additional_works_value: number
+  expected_margin_percent: number
+  start_date: string | null
+  expected_completion_date: string | null
+  pm_id: string | null
+  customer_id: string | null
+  stage_budget: number
+  assigned_engineer_ids: string[]
+}
+
+export type CreateProjectResult =
+  | { ok: true; projectId: string }
+  | { ok: false; error: string }
+
+const DEFAULT_MILESTONES = [
+  { name: 'Foundation', expected_cost_percent: 15, sort_order: 1 },
+  { name: 'Plinth', expected_cost_percent: 10, sort_order: 2 },
+  { name: 'Superstructure', expected_cost_percent: 25, sort_order: 3 },
+  { name: 'Brickwork', expected_cost_percent: 12, sort_order: 4 },
+  { name: 'Plastering', expected_cost_percent: 10, sort_order: 5 },
+  { name: 'Electrical & Plumbing', expected_cost_percent: 12, sort_order: 6 },
+  { name: 'Flooring & Tiling', expected_cost_percent: 8, sort_order: 7 },
+  { name: 'Finishing', expected_cost_percent: 8, sort_order: 8 },
+] as const
+
+export async function createProjectAction(
+  input: CreateProjectInput,
+): Promise<CreateProjectResult> {
+  try {
+    const supabase = await createClient()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { ok: false, error: 'You must be signed in to create a project.' }
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (profileError) {
+      return { ok: false, error: getSupabaseErrorMessage(profileError) }
+    }
+
+    const role = profile?.role
+    if (!role || !['admin', 'pm', 'engineer'].includes(role)) {
+      return {
+        ok: false,
+        error:
+          'Your account cannot create projects. Use an admin or project manager account, or ask an admin to update your role in Supabase.',
+      }
+    }
+
+    const projectData = {
+      name: input.name.trim(),
+      client_name: input.client_name.trim(),
+      site_address: input.site_address.trim(),
+      contract_value: input.contract_value,
+      additional_works_value: input.additional_works_value,
+      expected_margin_percent: input.expected_margin_percent,
+      start_date: input.start_date,
+      expected_completion_date: input.expected_completion_date,
+      status: 'active' as const,
+      pm_id: input.pm_id,
+      customer_id: input.customer_id,
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .insert(projectData)
+      .select('id')
+      .single()
+
+    if (projectError || !project) {
+      return {
+        ok: false,
+        error: projectError
+          ? getSupabaseErrorMessage(projectError)
+          : 'Project was created but could not be loaded. Check Row Level Security policies.',
+      }
+    }
+
+    const milestonesData = DEFAULT_MILESTONES.map((m) => ({
+      project_id: project.id,
+      name: m.name,
+      expected_cost_percent: m.expected_cost_percent,
+      target_budget: (input.stage_budget * m.expected_cost_percent) / 100,
+      actual_expenses: 0,
+      actual_completion_percent: 0,
+      status: 'pending' as const,
+      sort_order: m.sort_order,
+    }))
+
+    const { error: milestonesError } = await supabase
+      .from('milestones')
+      .insert(milestonesData)
+
+    if (milestonesError) {
+      console.error('[createProjectAction] milestones:', milestonesError)
+    }
+
+    if (input.assigned_engineer_ids.length > 0) {
+      const engineerAssignments = input.assigned_engineer_ids.map((engineerId) => ({
+        project_id: project.id,
+        engineer_id: engineerId,
+      }))
+
+      const { error: engineersError } = await supabase
+        .from('project_engineers')
+        .insert(engineerAssignments)
+
+      if (engineersError) {
+        console.error('[createProjectAction] engineers:', engineersError)
+      }
+    }
+
+    revalidatePath('/projects')
+    revalidatePath(`/projects/${project.id}`)
+
+    return { ok: true, projectId: project.id }
+  } catch (err) {
+    console.error('[createProjectAction]', err)
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Failed to create project',
+    }
+  }
+}

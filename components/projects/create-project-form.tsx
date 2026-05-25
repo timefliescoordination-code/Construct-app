@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import Link from "next/link"
 import { calculateFormSummary } from "@/lib/financial-calculations"
-import { createClient } from "@/lib/supabase/client"
+import { createProjectAction } from "@/lib/projects/actions"
 import { toast } from "sonner"
 import { useStaffProfiles } from "@/lib/hooks/use-staff-profiles"
 import { PM_NOT_CREATED, SITE_ENGINEER_NOT_CREATED, CUSTOMER_NOT_CREATED } from "@/lib/staff-labels"
@@ -126,96 +126,36 @@ export function CreateProjectForm() {
     setIsSubmitting(true)
     
     try {
-      const supabase = createClient()
-      
-      // Prepare project data
-      const projectData = {
+      const result = await createProjectAction({
         name: projectName,
         client_name: clientName,
         site_address: siteAddress,
         contract_value: parseFloat(contractValue) || 0,
         additional_works_value: parseFloat(additionalWorks) || 0,
         expected_margin_percent: parseFloat(expectedMargin) || 15,
-        start_date: startDate ? format(startDate, 'yyyy-MM-dd') : null,
-        expected_completion_date: expectedEndDate ? format(expectedEndDate, 'yyyy-MM-dd') : null,
-        status: 'active' as const,
+        start_date: startDate ? format(startDate, "yyyy-MM-dd") : null,
+        expected_completion_date: expectedEndDate
+          ? format(expectedEndDate, "yyyy-MM-dd")
+          : null,
         pm_id: assignedPM || null,
         customer_id: assignedCustomer || null,
-      }
-      
-      console.log("[v0] Creating project with data:", projectData)
-      
-      // Insert project into Supabase
-      const { data: project, error: projectError } = await supabase
-        .from('projects')
-        .insert(projectData)
-        .select()
-        .single()
-      
-      if (projectError) {
-        console.error("[v0] Project creation error:", projectError)
-        toast.error(`Failed to create project: ${projectError.message}`)
-        setIsSubmitting(false)
+        stage_budget: formSummary.stageBudget,
+        assigned_engineer_ids: assignedEngineers,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
         return
       }
-      
-      console.log("[v0] Project created successfully:", project)
-      
-      // Create default milestones for the project
-      const defaultMilestones = [
-        { name: 'Foundation', expected_cost_percent: 15, sort_order: 1 },
-        { name: 'Plinth', expected_cost_percent: 10, sort_order: 2 },
-        { name: 'Superstructure', expected_cost_percent: 25, sort_order: 3 },
-        { name: 'Brickwork', expected_cost_percent: 12, sort_order: 4 },
-        { name: 'Plastering', expected_cost_percent: 10, sort_order: 5 },
-        { name: 'Electrical & Plumbing', expected_cost_percent: 12, sort_order: 6 },
-        { name: 'Flooring & Tiling', expected_cost_percent: 8, sort_order: 7 },
-        { name: 'Finishing', expected_cost_percent: 8, sort_order: 8 },
-      ]
-      
-      const stageBudget = formSummary.stageBudget
-      const milestonesData = defaultMilestones.map(m => ({
-        project_id: project.id,
-        name: m.name,
-        expected_cost_percent: m.expected_cost_percent,
-        target_budget: (stageBudget * m.expected_cost_percent) / 100,
-        actual_expenses: 0,
-        actual_completion_percent: 0,
-        status: 'pending' as const,
-        sort_order: m.sort_order,
-      }))
-      
-      const { error: milestonesError } = await supabase
-        .from('milestones')
-        .insert(milestonesData)
-      
-      if (milestonesError) {
-        console.error("[v0] Milestones creation error:", milestonesError)
-        // Don't fail the whole operation, just log the error
-      }
 
-      if (assignedEngineers.length > 0) {
-        const engineerAssignments = assignedEngineers.map((engineerId) => ({
-          project_id: project.id,
-          engineer_id: engineerId,
-        }))
-
-        const { error: engineersError } = await supabase
-          .from('project_engineers')
-          .insert(engineerAssignments)
-
-        if (engineersError) {
-          console.error("[v0] Site engineer assignment error:", engineersError)
-        }
-      }
-      
       toast.success("Project created successfully!")
-      
-      // Navigate to the new project
-      router.push(`/projects/${project.id}`)
+      router.push(`/projects/${result.projectId}`)
     } catch (error) {
-      console.error("[v0] Unexpected error:", error)
-      toast.error("An unexpected error occurred")
+      console.error("[create-project] error:", error)
+      const message =
+        error instanceof Error ? error.message : "An unexpected error occurred"
+      toast.error(message)
+    } finally {
       setIsSubmitting(false)
     }
   }

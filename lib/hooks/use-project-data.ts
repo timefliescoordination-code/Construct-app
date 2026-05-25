@@ -1,17 +1,13 @@
 "use client"
 
 import useSWR from "swr"
-import { createClient } from "@/lib/supabase/client"
 import type { 
-  Project, 
   Milestone, 
   Expense, 
   ClientPayment, 
-  VendorPayment, 
   AdditionalWork, 
   ProjectWithDetails,
   LabourType,
-  LabourEntry
 } from "@/lib/types/database"
 import {
   calculateTotalContractValue,
@@ -19,95 +15,41 @@ import {
   calculateProjectedProfit,
   type MilestoneData
 } from "@/lib/financial-calculations"
-import { getSupabaseErrorMessage } from "@/lib/supabase/db-errors"
 import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
 
-function getSupabase() {
-  return createClient()
+async function fetchFromApi<T>(path: string): Promise<T> {
+  const res = await fetch(path, { credentials: "include" })
+  const json = await res.json().catch(() => ({}))
+
+  if (!res.ok) {
+    const message =
+      typeof json.error === "string"
+        ? json.error
+        : `Request failed (${res.status})`
+    throw new Error(message)
+  }
+
+  return json.data as T
 }
 
-const PROJECT_STAFF_SELECT = `
-  *,
-  milestones(*),
-  expenses(*),
-  client_payments(*),
-  pm:profiles!pm_id(id, email, full_name, role, phone, company_name, created_at, updated_at),
-  project_engineers(
-    engineer_id,
-    engineer:profiles!engineer_id(id, email, full_name, role, phone, company_name, created_at, updated_at)
-  )
-`
-
-const PROJECT_DETAIL_SELECT = `
-  ${PROJECT_STAFF_SELECT.trim()},
-  vendor_payments(*),
-  additional_works(*)
-`
-
-// Fetch all projects
 async function fetchProjects() {
-  const supabase = getSupabase()
-  const { data, error } = await supabase
-    .from('projects')
-    .select(PROJECT_STAFF_SELECT)
-    .order('created_at', { ascending: false })
-  
-  if (error) {
-    console.error("[v0] fetchProjects error:", error.message ?? error.code ?? error)
-    throw new Error(getSupabaseErrorMessage(error))
-  }
-  return data || []
+  return fetchFromApi<ProjectWithDetails[]>("/api/projects")
 }
 
-// Fetch single project with all details
 async function fetchProject(projectId: string) {
-  const supabase = getSupabase()
-  const { data, error } = await supabase
-    .from('projects')
-    .select(PROJECT_DETAIL_SELECT)
-    .eq('id', projectId)
-    .single()
-  
-  if (error) throw error
-  
-  // Sort milestones by sort_order
-  if (data.milestones) {
-    data.milestones.sort((a: Milestone, b: Milestone) => a.sort_order - b.sort_order)
-  }
-  
-  return data as ProjectWithDetails
+  return fetchFromApi<ProjectWithDetails>(`/api/projects/${projectId}`)
 }
 
-// Fetch the default/first project
 async function fetchDefaultProject() {
-  const supabase = getSupabase()
-  const { data, error } = await supabase
-    .from('projects')
-    .select(PROJECT_DETAIL_SELECT)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .single()
-  
-  if (error) throw error
-  
-  // Sort milestones by sort_order
-  if (data.milestones) {
-    data.milestones.sort((a: Milestone, b: Milestone) => a.sort_order - b.sort_order)
+  const data = await fetchFromApi<ProjectWithDetails | null>("/api/projects/default")
+  if (!data) {
+    throw new Error("No projects yet. Create your first project to get started.")
   }
-  
-  return data as ProjectWithDetails
+  return data
 }
 
-// Fetch labour types
 async function fetchLabourTypes() {
-  const supabase = getSupabase()
-  const { data, error } = await supabase
-    .from('labour_types')
-    .select('*')
-    .order('name', { ascending: true })
-  
-  if (error) throw error
-  return data as LabourType[]
+  return fetchFromApi<LabourType[]>("/api/labour-types")
 }
 
 const swrDefaults = {
