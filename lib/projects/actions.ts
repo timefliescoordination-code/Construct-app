@@ -43,7 +43,10 @@ export type UpdateProjectResult = { ok: true } | { ok: false; error: string }
 
 async function assertCanManageProjects(
   supabase: Awaited<ReturnType<typeof createClient>>,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; role: 'admin' | 'pm'; userId: string }
+  | { ok: false; error: string }
+> {
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -67,6 +70,35 @@ async function assertCanManageProjects(
     return {
       ok: false,
       error: 'Only admins and project managers can update project assignments.',
+    }
+  }
+
+  return { ok: true, role, userId: user.id }
+}
+
+async function assertCanEditProject(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  auth: { ok: true; role: 'admin' | 'pm'; userId: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (auth.role === 'admin') {
+    return { ok: true }
+  }
+
+  const { data: project, error } = await supabase
+    .from('projects')
+    .select('pm_id')
+    .eq('id', projectId)
+    .maybeSingle()
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  if (!project || project.pm_id !== auth.userId) {
+    return {
+      ok: false,
+      error: 'You can only edit projects assigned to you as project manager.',
     }
   }
 
@@ -200,6 +232,9 @@ export async function updateProjectAction(
     const supabase = await createClient()
     const auth = await assertCanManageProjects(supabase)
     if (!auth.ok) return auth
+
+    const canEdit = await assertCanEditProject(supabase, input.projectId, auth)
+    if (!canEdit.ok) return canEdit
 
     const { error: projectError } = await supabase
       .from('projects')

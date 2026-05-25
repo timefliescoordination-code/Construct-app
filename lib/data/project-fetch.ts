@@ -1,6 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import type { ProjectWithDetails } from '@/lib/types/database'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
+import {
+  getAssignedDefaultProjectId,
+  getProjectAccessScope,
+  NO_ASSIGNED_PROJECT_MESSAGE,
+} from '@/lib/project-access'
 
 export const PROJECT_LIST_SELECT = `
   *,
@@ -119,46 +124,20 @@ export async function getProjectByIdForApi(projectId: string) {
 export async function getDefaultProjectForApi() {
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
+  const access = await getProjectAccessScope(supabase)
+  if (!access) {
     return { data: null, error: 'You must be signed in to view projects.' }
   }
 
-  let { data, error } = await supabase
-    .from('projects')
-    .select(PROJECT_DETAIL_SELECT)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .single()
-
-  if (error && shouldRetryWithBasicSelect(error)) {
-    const fallback = await supabase
-      .from('projects')
-      .select(PROJECT_DETAIL_SELECT_BASIC)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .single()
-    data = fallback.data
-    error = fallback.error
-  }
-
-  if (error) {
-    if (error.code === 'PGRST116') {
+  const projectId = await getAssignedDefaultProjectId(supabase, access.scope)
+  if (!projectId) {
+    if (access.scope.kind === 'all') {
       return { data: null, error: null }
     }
-    return { data: null, error: getSupabaseErrorMessage(error) }
+    return { data: null, error: NO_ASSIGNED_PROJECT_MESSAGE }
   }
 
-  if (data?.milestones) {
-    data.milestones.sort(
-      (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order,
-    )
-  }
-
-  return { data: data as ProjectWithDetails, error: null }
+  return getProjectByIdForApi(projectId)
 }
 
 export async function listLabourTypesForApi() {

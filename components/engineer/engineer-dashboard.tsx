@@ -48,6 +48,7 @@ import { formatINR } from "@/lib/currency"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { useDefaultProject, useLabourTypes } from "@/lib/hooks/use-project-data"
+import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
 import { DashboardHeader } from "@/components/dashboard/header"
 
 export function EngineerDashboard() {
@@ -122,11 +123,13 @@ export function EngineerDashboard() {
   }
 
   if (error || !project || !engineerData) {
+    const message =
+      error instanceof Error ? error.message : NO_ASSIGNED_PROJECT_MESSAGE
     return (
       <div className="min-h-screen bg-background">
         <DashboardHeader />
-        <div className="flex items-center justify-center py-24">
-          <p className="text-muted-foreground">Unable to load site data</p>
+        <div className="flex max-w-lg flex-col items-center justify-center gap-2 px-6 py-24 text-center">
+          <p className="text-muted-foreground">{message}</p>
         </div>
       </div>
     )

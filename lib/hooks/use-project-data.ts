@@ -16,6 +16,7 @@ import {
   type MilestoneData
 } from "@/lib/financial-calculations"
 import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
+import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
 
 async function fetchFromApi<T>(path: string): Promise<T> {
   const res = await fetch(path, { credentials: "include" })
@@ -41,9 +42,24 @@ async function fetchProject(projectId: string) {
 }
 
 async function fetchDefaultProject() {
-  const data = await fetchFromApi<ProjectWithDetails | null>("/api/projects/default")
+  const res = await fetch("/api/projects/default", { credentials: "include" })
+  const json = await res.json().catch(() => ({}))
+
+  if (!res.ok) {
+    const message =
+      typeof json.error === "string"
+        ? json.error
+        : `Request failed (${res.status})`
+    throw new Error(message)
+  }
+
+  if (json.error && typeof json.error === "string") {
+    throw new Error(json.error)
+  }
+
+  const data = json.data as ProjectWithDetails | null
   if (!data) {
-    throw new Error("No projects yet. Create your first project to get started.")
+    throw new Error(NO_ASSIGNED_PROJECT_MESSAGE)
   }
   return data
 }

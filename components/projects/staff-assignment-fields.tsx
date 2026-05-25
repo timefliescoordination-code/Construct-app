@@ -51,7 +51,9 @@ export function StaffAssignmentFields({
           <Users className="h-5 w-5 text-primary" />
           <CardTitle>Staff Assignment</CardTitle>
         </div>
-        <CardDescription>Assign customer, project manager, and site engineers</CardDescription>
+        <CardDescription>
+          Each person only sees projects they are assigned here. Unassigned users see nothing for that role.
+        </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-6 sm:grid-cols-2">
         <div className="space-y-2">
