@@ -138,6 +138,12 @@ export function MilestonesTab({ projectId: propProjectId }: MilestonesTabProps =
   }, [projectId])
 
   async function fetchData() {
+    if (!projectId) {
+      setLoading(false)
+      return
+    }
+
+    setLoading(true)
     const supabase = createClient()
     
     const { data: projectData, error: projectError } = await supabase

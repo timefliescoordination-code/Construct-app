@@ -130,4 +130,8 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Tailwind v4: Radix Tabs use the hidden attribute on inactive panels */
+  [hidden] {
+    display: none !important;
+  }
 }

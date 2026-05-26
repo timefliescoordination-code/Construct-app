@@ -93,8 +93,11 @@ export function ExpensesTab({ projectId: propProjectId }: ExpensesTabProps) {
   // Fetch expenses and milestones from Supabase
   useEffect(() => {
     async function fetchData() {
-      if (!projectId) return
-      
+      if (!projectId) {
+        setIsLoading(false)
+        return
+      }
+
       setIsLoading(true)
       const supabase = createClient()
       

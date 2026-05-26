@@ -1,6 +1,13 @@
 "use client"
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react"
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import { createClient } from "@/lib/supabase/client"
 import { isSupabaseConfiguredForBrowser } from "@/lib/supabase/env"
 import type { User } from "@supabase/supabase-js"
@@ -27,12 +34,36 @@ export interface AuthState {
 interface AuthContextValue extends AuthState {
   signIn: (email: string, password: string) => ReturnType<ReturnType<typeof createClient>["auth"]["signInWithPassword"]>
   signOut: () => ReturnType<ReturnType<typeof createClient>["auth"]["signOut"]>
+  /** Reload user/profile after server-side sign-in (AuthProvider does not remount on router.push). */
+  refreshAuth: () => Promise<void>
   canEnterData: boolean
   isAdmin: boolean
   canManageProjects: boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+
+async function fetchSessionFromApi(): Promise<{
+  user: User
+  profile: UserProfile
+} | null> {
+  try {
+    const res = await fetch("/api/auth/session", {
+      credentials: "include",
+      cache: "no-store",
+    })
+    const json = await res.json()
+    if (json.user && json.profile) {
+      return {
+        user: { id: json.user.id, email: json.user.email ?? "" } as User,
+        profile: json.profile as UserProfile,
+      }
+    }
+  } catch (error) {
+    console.error("Error loading session from API:", error)
+  }
+  return null
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState<AuthState>({
@@ -43,114 +74,119 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: null,
   })
 
+  const refreshAuth = useCallback(async () => {
+    setAuthState((prev) => ({ ...prev, isLoading: true }))
+
+    if (!isSupabaseConfiguredForBrowser()) {
+      const session = await fetchSessionFromApi()
+      if (session) {
+        setAuthState({
+          user: session.user,
+          profile: session.profile,
+          isLoading: false,
+          isAuthenticated: true,
+          role: session.profile.role ?? null,
+        })
+      } else {
+        setAuthState({
+          user: null,
+          profile: null,
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+        })
+      }
+      return
+    }
+
+    const supabase = createClient()
+
+    const applySession = async (user: User) => {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single()
+
+      if (profile?.role) {
+        setAuthState({
+          user,
+          profile,
+          isLoading: false,
+          isAuthenticated: true,
+          role: profile.role,
+        })
+        return
+      }
+
+      const fromApi = await fetchSessionFromApi()
+      if (fromApi) {
+        setAuthState({
+          user: fromApi.user,
+          profile: fromApi.profile,
+          isLoading: false,
+          isAuthenticated: true,
+          role: fromApi.profile.role ?? null,
+        })
+        return
+      }
+
+      setAuthState({
+        user,
+        profile: profile ?? null,
+        isLoading: false,
+        isAuthenticated: true,
+        role: profile?.role ?? null,
+      })
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (user) {
+      await applySession(user)
+      return
+    }
+
+    const fromApi = await fetchSessionFromApi()
+    if (fromApi) {
+      setAuthState({
+        user: fromApi.user,
+        profile: fromApi.profile,
+        isLoading: false,
+        isAuthenticated: true,
+        role: fromApi.profile.role ?? null,
+      })
+      return
+    }
+
+    setAuthState({
+      user: null,
+      profile: null,
+      isLoading: false,
+      isAuthenticated: false,
+      role: null,
+    })
+  }, [])
+
   useEffect(() => {
     let subscription: { unsubscribe: () => void } | undefined
 
-    async function loadFromSessionApi() {
-      try {
-        const res = await fetch("/api/auth/session", { credentials: "include" })
-        const json = await res.json()
-        if (json.user && json.profile) {
-          setAuthState({
-            user: { id: json.user.id, email: json.user.email ?? "" } as User,
-            profile: json.profile,
-            isLoading: false,
-            isAuthenticated: true,
-            role: json.profile.role ?? null,
-          })
-          return true
-        }
-      } catch (error) {
-        console.error("Error loading session from API:", error)
-      }
-      return false
-    }
-
     async function init() {
+      await refreshAuth()
+
       if (!isSupabaseConfiguredForBrowser()) {
-        const loaded = await loadFromSessionApi()
-        if (!loaded) {
-          setAuthState({
-            user: null,
-            profile: null,
-            isLoading: false,
-            isAuthenticated: false,
-            role: null,
-          })
-        }
         return
       }
 
       const supabase = createClient()
-
-      async function loadProfile(user: User) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single()
-
-        if (profile?.role) {
-          setAuthState({
-            user,
-            profile,
-            isLoading: false,
-            isAuthenticated: true,
-            role: profile.role,
-          })
-          return
-        }
-
-        const loaded = await loadFromSessionApi()
-        if (!loaded) {
-          setAuthState({
-            user,
-            profile: profile ?? null,
-            isLoading: false,
-            isAuthenticated: true,
-            role: profile?.role ?? null,
-          })
-        }
-      }
-
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-
-        if (user) {
-          await loadProfile(user)
-        } else {
-          setAuthState({
-            user: null,
-            profile: null,
-            isLoading: false,
-            isAuthenticated: false,
-            role: null,
-          })
-        }
-      } catch (error) {
-        console.error("Error getting session:", error)
-        await loadFromSessionApi()
-        setAuthState((prev) =>
-          prev.isAuthenticated
-            ? prev
-            : {
-                user: null,
-                profile: null,
-                isLoading: false,
-                isAuthenticated: false,
-                role: null,
-              },
-        )
-      }
-
       const {
         data: { subscription: sub },
-      } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (session?.user) {
-          await loadProfile(session.user)
-        } else {
+          await refreshAuth()
+        } else if (event === "SIGNED_OUT") {
           setAuthState({
             user: null,
             profile: null,
@@ -168,7 +204,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription?.unsubscribe()
     }
-  }, [])
+  }, [refreshAuth])
 
   const value = useMemo<AuthContextValue>(() => {
     const role = authState.role
@@ -193,6 +229,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           window.location.href = "/auth/signout"
           return { error: null }
         },
+        refreshAuth,
         ...permissions,
       }
     }
@@ -204,9 +241,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn: (email: string, password: string) =>
         supabase.auth.signInWithPassword({ email, password }),
       signOut: () => supabase.auth.signOut(),
+      refreshAuth,
       ...permissions,
     }
-  }, [authState])
+  }, [authState, refreshAuth])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

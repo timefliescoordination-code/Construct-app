@@ -9,15 +9,25 @@ import { createClient } from "@/lib/supabase/client"
 
 interface PhotosTabProps {
   projectId?: string
+  projectName?: string
 }
 
-export function PhotosTab({ projectId: propProjectId }: PhotosTabProps = {}) {
+export function PhotosTab({
+  projectId: propProjectId,
+  projectName: propProjectName,
+}: PhotosTabProps = {}) {
   const params = useParams()
   const projectId = propProjectId || (params?.id as string)
-  const [projectName, setProjectName] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [projectName, setProjectName] = useState<string | null>(propProjectName ?? null)
+  const [isLoading, setIsLoading] = useState(!propProjectName)
 
   useEffect(() => {
+    if (propProjectName) {
+      setProjectName(propProjectName)
+      setIsLoading(false)
+      return
+    }
+
     async function loadProject() {
       if (!projectId) {
         setIsLoading(false)
@@ -36,7 +46,7 @@ export function PhotosTab({ projectId: propProjectId }: PhotosTabProps = {}) {
     }
 
     loadProject()
-  }, [projectId])
+  }, [projectId, propProjectName])
 
   if (isLoading) {
     return (

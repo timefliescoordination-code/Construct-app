@@ -60,7 +60,10 @@ export function AdditionalWorksTab({ projectId: propProjectId }: AdditionalWorks
   }, [projectId])
 
   async function fetchWorks() {
-    if (!projectId) return
+    if (!projectId) {
+      setIsLoading(false)
+      return
+    }
 
     setIsLoading(true)
     const supabase = createClient()

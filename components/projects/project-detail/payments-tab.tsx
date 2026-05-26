@@ -93,8 +93,11 @@ export function PaymentsTab({ projectId: propProjectId }: PaymentsTabProps = {})
   }, [projectId])
 
   const fetchPayments = async () => {
-    if (!projectId) return
-    
+    if (!projectId) {
+      setIsLoading(false)
+      return
+    }
+
     setIsLoading(true)
     const supabase = createClient()
     

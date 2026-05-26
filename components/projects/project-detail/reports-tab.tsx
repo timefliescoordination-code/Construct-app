@@ -66,6 +66,12 @@ export function ReportsTab({ projectId: propProjectId }: ReportsTabProps = {}) {
   }, [projectId])
 
   async function fetchData() {
+    if (!projectId) {
+      setLoading(false)
+      return
+    }
+
+    setLoading(true)
     const supabase = createClient()
     
     // Fetch milestones

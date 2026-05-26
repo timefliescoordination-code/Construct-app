@@ -107,7 +107,11 @@ export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps)
             </div>
           </Link>
 
-          {role === "admin" ? (
+          {isLoading ? (
+            <Badge variant="outline" className="hidden sm:inline-flex text-muted-foreground">
+              ...
+            </Badge>
+          ) : role === "admin" ? (
             <Badge variant="outline" className="border-primary text-primary">
               <Shield className="h-3 w-3 mr-1" />
               Admin

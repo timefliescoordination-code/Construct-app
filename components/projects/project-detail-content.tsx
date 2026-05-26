@@ -294,33 +294,33 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
         </TabsContent>
 
         <TabsContent value="expenses" className="mt-6">
-          <ExpensesTab />
+          <ExpensesTab projectId={project.id} />
         </TabsContent>
 
         {showFinancials && (
           <TabsContent value="payments" className="mt-6">
-            <PaymentsTab />
+            <PaymentsTab projectId={project.id} />
           </TabsContent>
         )}
 
         <TabsContent value="milestones" className="mt-6">
-          <MilestonesTab />
+          <MilestonesTab projectId={project.id} />
         </TabsContent>
 
         {showFinancials && (
           <TabsContent value="additional-works" className="mt-6">
-            <AdditionalWorksTab />
+            <AdditionalWorksTab projectId={project.id} />
           </TabsContent>
         )}
 
         {showFinancials && (
           <TabsContent value="reports" className="mt-6">
-            <ReportsTab />
+            <ReportsTab projectId={project.id} />
           </TabsContent>
         )}
 
         <TabsContent value="photos" className="mt-6">
-          <PhotosTab />
+          <PhotosTab projectId={project.id} projectName={project.name} />
         </TabsContent>
       </Tabs>
     </main>

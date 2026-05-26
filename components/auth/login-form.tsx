@@ -66,7 +66,14 @@ const roles: RoleOption[] = [
 
 export function LoginForm() {
   const router = useRouter()
-  const { isAuthenticated, isLoading: authLoading, role, profile, signOut } = useAuth()
+  const {
+    isAuthenticated,
+    isLoading: authLoading,
+    role,
+    profile,
+    signOut,
+    refreshAuth,
+  } = useAuth()
   const [selectedRole, setSelectedRole] = useState<UserRole>("pm")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -106,6 +113,7 @@ export function LoginForm() {
       }
 
       toast.success("Signed in successfully!")
+      await refreshAuth()
       router.push(result.redirectTo)
       router.refresh()
     } catch (error) {
@@ -155,7 +163,11 @@ export function LoginForm() {
             <Button
               className="w-full"
               size="lg"
-              onClick={() => router.push(getDashboardPath(role))}
+              onClick={async () => {
+                await refreshAuth()
+                router.push(getDashboardPath(role))
+                router.refresh()
+              }}
             >
               Continue to dashboard
             </Button>
