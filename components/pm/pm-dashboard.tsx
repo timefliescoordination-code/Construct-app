@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { 
+import {
   Briefcase,
   TrendingUp,
   IndianRupee,
@@ -25,18 +25,16 @@ import {
   ChevronRight,
   Loader2,
   ClipboardList,
-  Users
 } from "lucide-react"
 import { formatINR } from "@/lib/currency"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
-import { createClient } from "@/lib/supabase/client"
-import { useAuth } from "@/lib/hooks/use-auth"
 import { updateExpenseStatusAction } from "@/lib/projects/tab-actions"
 import { calculateMilestoneCompletionFromExpenses } from "@/lib/financial-calculations"
+import type { ProjectWithDetails } from "@/lib/types/database"
 import { DashboardHeader } from "@/components/dashboard/header"
 
-interface Project {
+interface PmProjectRow {
   id: string
   name: string
   client_name: string
@@ -60,7 +58,7 @@ interface Project {
     category: string
     expense_date: string
     milestone_id: string | null
-    entered_by: string | null
+    project_id: string
   }>
   client_payments: Array<{
     id: string
@@ -69,20 +67,52 @@ interface Project {
   }>
 }
 
+function mapApiProject(project: ProjectWithDetails): PmProjectRow {
+  return {
+    id: project.id,
+    name: project.name,
+    client_name: project.client_name,
+    site_address: project.site_address,
+    status: project.status,
+    contract_value: Number(project.contract_value),
+    expected_margin_percent: Number(project.expected_margin_percent),
+    milestones: (project.milestones ?? []).map((m) => ({
+      id: m.id,
+      name: m.name,
+      status: m.status,
+      expected_cost_percent: Number(m.expected_cost_percent),
+      target_budget: Number(m.target_budget),
+      actual_completion_percent: Number(m.actual_completion_percent),
+    })),
+    expenses: (project.expenses ?? []).map((e) => ({
+      id: e.id,
+      amount: Number(e.amount),
+      status: e.status,
+      description: e.description,
+      category: e.category,
+      expense_date: e.expense_date,
+      milestone_id: e.milestone_id,
+      project_id: e.project_id,
+    })),
+    client_payments: (project.client_payments ?? []).map((cp) => ({
+      id: cp.id,
+      amount: Number(cp.amount),
+      status: cp.status,
+    })),
+  }
+}
+
 function milestoneCompletionPercent(
-  milestone: Project["milestones"][number],
-  expenses: Project["expenses"],
+  milestone: PmProjectRow["milestones"][number],
+  expenses: PmProjectRow["expenses"],
 ): number {
   const spent = expenses
     .filter((e) => e.status === "approved" && e.milestone_id === milestone.id)
-    .reduce((sum, e) => sum + Number(e.amount), 0)
-  return calculateMilestoneCompletionFromExpenses(
-    spent,
-    Number(milestone.target_budget),
-  )
+    .reduce((sum, e) => sum + e.amount, 0)
+  return calculateMilestoneCompletionFromExpenses(spent, milestone.target_budget)
 }
 
-function projectCompletionPercent(project: Project): number {
+function projectCompletionPercent(project: PmProjectRow): number {
   if (!project.milestones.length) return 0
   const total = project.milestones.reduce(
     (sum, m) => sum + milestoneCompletionPercent(m, project.expenses),
@@ -93,7 +123,7 @@ function projectCompletionPercent(project: Project): number {
 
 interface PendingApproval {
   id: string
-  type: 'expense'
+  type: "expense"
   description: string
   amount: number
   project_name: string
@@ -102,100 +132,109 @@ interface PendingApproval {
   entered_by_name: string
 }
 
+function pendingApprovalsFromProjects(projects: PmProjectRow[]): PendingApproval[] {
+  const approvals: PendingApproval[] = []
+  for (const project of projects) {
+    for (const exp of project.expenses) {
+      if (exp.status !== "pending") continue
+      approvals.push({
+        id: exp.id,
+        type: "expense",
+        description: `${exp.category} - ${exp.description}`,
+        amount: exp.amount,
+        project_name: project.name,
+        project_id: project.id,
+        date: exp.expense_date,
+        entered_by_name: "Site Engineer",
+      })
+    }
+  }
+  return approvals.sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  )
+}
+
 export function PMDashboard() {
-  const { user, isLoading: authLoading } = useAuth()
-  const [projects, setProjects] = useState<Project[]>([])
+  const [projects, setProjects] = useState<PmProjectRow[]>([])
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (authLoading) return
-    if (!user) {
-      setIsLoading(false)
-      setFetchError("You must be signed in to view the PM dashboard.")
-      return
-    }
-    void fetchPMProjects()
-  }, [user, authLoading])
-
-  async function fetchPMProjects() {
+  const loadDashboard = useCallback(async () => {
     setIsLoading(true)
     setFetchError(null)
 
-    const supabase = createClient()
+    try {
+      const res = await fetch("/api/projects", {
+        credentials: "include",
+        cache: "no-store",
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: ProjectWithDetails[]
+        error?: string
+      }
 
-    const { data: projectsData, error } = await supabase
-      .from("projects")
-      .select(`
-        id, name, client_name, site_address, status, contract_value, expected_margin_percent,
-        milestones (id, name, status, expected_cost_percent, target_budget, actual_completion_percent),
-        expenses (id, amount, status, description, category, expense_date, milestone_id, entered_by),
-        client_payments (id, amount, status)
-      `)
-      .eq("pm_id", user?.id)
-      .order("created_at", { ascending: false })
+      if (!res.ok) {
+        const message =
+          typeof json.error === "string"
+            ? json.error
+            : res.status === 401
+              ? "You must be signed in to view the PM dashboard."
+              : `Failed to load projects (${res.status}).`
+        setFetchError(message)
+        setProjects([])
+        setPendingApprovals([])
+        return
+      }
 
-    if (error) {
-      console.error("Error fetching PM projects:", error)
-      setFetchError(error.message || "Failed to load projects.")
+      const rows = (json.data ?? []).map(mapApiProject)
+      setProjects(rows)
+      setPendingApprovals(pendingApprovalsFromProjects(rows))
+    } catch (err) {
+      console.error("PM dashboard load error:", err)
+      setFetchError(
+        err instanceof Error ? err.message : "Failed to load PM dashboard.",
+      )
       setProjects([])
       setPendingApprovals([])
+    } finally {
       setIsLoading(false)
-      return
     }
+  }, [])
 
-    const rows = (projectsData || []) as Project[]
-    setProjects(rows)
+  useEffect(() => {
+    void loadDashboard()
+  }, [loadDashboard])
 
-    const projectIds = rows.map((p) => p.id)
-    const projectNameById = new Map(rows.map((p) => [p.id, p.name]))
-
-    if (projectIds.length > 0) {
-      const { data: pendingExpenses, error: pendingError } = await supabase
-        .from("expenses")
-        .select(
-          "id, amount, description, category, expense_date, entered_by, project_id",
-        )
-        .in("project_id", projectIds)
-        .eq("status", "pending")
-        .order("expense_date", { ascending: false })
-
-      if (pendingError) {
-        console.error("Error fetching pending expenses:", pendingError)
-      } else {
-        const approvals: PendingApproval[] = (pendingExpenses || []).map((exp) => ({
-          id: exp.id,
-          type: "expense" as const,
-          description: `${exp.category} - ${exp.description}`,
-          amount: Number(exp.amount),
-          project_name: projectNameById.get(exp.project_id) || "Unknown",
-          project_id: exp.project_id,
-          date: exp.expense_date,
-          entered_by_name: "Site Engineer",
-        }))
-        setPendingApprovals(approvals)
-      }
-    } else {
-      setPendingApprovals([])
-    }
-
-    setIsLoading(false)
-  }
-
-  // Calculate PM-specific metrics
   const pmMetrics = useMemo(() => {
     const totalProjects = projects.length
-    const activeProjects = projects.filter(p => p.status === 'active').length
-    const completedProjects = projects.filter(p => p.status === 'completed').length
-    
-    const totalContractValue = projects.reduce((sum, p) => sum + Number(p.contract_value), 0)
-    
-    const totalExpenses = projects.reduce((sum, p) => 
-      sum + p.expenses.filter(e => e.status === 'approved').reduce((s, e) => s + Number(e.amount), 0), 0)
-    
-    const totalReceived = projects.reduce((sum, p) => 
-      sum + p.client_payments.filter(cp => cp.status === 'received').reduce((s, cp) => s + Number(cp.amount), 0), 0)
+    const activeProjects = projects.filter((p) => p.status === "active").length
+    const completedProjects = projects.filter(
+      (p) => p.status === "completed",
+    ).length
+
+    const totalContractValue = projects.reduce(
+      (sum, p) => sum + p.contract_value,
+      0,
+    )
+
+    const totalExpenses = projects.reduce(
+      (sum, p) =>
+        sum +
+        p.expenses
+          .filter((e) => e.status === "approved")
+          .reduce((s, e) => s + e.amount, 0),
+      0,
+    )
+
+    const totalReceived = projects.reduce(
+      (sum, p) =>
+        sum +
+        p.client_payments
+          .filter((cp) => cp.status === "received")
+          .reduce((s, cp) => s + cp.amount, 0),
+      0,
+    )
 
     const avgCompletion =
       projects.length > 0
@@ -211,7 +250,7 @@ export function PMDashboard() {
       totalExpenses,
       totalReceived,
       avgCompletion,
-      pendingApprovalCount: pendingApprovals.length
+      pendingApprovalCount: pendingApprovals.length,
     }
   }, [projects, pendingApprovals])
 
@@ -222,12 +261,11 @@ export function PMDashboard() {
     const result = await updateExpenseStatusAction({
       projectId: approval.project_id,
       expenseId,
-      status: 'approved',
+      status: "approved",
     })
 
     if (result.ok) {
-      setPendingApprovals((prev) => prev.filter((a) => a.id !== expenseId))
-      fetchPMProjects()
+      await loadDashboard()
     }
   }
 
@@ -238,16 +276,15 @@ export function PMDashboard() {
     const result = await updateExpenseStatusAction({
       projectId: approval.project_id,
       expenseId,
-      status: 'rejected',
+      status: "rejected",
     })
 
     if (result.ok) {
-      setPendingApprovals((prev) => prev.filter((a) => a.id !== expenseId))
-      fetchPMProjects()
+      await loadDashboard()
     }
   }
 
-  if (authLoading || isLoading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
         <DashboardHeader />
@@ -266,12 +303,13 @@ export function PMDashboard() {
       <DashboardHeader notificationCount={pmMetrics.pendingApprovalCount} />
 
       <main className="container mx-auto px-4 py-6 md:px-6 lg:px-8 space-y-6">
-        {/* Page Title */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-foreground">PM Dashboard</h1>
             <p className="text-muted-foreground">
-              {format(new Date(), "EEEE, dd MMMM yyyy")} - Managing {pmMetrics.totalProjects} project{pmMetrics.totalProjects !== 1 ? 's' : ''}
+              {format(new Date(), "EEEE, dd MMMM yyyy")} - Managing{" "}
+              {pmMetrics.totalProjects} project
+              {pmMetrics.totalProjects !== 1 ? "s" : ""}
             </p>
           </div>
         </div>
@@ -282,7 +320,11 @@ export function PMDashboard() {
               <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
               <div className="space-y-2">
                 <p className="text-sm text-destructive">{fetchError}</p>
-                <Button variant="outline" size="sm" onClick={() => void fetchPMProjects()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void loadDashboard()}
+                >
                   Try again
                 </Button>
               </div>
@@ -290,60 +332,90 @@ export function PMDashboard() {
           </Card>
         )}
 
-        {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">My Projects</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                My Projects
+              </CardTitle>
               <Briefcase className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{pmMetrics.totalProjects}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                {pmMetrics.activeProjects} active, {pmMetrics.completedProjects} completed
+                {pmMetrics.activeProjects} active, {pmMetrics.completedProjects}{" "}
+                completed
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Contract Value</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Contract Value
+              </CardTitle>
               <IndianRupee className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatINR(pmMetrics.totalContractValue)}</div>
-              <p className="text-xs text-muted-foreground mt-1">Across all projects</p>
+              <div className="text-2xl font-bold">
+                {formatINR(pmMetrics.totalContractValue)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Across all projects
+              </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Avg. Completion</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Avg. Completion
+              </CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{pmMetrics.avgCompletion.toFixed(1)}%</div>
+              <div className="text-2xl font-bold">
+                {pmMetrics.avgCompletion.toFixed(1)}%
+              </div>
               <Progress value={pmMetrics.avgCompletion} className="mt-2 h-2" />
             </CardContent>
           </Card>
 
-          <Card className={cn(pmMetrics.pendingApprovalCount > 0 && "border-yellow-500/50")}>
+          <Card
+            className={cn(
+              pmMetrics.pendingApprovalCount > 0 && "border-yellow-500/50",
+            )}
+          >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pending Approvals</CardTitle>
-              <ClipboardList className={cn("h-4 w-4", pmMetrics.pendingApprovalCount > 0 ? "text-yellow-500" : "text-muted-foreground")} />
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Pending Approvals
+              </CardTitle>
+              <ClipboardList
+                className={cn(
+                  "h-4 w-4",
+                  pmMetrics.pendingApprovalCount > 0
+                    ? "text-yellow-500"
+                    : "text-muted-foreground",
+                )}
+              />
             </CardHeader>
             <CardContent>
-              <div className={cn("text-2xl font-bold", pmMetrics.pendingApprovalCount > 0 && "text-yellow-500")}>
+              <div
+                className={cn(
+                  "text-2xl font-bold",
+                  pmMetrics.pendingApprovalCount > 0 && "text-yellow-500",
+                )}
+              >
                 {pmMetrics.pendingApprovalCount}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Awaiting your action</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Awaiting your action
+              </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Main Content */}
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Projects List */}
           <div className="lg:col-span-2">
             <Card>
               <CardHeader>
@@ -353,7 +425,13 @@ export function PMDashboard() {
                 {projects.length === 0 ? (
                   <div className="text-center py-8">
                     <Briefcase className="h-12 w-12 mx-auto text-muted-foreground/50" />
-                    <p className="mt-4 text-muted-foreground">No projects assigned yet</p>
+                    <p className="mt-4 text-muted-foreground">
+                      No projects assigned yet
+                    </p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Ask an admin to set you as Project Manager on a project in
+                      Edit Project → Staff Assignment.
+                    </p>
                   </div>
                 ) : (
                   <Table>
@@ -362,7 +440,9 @@ export function PMDashboard() {
                         <TableHead>Project</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Progress</TableHead>
-                        <TableHead className="text-right">Contract Value</TableHead>
+                        <TableHead className="text-right">
+                          Contract Value
+                        </TableHead>
                         <TableHead></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -375,22 +455,35 @@ export function PMDashboard() {
                             <TableCell>
                               <div>
                                 <p className="font-medium">{project.name}</p>
-                                <p className="text-sm text-muted-foreground">{project.client_name}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {project.client_name}
+                                </p>
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant={project.status === 'active' ? 'default' : 'secondary'}>
+                              <Badge
+                                variant={
+                                  project.status === "active"
+                                    ? "default"
+                                    : "secondary"
+                                }
+                              >
                                 {project.status}
                               </Badge>
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
-                                <Progress value={completion} className="w-16 h-2" />
-                                <span className="text-sm">{completion.toFixed(0)}%</span>
+                                <Progress
+                                  value={completion}
+                                  className="w-16 h-2"
+                                />
+                                <span className="text-sm">
+                                  {completion.toFixed(0)}%
+                                </span>
                               </div>
                             </TableCell>
                             <TableCell className="text-right">
-                              {formatINR(Number(project.contract_value))}
+                              {formatINR(project.contract_value)}
                             </TableCell>
                             <TableCell>
                               <Button variant="ghost" size="sm" asChild>
@@ -410,7 +503,6 @@ export function PMDashboard() {
             </Card>
           </div>
 
-          {/* Pending Approvals */}
           <div>
             <Card>
               <CardHeader>
@@ -423,37 +515,55 @@ export function PMDashboard() {
                 {pendingApprovals.length === 0 ? (
                   <div className="text-center py-6">
                     <CheckCircle2 className="h-10 w-10 mx-auto text-green-500/50" />
-                    <p className="mt-3 text-sm text-muted-foreground">All caught up!</p>
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      All caught up!
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {pendingApprovals.slice(0, 5).map((approval) => (
-                      <div key={approval.id} className="p-3 bg-muted/50 rounded-lg space-y-2">
+                      <div
+                        key={approval.id}
+                        className="p-3 bg-muted/50 rounded-lg space-y-2"
+                      >
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="font-medium text-sm">{approval.description}</p>
-                            <p className="text-xs text-muted-foreground">{approval.project_name}</p>
+                            <p className="font-medium text-sm">
+                              {approval.description}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {approval.project_name}
+                            </p>
                           </div>
-                          <Badge variant="outline" className="text-yellow-500 border-yellow-500/30">
+                          <Badge
+                            variant="outline"
+                            className="text-yellow-500 border-yellow-500/30"
+                          >
                             <Clock className="h-3 w-3 mr-1" />
                             Pending
                           </Badge>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold text-sm">{formatINR(approval.amount)}</span>
+                          <span className="font-semibold text-sm">
+                            {formatINR(approval.amount)}
+                          </span>
                           <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
+                            <Button
+                              size="sm"
+                              variant="outline"
                               className="h-7 text-xs"
-                              onClick={() => handleRejectExpense(approval.id)}
+                              onClick={() =>
+                                void handleRejectExpense(approval.id)
+                              }
                             >
                               Reject
                             </Button>
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               className="h-7 text-xs"
-                              onClick={() => handleApproveExpense(approval.id)}
+                              onClick={() =>
+                                void handleApproveExpense(approval.id)
+                              }
                             >
                               Approve
                             </Button>
