@@ -341,6 +341,10 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           <ManpowerTab
             projectId={project.id}
             projectStartDate={project.start_date}
+            projectMilestones={project.milestones.map((m) => ({
+              id: m.id,
+              name: m.name,
+            }))}
             readOnly={!canEditManpower}
           />
         </TabsContent>

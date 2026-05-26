@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -55,9 +55,13 @@ import {
   upsertManpowerCellAction,
 } from "@/lib/projects/manpower-actions"
 
+type ProjectStageOption = { id: string; name: string }
+
 interface ManpowerTabProps {
   projectId: string
   projectStartDate?: string | null
+  /** Stages from project detail — used for Add Week dropdown when API list is empty */
+  projectMilestones?: ProjectStageOption[]
   readOnly?: boolean
 }
 
@@ -70,6 +74,7 @@ type EditingCell = {
 export function ManpowerTab({
   projectId,
   projectStartDate,
+  projectMilestones = [],
   readOnly = false,
 }: ManpowerTabProps) {
   const [data, setData] = useState<ManpowerPayload | null>(null)
@@ -119,7 +124,16 @@ export function ManpowerTab({
 
   const labourTypes = data?.labourTypes ?? []
   const weeks = data?.weeks ?? []
-  const milestones = data?.milestones ?? []
+  const stageOptions = useMemo(() => {
+    const byId = new Map<string, ProjectStageOption>()
+    for (const m of projectMilestones) {
+      byId.set(m.id, m)
+    }
+    for (const m of data?.milestones ?? []) {
+      byId.set(m.id, m)
+    }
+    return Array.from(byId.values())
+  }, [projectMilestones, data?.milestones])
 
   const handleAddWeek = async () => {
     if (!selectedMilestoneId) {
@@ -584,27 +598,37 @@ export function ManpowerTab({
           </DialogHeader>
           <div className="space-y-2 py-2">
             <Label>Project stage</Label>
-            <Select
-              value={selectedMilestoneId}
-              onValueChange={setSelectedMilestoneId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select stage for this week" />
-              </SelectTrigger>
-              <SelectContent>
-                {milestones.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {stageOptions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No stages found for this project. Add stages on the Stages tab
+                first, then return here to add a week.
+              </p>
+            ) : (
+              <Select
+                value={selectedMilestoneId}
+                onValueChange={setSelectedMilestoneId}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select stage for this week" />
+                </SelectTrigger>
+                <SelectContent className="z-[100]">
+                  {stageOptions.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddWeekOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => void handleAddWeek()} disabled={saving}>
+            <Button
+              onClick={() => void handleAddWeek()}
+              disabled={saving || stageOptions.length === 0}
+            >
               {saving ? "Adding..." : "Add Week"}
             </Button>
           </DialogFooter>
