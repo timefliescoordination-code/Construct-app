@@ -33,12 +33,13 @@ import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { updateExpenseStatusAction } from "@/lib/projects/tab-actions"
+import { calculateMilestoneCompletionFromExpenses } from "@/lib/financial-calculations"
 import { DashboardHeader } from "@/components/dashboard/header"
 
 interface Project {
   id: string
   name: string
-  customer_name: string
+  client_name: string
   site_address: string
   status: string
   contract_value: number
@@ -48,7 +49,8 @@ interface Project {
     name: string
     status: string
     expected_cost_percent: number
-    completion_percent: number
+    target_budget: number
+    actual_completion_percent: number
   }>
   expenses: Array<{
     id: string
@@ -57,6 +59,7 @@ interface Project {
     description: string
     category: string
     expense_date: string
+    milestone_id: string | null
     entered_by: string | null
   }>
   client_payments: Array<{
@@ -64,6 +67,28 @@ interface Project {
     amount: number
     status: string
   }>
+}
+
+function milestoneCompletionPercent(
+  milestone: Project["milestones"][number],
+  expenses: Project["expenses"],
+): number {
+  const spent = expenses
+    .filter((e) => e.status === "approved" && e.milestone_id === milestone.id)
+    .reduce((sum, e) => sum + Number(e.amount), 0)
+  return calculateMilestoneCompletionFromExpenses(
+    spent,
+    Number(milestone.target_budget),
+  )
+}
+
+function projectCompletionPercent(project: Project): number {
+  if (!project.milestones.length) return 0
+  const total = project.milestones.reduce(
+    (sum, m) => sum + milestoneCompletionPercent(m, project.expenses),
+    0,
+  )
+  return total / project.milestones.length
 }
 
 interface PendingApproval {
@@ -78,66 +103,81 @@ interface PendingApproval {
 }
 
 export function PMDashboard() {
-  const { user } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const [projects, setProjects] = useState<Project[]>([])
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (user) {
-      fetchPMProjects()
+    if (authLoading) return
+    if (!user) {
+      setIsLoading(false)
+      setFetchError("You must be signed in to view the PM dashboard.")
+      return
     }
-  }, [user])
+    void fetchPMProjects()
+  }, [user, authLoading])
 
   async function fetchPMProjects() {
+    setIsLoading(true)
+    setFetchError(null)
+
     const supabase = createClient()
-    
-    // Fetch projects where this user is the PM
+
     const { data: projectsData, error } = await supabase
-      .from('projects')
+      .from("projects")
       .select(`
-        id, name, customer_name, site_address, status, contract_value, expected_margin_percent,
-        milestones (id, name, status, expected_cost_percent, completion_percent),
-        expenses (id, amount, status, description, category, expense_date, entered_by),
+        id, name, client_name, site_address, status, contract_value, expected_margin_percent,
+        milestones (id, name, status, expected_cost_percent, target_budget, actual_completion_percent),
+        expenses (id, amount, status, description, category, expense_date, milestone_id, entered_by),
         client_payments (id, amount, status)
       `)
-      .eq('pm_id', user?.id)
-      .order('created_at', { ascending: false })
+      .eq("pm_id", user?.id)
+      .order("created_at", { ascending: false })
 
     if (error) {
       console.error("Error fetching PM projects:", error)
+      setFetchError(error.message || "Failed to load projects.")
+      setProjects([])
+      setPendingApprovals([])
       setIsLoading(false)
       return
     }
 
-    setProjects(projectsData || [])
+    const rows = (projectsData || []) as Project[]
+    setProjects(rows)
 
-    // Fetch pending approvals (expenses with status 'pending' from all PM's projects)
-    const projectIds = (projectsData || []).map(p => p.id)
+    const projectIds = rows.map((p) => p.id)
+    const projectNameById = new Map(rows.map((p) => [p.id, p.name]))
+
     if (projectIds.length > 0) {
-      const { data: pendingExpenses } = await supabase
-        .from('expenses')
-        .select(`
-          id, amount, description, category, expense_date, entered_by,
-          projects (id, name)
-        `)
-        .in('project_id', projectIds)
-        .eq('status', 'pending')
-        .order('expense_date', { ascending: false })
+      const { data: pendingExpenses, error: pendingError } = await supabase
+        .from("expenses")
+        .select(
+          "id, amount, description, category, expense_date, entered_by, project_id",
+        )
+        .in("project_id", projectIds)
+        .eq("status", "pending")
+        .order("expense_date", { ascending: false })
 
-      // Get entered_by user names
-      const approvals: PendingApproval[] = (pendingExpenses || []).map(exp => ({
-        id: exp.id,
-        type: 'expense' as const,
-        description: `${exp.category} - ${exp.description}`,
-        amount: Number(exp.amount),
-        project_name: (exp.projects as any)?.name || 'Unknown',
-        project_id: (exp.projects as any)?.id || '',
-        date: exp.expense_date,
-        entered_by_name: 'Site Engineer'
-      }))
-
-      setPendingApprovals(approvals)
+      if (pendingError) {
+        console.error("Error fetching pending expenses:", pendingError)
+      } else {
+        const approvals: PendingApproval[] = (pendingExpenses || []).map((exp) => ({
+          id: exp.id,
+          type: "expense" as const,
+          description: `${exp.category} - ${exp.description}`,
+          amount: Number(exp.amount),
+          project_name: projectNameById.get(exp.project_id) || "Unknown",
+          project_id: exp.project_id,
+          date: exp.expense_date,
+          entered_by_name: "Site Engineer",
+        }))
+        setPendingApprovals(approvals)
+      }
+    } else {
+      setPendingApprovals([])
     }
 
     setIsLoading(false)
@@ -157,14 +197,11 @@ export function PMDashboard() {
     const totalReceived = projects.reduce((sum, p) => 
       sum + p.client_payments.filter(cp => cp.status === 'received').reduce((s, cp) => s + Number(cp.amount), 0), 0)
 
-    const avgCompletion = projects.length > 0 
-      ? projects.reduce((sum, p) => {
-          const milestoneAvg = p.milestones.length > 0
-            ? p.milestones.reduce((s, m) => s + m.completion_percent, 0) / p.milestones.length
-            : 0
-          return sum + milestoneAvg
-        }, 0) / projects.length
-      : 0
+    const avgCompletion =
+      projects.length > 0
+        ? projects.reduce((sum, p) => sum + projectCompletionPercent(p), 0) /
+          projects.length
+        : 0
 
     return {
       totalProjects,
@@ -210,7 +247,7 @@ export function PMDashboard() {
     }
   }
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="min-h-screen bg-background">
         <DashboardHeader />
@@ -238,6 +275,20 @@ export function PMDashboard() {
             </p>
           </div>
         </div>
+
+        {fetchError && (
+          <Card className="border-destructive/50 bg-destructive/10">
+            <CardContent className="flex items-start gap-3 py-4">
+              <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <p className="text-sm text-destructive">{fetchError}</p>
+                <Button variant="outline" size="sm" onClick={() => void fetchPMProjects()}>
+                  Try again
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-4">
@@ -317,16 +368,14 @@ export function PMDashboard() {
                     </TableHeader>
                     <TableBody>
                       {projects.map((project) => {
-                        const completion = project.milestones.length > 0
-                          ? project.milestones.reduce((s, m) => s + m.completion_percent, 0) / project.milestones.length
-                          : 0
+                        const completion = projectCompletionPercent(project)
 
                         return (
                           <TableRow key={project.id} className="border-border">
                             <TableCell>
                               <div>
                                 <p className="font-medium">{project.name}</p>
-                                <p className="text-sm text-muted-foreground">{project.customer_name}</p>
+                                <p className="text-sm text-muted-foreground">{project.client_name}</p>
                               </div>
                             </TableCell>
                             <TableCell>
