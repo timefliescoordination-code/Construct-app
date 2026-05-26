@@ -59,6 +59,7 @@ import {
   calculateTotalContractValue,
   calculateExpectedProfit,
   calculateStageBudget,
+  calculateMilestoneCompletionFromExpenses,
 } from "@/lib/financial-calculations"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
@@ -228,11 +229,19 @@ export function MilestonesTab({
         })
     }
     
-    // Update milestones with calculated actual expenses
-    const milestonesWithExpenses = (milestonesData || []).map(ms => ({
-      ...ms,
-      actual_expenses: expensesByMilestone[ms.id] || 0
-    }))
+    // Update milestones with calculated expenses and completion %
+    const milestonesWithExpenses = (milestonesData || []).map(ms => {
+      const actualExpenses = expensesByMilestone[ms.id] || 0
+      const targetBudget = Number(ms.target_budget) || 0
+      return {
+        ...ms,
+        actual_expenses: actualExpenses,
+        actual_completion_percent: calculateMilestoneCompletionFromExpenses(
+          actualExpenses,
+          targetBudget,
+        ),
+      }
+    })
     
     setMilestones(milestonesWithExpenses)
     setEditedMilestones(milestonesWithExpenses)
@@ -426,7 +435,6 @@ export function MilestonesTab({
       expected_duration: editingMilestone.expected_duration,
       notes: editingMilestone.notes,
       status: editingMilestone.status,
-      actual_completion_percent: editingMilestone.actual_completion_percent,
     })
 
     if (!result.ok) {
@@ -435,9 +443,18 @@ export function MilestonesTab({
       return
     }
 
+    const actualExpense = Number(editingMilestone.actual_expenses) || 0
+    const completionPercent = calculateMilestoneCompletionFromExpenses(
+      actualExpense,
+      targetBudget,
+    )
     const updated = milestones.map((m) =>
       m.id === editingMilestone.id
-        ? { ...editingMilestone, target_budget: targetBudget }
+        ? {
+            ...editingMilestone,
+            target_budget: targetBudget,
+            actual_completion_percent: completionPercent,
+          }
         : m,
     )
     setMilestones(updated)
@@ -449,12 +466,21 @@ export function MilestonesTab({
     setSaving(false)
   }
 
+  const getMilestoneCompletion = (milestone: Milestone) => {
+    const targetAmount =
+      Number(milestone.target_budget) ||
+      totalStageBudget * (milestone.expected_cost_percent / 100)
+    const actualExpense = Number(milestone.actual_expenses) || 0
+    return calculateMilestoneCompletionFromExpenses(actualExpense, targetAmount)
+  }
+
   const calculateStageFinancials = (milestone: Milestone) => {
     const targetAmount = totalStageBudget * (milestone.expected_cost_percent / 100)
     const actualExpense = Number(milestone.actual_expenses) || 0
     const profitLoss = targetAmount - actualExpense
     const profitLossPercent = targetAmount > 0 ? (profitLoss / targetAmount) * 100 : 0
-    return { targetAmount, profitLoss, profitLossPercent, actualExpense }
+    const completionPercent = getMilestoneCompletion(milestone)
+    return { targetAmount, profitLoss, profitLossPercent, actualExpense, completionPercent }
   }
 
   const displayMilestones = editMode ? editedMilestones : milestones
@@ -462,7 +488,7 @@ export function MilestonesTab({
   const totalActualExpense = displayMilestones.reduce((sum, m) => sum + (Number(m.actual_expenses) || 0), 0)
   const overallProgress = displayMilestones.reduce((sum, m) => {
     const weight = Number(m.expected_cost_percent) / (totalExpectedPercent || 1)
-    return sum + (Number(m.actual_completion_percent) * weight)
+    return sum + getMilestoneCompletion(m) * weight
   }, 0)
   const currentProfit = totalContractValue - totalActualExpense
 
@@ -708,7 +734,7 @@ export function MilestonesTab({
           ) : (
             <div className="space-y-3">
               {displayMilestones.map((milestone, index) => {
-                const { targetAmount, profitLoss, profitLossPercent, actualExpense } = calculateStageFinancials(milestone)
+                const { targetAmount, profitLoss, profitLossPercent, actualExpense, completionPercent } = calculateStageFinancials(milestone)
                 const isOverBudget = profitLoss < 0
                 const hasExpense = actualExpense > 0
                 
@@ -807,7 +833,7 @@ export function MilestonesTab({
                       <div className="text-right shrink-0 flex flex-col items-end gap-2">
                         <div>
                           <div className="text-sm text-muted-foreground">Completion</div>
-                          <div className="text-xl font-bold">{milestone.actual_completion_percent}%</div>
+                          <div className="text-xl font-bold">{completionPercent}%</div>
                           {showFinancials && hasExpense && (
                             <div className={cn(
                               "text-xs font-medium mt-1 px-2 py-0.5 rounded",
@@ -865,7 +891,7 @@ export function MilestonesTab({
                     {/* Progress Bar */}
                     {milestone.status !== "pending" && (
                       <div className="mt-3 ml-11">
-                        <Progress value={milestone.actual_completion_percent} className="h-2" />
+                        <Progress value={completionPercent} className="h-2" />
                       </div>
                     )}
                   </div>
@@ -919,15 +945,19 @@ export function MilestonesTab({
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-completion">Completion (%)</Label>
-                  <Input
-                    id="edit-completion"
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={editingMilestone.actual_completion_percent}
-                    onChange={(e) => setEditingMilestone({ ...editingMilestone, actual_completion_percent: parseInt(e.target.value) || 0 })}
-                  />
+                  <Label>Completion (%)</Label>
+                  <div className="rounded-md border bg-muted/50 px-3 py-2">
+                    <p className="text-lg font-semibold">
+                      {calculateMilestoneCompletionFromExpenses(
+                        Number(editingMilestone.actual_expenses) || 0,
+                        (totalStageBudget * editingMilestone.expected_cost_percent) / 100,
+                      )}
+                      %
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Auto-calculated from approved site expenses
+                    </p>
+                  </div>
                 </div>
               </div>
               <div className="space-y-2">

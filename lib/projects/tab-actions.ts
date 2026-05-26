@@ -3,7 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
-import type { UserRole } from '@/lib/types/database'
+import { calculateMilestoneCompletionFromExpenses } from '@/lib/financial-calculations'
+import { expensesByMilestoneId } from '@/lib/project-tab-hydration'
+import type { Expense, UserRole } from '@/lib/types/database'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type TabActionResult<T = void> =
   | { ok: true; data: T }
@@ -52,6 +55,44 @@ function canManageProjectData(role: UserRole) {
   return role === 'admin' || role === 'pm'
 }
 
+/** Persist approved expense totals and derived completion % per milestone. */
+async function syncProjectMilestoneMetrics(
+  supabase: SupabaseClient,
+  projectId: string,
+): Promise<void> {
+  const { data: milestones } = await supabase
+    .from('milestones')
+    .select('id, target_budget')
+    .eq('project_id', projectId)
+
+  const { data: expenses } = await supabase
+    .from('expenses')
+    .select('milestone_id, amount, status')
+    .eq('project_id', projectId)
+
+  if (!milestones?.length) return
+
+  const byMilestone = expensesByMilestoneId((expenses ?? []) as Expense[])
+
+  for (const ms of milestones) {
+    const actualExpenses = byMilestone[ms.id] ?? 0
+    const targetBudget = Number(ms.target_budget)
+    const completion = calculateMilestoneCompletionFromExpenses(
+      actualExpenses,
+      targetBudget,
+    )
+
+    await supabase
+      .from('milestones')
+      .update({
+        actual_expenses: actualExpenses,
+        actual_completion_percent: completion,
+      })
+      .eq('id', ms.id)
+      .eq('project_id', projectId)
+  }
+}
+
 export async function createExpenseAction(input: {
   projectId: string
   milestoneId: string | null
@@ -91,6 +132,32 @@ export async function createExpenseAction(input: {
 
   revalidateProject(input.projectId)
   return { ok: true, data: data as Record<string, unknown> }
+}
+
+export async function updateExpenseStatusAction(input: {
+  projectId: string
+  expenseId: string
+  status: 'approved' | 'rejected' | 'pending'
+}): Promise<TabActionResult> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canManageProjectData(session.role)) {
+    return { ok: false, error: 'Only admins and project managers can update expense status.' }
+  }
+
+  const { error } = await session.supabase
+    .from('expenses')
+    .update({ status: input.status })
+    .eq('id', input.expenseId)
+    .eq('project_id', input.projectId)
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  await syncProjectMilestoneMetrics(session.supabase, input.projectId)
+  revalidateProject(input.projectId)
+  return { ok: true, data: undefined }
 }
 
 export async function createClientPaymentAction(input: {
@@ -290,13 +357,28 @@ export async function updateMilestoneAction(input: {
   expected_duration: string | null
   notes: string | null
   status: string
-  actual_completion_percent: number
 }): Promise<TabActionResult> {
   const session = await getSession()
   if (!session.ok) return session
   if (!canManageProjectData(session.role)) {
     return { ok: false, error: 'Only admins and project managers can update milestones.' }
   }
+
+  const { data: expenses } = await session.supabase
+    .from('expenses')
+    .select('milestone_id, amount, status')
+    .eq('project_id', input.projectId)
+    .eq('milestone_id', input.milestoneId)
+    .eq('status', 'approved')
+
+  const actualExpenses = (expenses ?? []).reduce(
+    (sum, exp) => sum + Number(exp.amount),
+    0,
+  )
+  const completion = calculateMilestoneCompletionFromExpenses(
+    actualExpenses,
+    input.target_budget,
+  )
 
   const { error } = await session.supabase
     .from('milestones')
@@ -307,7 +389,8 @@ export async function updateMilestoneAction(input: {
       expected_duration: input.expected_duration,
       notes: input.notes,
       status: input.status,
-      actual_completion_percent: input.actual_completion_percent,
+      actual_expenses: actualExpenses,
+      actual_completion_percent: completion,
     })
     .eq('id', input.milestoneId)
     .eq('project_id', input.projectId)

@@ -171,6 +171,19 @@ export function calculateProjectedProfit(
 }
 
 /**
+ * Stage completion from approved expenses vs stage budget (target).
+ * e.g. ₹2,00,000 spent of ₹4,00,000 stage budget = 50%.
+ */
+export function calculateMilestoneCompletionFromExpenses(
+  actualExpenses: number,
+  targetBudget: number,
+): number {
+  if (!targetBudget || targetBudget <= 0) return 0
+  const pct = (actualExpenses / targetBudget) * 100
+  return Math.round(Math.min(100, Math.max(0, pct)))
+}
+
+/**
  * Calculate completion percentage based on milestones
  */
 export function calculateCompletionPercent(milestones: MilestoneData[]): number {

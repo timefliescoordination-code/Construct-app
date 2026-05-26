@@ -32,6 +32,7 @@ import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/lib/hooks/use-auth"
+import { updateExpenseStatusAction } from "@/lib/projects/tab-actions"
 import { DashboardHeader } from "@/components/dashboard/header"
 
 interface Project {
@@ -178,27 +179,34 @@ export function PMDashboard() {
   }, [projects, pendingApprovals])
 
   async function handleApproveExpense(expenseId: string) {
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('expenses')
-      .update({ status: 'approved' })
-      .eq('id', expenseId)
+    const approval = pendingApprovals.find((a) => a.id === expenseId)
+    if (!approval) return
 
-    if (!error) {
-      setPendingApprovals(prev => prev.filter(a => a.id !== expenseId))
-      fetchPMProjects() // Refresh data
+    const result = await updateExpenseStatusAction({
+      projectId: approval.project_id,
+      expenseId,
+      status: 'approved',
+    })
+
+    if (result.ok) {
+      setPendingApprovals((prev) => prev.filter((a) => a.id !== expenseId))
+      fetchPMProjects()
     }
   }
 
   async function handleRejectExpense(expenseId: string) {
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('expenses')
-      .update({ status: 'rejected' })
-      .eq('id', expenseId)
+    const approval = pendingApprovals.find((a) => a.id === expenseId)
+    if (!approval) return
 
-    if (!error) {
-      setPendingApprovals(prev => prev.filter(a => a.id !== expenseId))
+    const result = await updateExpenseStatusAction({
+      projectId: approval.project_id,
+      expenseId,
+      status: 'rejected',
+    })
+
+    if (result.ok) {
+      setPendingApprovals((prev) => prev.filter((a) => a.id !== expenseId))
+      fetchPMProjects()
     }
   }
 

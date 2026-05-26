@@ -15,6 +15,7 @@ import {
   calculateProjectedProfit,
   type MilestoneData
 } from "@/lib/financial-calculations"
+import { enrichProjectWithMilestoneMetrics } from "@/lib/project-tab-hydration"
 import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
 import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
 
@@ -141,22 +142,8 @@ export function useProject(projectId: string | null) {
     swrDefaults,
   )
   
-  // Calculate actual expenses per milestone from expenses
-  const projectWithCalculatedExpenses = data ? {
-    ...data,
-    milestones: data.milestones.map(ms => {
-      const milestoneExpenses = data.expenses
-        .filter(exp => exp.milestone_id === ms.id && exp.status === 'approved')
-        .reduce((sum, exp) => sum + Number(exp.amount), 0)
-      return {
-        ...ms,
-        actual_expenses: milestoneExpenses
-      }
-    })
-  } : null
-  
   return {
-    project: projectWithCalculatedExpenses,
+    project: data ? enrichProjectWithMilestoneMetrics(data) : null,
     isLoading,
     error,
     mutate
@@ -171,22 +158,8 @@ export function useDefaultProject(enabled = true) {
     swrDefaults,
   )
   
-  // Calculate actual expenses per milestone from expenses
-  const projectWithCalculatedExpenses = data ? {
-    ...data,
-    milestones: data.milestones.map(ms => {
-      const milestoneExpenses = data.expenses
-        .filter(exp => exp.milestone_id === ms.id && exp.status === 'approved')
-        .reduce((sum, exp) => sum + Number(exp.amount), 0)
-      return {
-        ...ms,
-        actual_expenses: milestoneExpenses
-      }
-    })
-  } : null
-  
   return {
-    project: projectWithCalculatedExpenses,
+    project: data ? enrichProjectWithMilestoneMetrics(data) : null,
     isLoading,
     error,
     mutate

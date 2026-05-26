@@ -101,7 +101,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       id: ms.id,
       name: ms.name,
       expectedCostPercent: Number(ms.expected_cost_percent),
-      actualCompletionPercent: ms.actual_completion_percent,
+      actualCompletionPercent: Number(ms.actual_completion_percent),
       status: ms.status,
       targetBudget: Number(ms.target_budget),
       actualExpenses: Number(ms.actual_expenses)

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import type { ProjectWithDetails } from '@/lib/types/database'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
+import { enrichProjectWithMilestoneMetrics } from '@/lib/project-tab-hydration'
 import {
   getAssignedDefaultProjectId,
   getProjectAccessScope,
@@ -78,7 +79,11 @@ export async function listProjectsForApi() {
     return { data: null, error: getSupabaseErrorMessage(error) }
   }
 
-  return { data: data ?? [], error: null }
+  const enriched = (data ?? []).map((project) =>
+    enrichProjectWithMilestoneMetrics(project as ProjectWithDetails),
+  )
+
+  return { data: enriched, error: null }
 }
 
 export async function getProjectByIdForApi(projectId: string) {
@@ -118,7 +123,10 @@ export async function getProjectByIdForApi(projectId: string) {
     )
   }
 
-  return { data: data as ProjectWithDetails, error: null }
+  return {
+    data: enrichProjectWithMilestoneMetrics(data as ProjectWithDetails),
+    error: null,
+  }
 }
 
 export async function getDefaultProjectForApi() {

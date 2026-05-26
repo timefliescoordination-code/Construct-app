@@ -17,6 +17,7 @@ import {
   calculateProjectedProfit,
   type MilestoneData
 } from "@/lib/financial-calculations"
+import { milestonesWithCalculatedExpenses } from "@/lib/project-tab-hydration"
 
 // Fetch all projects (summary view)
 export async function getProjects(): Promise<ProjectSummary[]> {
@@ -51,10 +52,15 @@ export async function getProjects(): Promise<ProjectSummary[]> {
       Number(project.additional_works_value)
     )
     
-    const milestonesForCalc: MilestoneData[] = (project.milestones || []).map((ms: Milestone) => ({
+    const enrichedMilestones = milestonesWithCalculatedExpenses({
+      ...project,
+      milestones: project.milestones || [],
+      expenses: project.expenses || [],
+    } as ProjectWithDetails)
+    const milestonesForCalc: MilestoneData[] = enrichedMilestones.map((ms: Milestone) => ({
       name: ms.name,
       expectedCostPercent: Number(ms.expected_cost_percent),
-      actualCompletionPercent: ms.actual_completion_percent,
+      actualCompletionPercent: Number(ms.actual_completion_percent),
       targetBudget: Number(ms.target_budget),
       actualExpenses: Number(ms.actual_expenses),
       status: ms.status
@@ -290,10 +296,11 @@ export function calculateProjectMetrics(project: ProjectWithDetails) {
     additionalWorksApproved
   )
   
-  const milestonesForCalc: MilestoneData[] = project.milestones.map(ms => ({
+  const enrichedMilestones = milestonesWithCalculatedExpenses(project)
+  const milestonesForCalc: MilestoneData[] = enrichedMilestones.map(ms => ({
     name: ms.name,
     expectedCostPercent: Number(ms.expected_cost_percent),
-    actualCompletionPercent: ms.actual_completion_percent,
+    actualCompletionPercent: Number(ms.actual_completion_percent),
     targetBudget: Number(ms.target_budget),
     actualExpenses: Number(ms.actual_expenses),
     status: ms.status
