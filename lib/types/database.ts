@@ -115,9 +115,29 @@ export interface AdditionalWork {
 
 export interface LabourType {
   id: string
+  project_id: string | null
   name: string
+  short_label: string | null
   default_wage: number
+  sort_order: number
   created_at: string
+}
+
+export interface ManpowerWeek {
+  id: string
+  project_id: string
+  milestone_id: string
+  week_number: number
+  start_date: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ManpowerWeekRate {
+  id: string
+  week_id: string
+  labour_type_id: string
+  daily_rate: number
 }
 
 export interface LabourEntry {

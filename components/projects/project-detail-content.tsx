@@ -13,6 +13,7 @@ import {
   PlusCircle, 
   FileBarChart, 
   Camera,
+  Users,
   Edit,
   MoreVertical,
   Loader2
@@ -31,10 +32,12 @@ import { MilestonesTab } from "./project-detail/milestones-tab"
 import { AdditionalWorksTab } from "./project-detail/additional-works-tab"
 import { ReportsTab } from "./project-detail/reports-tab"
 import { PhotosTab } from "./project-detail/photos-tab"
+import { ManpowerTab } from "./project-detail/manpower-tab"
 import { useProject, useDefaultProject, useProjectMetrics } from "@/lib/hooks/use-project-data"
 import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
 import { useAuth } from "@/lib/hooks/use-auth"
 import {
+  canEnterManpowerData,
   canViewProjectFinancials,
   ENGINEER_RESTRICTED_PROJECT_TABS,
 } from "@/lib/permissions"
@@ -47,6 +50,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   const [activeTab, setActiveTab] = useState("overview")
   const { role, canManageProjects } = useAuth()
   const showFinancials = canViewProjectFinancials(role)
+  const canEditManpower = canEnterManpowerData(role)
   
   // Use default project if projectId is "1" or use specific project
   const isLegacyDefaultId = projectId === "1"
@@ -170,6 +174,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
         { id: "expenses", label: "Expenses", icon: Receipt },
         { id: "payments", label: "Payments", icon: CreditCard },
         { id: "milestones", label: "Milestones", icon: Flag },
+        { id: "manpower", label: "Manpower", icon: Users },
         { id: "additional-works", label: "Additional Works", icon: PlusCircle },
         { id: "reports", label: "Reports", icon: FileBarChart },
         { id: "photos", label: "Photos", icon: Camera },
@@ -329,6 +334,14 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
             projectId={project.id}
             project={project}
             onProjectChange={refreshProject}
+          />
+        </TabsContent>
+
+        <TabsContent value="manpower" className="mt-6">
+          <ManpowerTab
+            projectId={project.id}
+            projectStartDate={project.start_date}
+            readOnly={!canEditManpower}
           />
         </TabsContent>
 

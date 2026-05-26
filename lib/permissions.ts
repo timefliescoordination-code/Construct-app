@@ -10,3 +10,8 @@ export const ENGINEER_RESTRICTED_PROJECT_TABS = new Set([
   "additional-works",
   "reports",
 ])
+
+/** Admin, PM, and site engineers can enter manpower data. */
+export function canEnterManpowerData(role: UserRole | null): boolean {
+  return role === "admin" || role === "pm" || role === "engineer"
+}
