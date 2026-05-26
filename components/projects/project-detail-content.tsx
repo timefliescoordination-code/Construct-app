@@ -49,14 +49,27 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   const showFinancials = canViewProjectFinancials(role)
   
   // Use default project if projectId is "1" or use specific project
-  const { project: specificProject, isLoading: specificLoading } = useProject(
-    projectId !== "1" ? projectId : null
-  )
-  const { project: defaultProject, isLoading: defaultLoading } = useDefaultProject(projectId === "1")
-  
-  // Use default project for projectId "1", otherwise use specific
-  const project = projectId === "1" ? defaultProject : specificProject
-  const isLoading = projectId === "1" ? defaultLoading : specificLoading
+  const isLegacyDefaultId = projectId === "1"
+  const {
+    project: specificProject,
+    isLoading: specificLoading,
+    mutate: mutateProject,
+  } = useProject(isLegacyDefaultId ? null : projectId)
+  const {
+    project: defaultProject,
+    isLoading: defaultLoading,
+    mutate: mutateDefaultProject,
+  } = useDefaultProject(isLegacyDefaultId)
+
+  const project = isLegacyDefaultId ? defaultProject : specificProject
+  const isLoading = isLegacyDefaultId ? defaultLoading : specificLoading
+  const refreshProject = () => {
+    if (isLegacyDefaultId) {
+      void mutateDefaultProject()
+    } else {
+      void mutateProject()
+    }
+  }
   
   const metrics = useProjectMetrics(project)
 
@@ -293,33 +306,49 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           <OverviewTab projectData={calculatedData} restrictFinancials={!showFinancials} />
         </TabsContent>
 
-        <TabsContent value="expenses" className="mt-6" forceMount>
-          <ExpensesTab projectId={project.id} project={project} />
+        <TabsContent value="expenses" className="mt-6">
+          <ExpensesTab
+            projectId={project.id}
+            project={project}
+            onProjectChange={refreshProject}
+          />
         </TabsContent>
 
         {showFinancials && (
-          <TabsContent value="payments" className="mt-6" forceMount>
-            <PaymentsTab projectId={project.id} project={project} />
+          <TabsContent value="payments" className="mt-6">
+            <PaymentsTab
+              projectId={project.id}
+              project={project}
+              onProjectChange={refreshProject}
+            />
           </TabsContent>
         )}
 
-        <TabsContent value="milestones" className="mt-6" forceMount>
-          <MilestonesTab projectId={project.id} project={project} />
+        <TabsContent value="milestones" className="mt-6">
+          <MilestonesTab
+            projectId={project.id}
+            project={project}
+            onProjectChange={refreshProject}
+          />
         </TabsContent>
 
         {showFinancials && (
-          <TabsContent value="additional-works" className="mt-6" forceMount>
-            <AdditionalWorksTab projectId={project.id} project={project} />
+          <TabsContent value="additional-works" className="mt-6">
+            <AdditionalWorksTab
+              projectId={project.id}
+              project={project}
+              onProjectChange={refreshProject}
+            />
           </TabsContent>
         )}
 
         {showFinancials && (
-          <TabsContent value="reports" className="mt-6" forceMount>
+          <TabsContent value="reports" className="mt-6">
             <ReportsTab projectId={project.id} project={project} />
           </TabsContent>
         )}
 
-        <TabsContent value="photos" className="mt-6" forceMount>
+        <TabsContent value="photos" className="mt-6">
           <PhotosTab projectId={project.id} projectName={project.name} />
         </TabsContent>
       </Tabs>

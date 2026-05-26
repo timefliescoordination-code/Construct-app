@@ -66,6 +66,12 @@ import { useAuth } from "@/lib/hooks/use-auth"
 import { canViewProjectFinancials } from "@/lib/permissions"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { milestonesWithCalculatedExpenses } from "@/lib/project-tab-hydration"
+import {
+  createMilestoneAction,
+  deleteMilestoneAction,
+  updateMilestoneAction,
+  updateMilestonesAction,
+} from "@/lib/projects/tab-actions"
 
 // Helper function to round to nearest 0.25%
 function roundToQuarter(value: number): number {
@@ -104,6 +110,7 @@ interface Project {
 interface MilestonesTabProps {
   projectId?: string
   project?: ProjectWithDetails
+  onProjectChange?: () => void
 }
 
 function projectHeaderFromDetails(p: ProjectWithDetails): Project {
@@ -116,7 +123,11 @@ function projectHeaderFromDetails(p: ProjectWithDetails): Project {
   }
 }
 
-export function MilestonesTab({ projectId: propProjectId, project: projectDetails }: MilestonesTabProps = {}) {
+export function MilestonesTab({
+  projectId: propProjectId,
+  project: projectDetails,
+  onProjectChange,
+}: MilestonesTabProps = {}) {
   const { role, canManageProjects } = useAuth()
   const showFinancials = canViewProjectFinancials(role)
   const params = useParams()
@@ -291,37 +302,27 @@ export function MilestonesTab({ projectId: propProjectId, project: projectDetail
     }
     
     setSaving(true)
-    const supabase = createClient()
-    
-    try {
-      // Update each milestone
-      for (const milestone of editedMilestones) {
-        const { error } = await supabase
-          .from('milestones')
-          .update({
-            expected_cost_percent: milestone.expected_cost_percent,
-            target_budget: milestone.target_budget,
-            status: milestone.status,
-            notes: milestone.notes
-          })
-          .eq('id', milestone.id)
-        
-        if (error) {
-          console.error("Error updating milestone:", error)
-          toast.error(`Failed to update ${milestone.name}`)
-          setSaving(false)
-          return
-        }
-      }
-      
+
+    const result = await updateMilestonesAction({
+      projectId,
+      milestones: editedMilestones.map((m) => ({
+        id: m.id,
+        expected_cost_percent: m.expected_cost_percent,
+        target_budget: m.target_budget,
+        status: m.status,
+        notes: m.notes,
+      })),
+    })
+
+    if (!result.ok) {
+      toast.error(result.error)
+    } else {
       setMilestones(editedMilestones)
       setEditMode(false)
+      onProjectChange?.()
       toast.success("All milestones updated successfully")
-    } catch (error) {
-      console.error("Error saving milestones:", error)
-      toast.error("Failed to save changes")
     }
-    
+
     setSaving(false)
   }
 
@@ -346,37 +347,36 @@ export function MilestonesTab({ projectId: propProjectId, project: projectDetail
     }
     
     setSaving(true)
-    const supabase = createClient()
-    
-    const maxSortOrder = Math.max(...milestones.map(m => m.sort_order), 0)
-    
-    const { data, error } = await supabase
-      .from('milestones')
-      .insert({
-        project_id: projectId,
-        name: newMilestone.name,
-        expected_cost_percent: newMilestone.expected_cost_percent,
-        target_budget: (totalStageBudget * newMilestone.expected_cost_percent) / 100,
-        expected_duration: newMilestone.expected_duration || null,
-        notes: newMilestone.notes || null,
-        status: newMilestone.status,
-        actual_completion_percent: 0,
-        actual_expenses: 0,
-        sort_order: maxSortOrder + 1
-      })
-      .select()
-      .single()
-    
-    if (error) {
-      console.error("Error adding milestone:", error)
-      toast.error("Failed to add milestone")
+
+    const maxSortOrder = Math.max(...milestones.map((m) => m.sort_order), 0)
+    const result = await createMilestoneAction({
+      projectId,
+      name: newMilestone.name,
+      expected_cost_percent: newMilestone.expected_cost_percent,
+      target_budget: (totalStageBudget * newMilestone.expected_cost_percent) / 100,
+      expected_duration: newMilestone.expected_duration || null,
+      notes: newMilestone.notes || null,
+      status: newMilestone.status,
+      sort_order: maxSortOrder + 1,
+    })
+
+    if (!result.ok) {
+      toast.error(result.error)
       setSaving(false)
       return
     }
-    
+
+    const data = result.data as Milestone
     setMilestones([...milestones, data])
     setEditedMilestones([...editedMilestones, data])
-    setNewMilestone({ name: "", expected_cost_percent: 0, expected_duration: "", notes: "", status: "pending" })
+    onProjectChange?.()
+    setNewMilestone({
+      name: "",
+      expected_cost_percent: 0,
+      expected_duration: "",
+      notes: "",
+      status: "pending",
+    })
     setAddDialogOpen(false)
     toast.success("Milestone added successfully")
     setSaving(false)
@@ -385,22 +385,18 @@ export function MilestonesTab({ projectId: propProjectId, project: projectDetail
   // Delete milestone
   const handleDeleteMilestone = async (milestoneId: string) => {
     setSaving(true)
-    const supabase = createClient()
-    
-    const { error } = await supabase
-      .from('milestones')
-      .delete()
-      .eq('id', milestoneId)
-    
-    if (error) {
-      console.error("Error deleting milestone:", error)
-      toast.error("Failed to delete milestone")
+
+    const result = await deleteMilestoneAction({ projectId, milestoneId })
+
+    if (!result.ok) {
+      toast.error(result.error)
       setSaving(false)
       return
     }
-    
-    setMilestones(milestones.filter(m => m.id !== milestoneId))
-    setEditedMilestones(editedMilestones.filter(m => m.id !== milestoneId))
+
+    setMilestones(milestones.filter((m) => m.id !== milestoneId))
+    setEditedMilestones(editedMilestones.filter((m) => m.id !== milestoneId))
+    onProjectChange?.()
     toast.success("Milestone deleted successfully")
     setSaving(false)
   }
@@ -418,33 +414,35 @@ export function MilestonesTab({ projectId: propProjectId, project: projectDetail
     }
     
     setSaving(true)
-    const supabase = createClient()
-    
-    const { error } = await supabase
-      .from('milestones')
-      .update({
-        name: editingMilestone.name,
-        expected_cost_percent: editingMilestone.expected_cost_percent,
-        target_budget: (totalStageBudget * editingMilestone.expected_cost_percent) / 100,
-        expected_duration: editingMilestone.expected_duration,
-        notes: editingMilestone.notes,
-        status: editingMilestone.status,
-        actual_completion_percent: editingMilestone.actual_completion_percent
-      })
-      .eq('id', editingMilestone.id)
-    
-    if (error) {
-      console.error("Error updating milestone:", error)
-      toast.error("Failed to update milestone")
+
+    const targetBudget =
+      (totalStageBudget * editingMilestone.expected_cost_percent) / 100
+    const result = await updateMilestoneAction({
+      projectId,
+      milestoneId: editingMilestone.id,
+      name: editingMilestone.name,
+      expected_cost_percent: editingMilestone.expected_cost_percent,
+      target_budget: targetBudget,
+      expected_duration: editingMilestone.expected_duration,
+      notes: editingMilestone.notes,
+      status: editingMilestone.status,
+      actual_completion_percent: editingMilestone.actual_completion_percent,
+    })
+
+    if (!result.ok) {
+      toast.error(result.error)
       setSaving(false)
       return
     }
-    
-    const updated = milestones.map(m => 
-      m.id === editingMilestone.id ? { ...editingMilestone, target_budget: (totalStageBudget * editingMilestone.expected_cost_percent) / 100 } : m
+
+    const updated = milestones.map((m) =>
+      m.id === editingMilestone.id
+        ? { ...editingMilestone, target_budget: targetBudget }
+        : m,
     )
     setMilestones(updated)
     setEditedMilestones(updated)
+    onProjectChange?.()
     setEditDialogOpen(false)
     setEditingMilestone(null)
     toast.success("Milestone updated successfully")

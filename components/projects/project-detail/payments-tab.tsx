@@ -35,6 +35,10 @@ import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/hooks/use-auth"
 import type { ProjectWithDetails } from "@/lib/types/database"
+import {
+  createClientPaymentAction,
+  createVendorPaymentAction,
+} from "@/lib/projects/tab-actions"
 
 interface ClientPayment {
   id: string
@@ -62,12 +66,17 @@ interface VendorPayment {
 interface PaymentsTabProps {
   projectId?: string
   project?: ProjectWithDetails
+  onProjectChange?: () => void
 }
 
-export function PaymentsTab({ projectId: propProjectId, project }: PaymentsTabProps = {}) {
+export function PaymentsTab({
+  projectId: propProjectId,
+  project,
+  onProjectChange,
+}: PaymentsTabProps = {}) {
   const params = useParams()
   const projectId = propProjectId || project?.id || (params?.id as string)
-  const { user, canEnterData } = useAuth()
+  const { canEnterData } = useAuth()
   
   const [clientPayments, setClientPayments] = useState<ClientPayment[]>(
     () => (project?.client_payments as ClientPayment[]) ?? [],
@@ -148,41 +157,32 @@ export function PaymentsTab({ projectId: propProjectId, project }: PaymentsTabPr
     }
     
     setIsSubmitting(true)
-    const supabase = createClient()
-    
+
     try {
-      const paymentData = {
-        project_id: projectId,
-        stage_name: clientStageName,
+      const result = await createClientPaymentAction({
+        projectId,
+        stageName: clientStageName,
         amount: parseFloat(clientAmount),
-        received_date: clientDate || null,
+        receivedDate: clientDate || null,
         status: clientDate ? 'received' : 'pending',
-        payment_method: clientPaymentMode || null,
+        paymentMethod: clientPaymentMode || null,
         notes: clientRemarks || null,
-        entered_by: user?.id || null,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
       }
-      
-      const { data, error } = await supabase
-        .from('client_payments')
-        .insert(paymentData)
-        .select()
-        .single()
-      
-      if (error) throw error
-      
-      setClientPayments(prev => [...prev, data])
+
+      setClientPayments((prev) => [...prev, result.data as ClientPayment])
+      onProjectChange?.()
       toast.success("Client payment added successfully")
-      
-      // Reset form
       setClientAmount("")
       setClientDate("")
       setClientPaymentMode("")
       setClientRemarks("")
       setClientStageName("")
       setIsClientDialogOpen(false)
-    } catch (error: any) {
-      console.error("[v0] Error adding client payment:", error)
-      toast.error(`Failed to add payment: ${error.message}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -195,42 +195,37 @@ export function PaymentsTab({ projectId: propProjectId, project }: PaymentsTabPr
     }
     
     setIsSubmitting(true)
-    const supabase = createClient()
-    
+
     try {
       const amountPaid = parseFloat(vendorAmountPaid) || 0
       const totalAmount = parseFloat(vendorTotalAmount)
-      
+
       let status = 'pending'
       if (amountPaid >= totalAmount) {
         status = 'paid'
       } else if (amountPaid > 0) {
         status = 'partial'
       }
-      
-      const paymentData = {
-        project_id: projectId,
-        vendor_name: vendorName,
-        total_amount: totalAmount,
-        amount_paid: amountPaid,
-        due_date: vendorDueDate || null,
-        status: status,
+
+      const result = await createVendorPaymentAction({
+        projectId,
+        vendorName,
+        totalAmount,
+        amountPaid,
+        dueDate: vendorDueDate || null,
+        status,
         category: vendorCategory || null,
-        entered_by: user?.id || null,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
       }
-      
-      const { data, error } = await supabase
-        .from('vendor_payments')
-        .insert(paymentData)
-        .select()
-        .single()
-      
-      if (error) throw error
-      
-      setVendorPayments(prev => [...prev, data])
+
+      setVendorPayments((prev) => [...prev, result.data as VendorPayment])
+      onProjectChange?.()
       toast.success("Vendor payment added successfully")
-      
-      // Reset form
+
       setVendorName("")
       setVendorTotalAmount("")
       setVendorAmountPaid("")

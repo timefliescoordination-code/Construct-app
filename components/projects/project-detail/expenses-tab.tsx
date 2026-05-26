@@ -37,6 +37,7 @@ import { useParams } from "next/navigation"
 import { useAuth } from "@/lib/hooks/use-auth"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { milestoneNameById } from "@/lib/project-tab-hydration"
+import { createExpenseAction } from "@/lib/projects/tab-actions"
 
 const categories = ["Materials", "Labour", "Equipment", "Miscellaneous"]
 const subcategories: Record<string, string[]> = {
@@ -68,6 +69,7 @@ interface Milestone {
 interface ExpensesTabProps {
   projectId?: string
   project?: ProjectWithDetails
+  onProjectChange?: () => void
 }
 
 function mapExpensesFromProject(project: ProjectWithDetails): Expense[] {
@@ -88,10 +90,14 @@ function mapExpensesFromProject(project: ProjectWithDetails): Expense[] {
   }))
 }
 
-export function ExpensesTab({ projectId: propProjectId, project }: ExpensesTabProps) {
+export function ExpensesTab({
+  projectId: propProjectId,
+  project,
+  onProjectChange,
+}: ExpensesTabProps) {
   const params = useParams()
   const projectId = propProjectId || project?.id || (params?.id as string)
-  const { user, canEnterData, profile } = useAuth()
+  const { canEnterData } = useAuth()
   
   const [expenses, setExpenses] = useState<Expense[]>(() =>
     project ? mapExpensesFromProject(project) : [],
@@ -177,36 +183,45 @@ export function ExpensesTab({ projectId: propProjectId, project }: ExpensesTabPr
     }
     
     setIsSubmitting(true)
-    const supabase = createClient()
-    
-    const expenseData = {
-      project_id: projectId,
-      milestone_id: newExpense.milestoneId || null,
+
+    const description = `${newExpense.subcategory ? newExpense.subcategory + ' - ' : ''}${newExpense.description}`
+    const result = await createExpenseAction({
+      projectId,
+      milestoneId: newExpense.milestoneId || null,
       category: newExpense.category,
-      description: `${newExpense.subcategory ? newExpense.subcategory + ' - ' : ''}${newExpense.description}`,
+      description,
       amount: parseFloat(newExpense.amount),
-      vendor_name: newExpense.vendor || null,
-      bill_number: newExpense.billNumber || null,
-      expense_date: newExpense.date,
-      status: 'pending',
-      entered_by: user?.id || null,
-    }
-    
-    console.log("[v0] Adding expense:", expenseData)
-    
-    const { data, error } = await supabase
-      .from('expenses')
-      .insert(expenseData)
-      .select('*, milestones(name)')
-      .single()
-    
-    if (error) {
-      console.error("[v0] Error adding expense:", error)
-      toast.error(`Failed to add expense: ${error.message}`)
+      vendorName: newExpense.vendor || null,
+      billNumber: newExpense.billNumber || null,
+      expenseDate: newExpense.date,
+    })
+
+    if (!result.ok) {
+      toast.error(result.error)
     } else {
-      console.log("[v0] Expense added successfully:", data)
+      const row = result.data
+      const names = project ? milestoneNameById(project) : new Map<string, string>()
+      const milestoneId = (row.milestone_id as string | null) ?? null
       toast.success("Expense added successfully!")
-      setExpenses(prev => [data, ...prev])
+      setExpenses((prev) => [
+        {
+          id: row.id as string,
+          expense_date: row.expense_date as string,
+          category: row.category as string,
+          description: row.description as string,
+          vendor_name: (row.vendor_name as string | null) ?? null,
+          amount: Number(row.amount),
+          bill_number: (row.bill_number as string | null) ?? null,
+          status: row.status as string,
+          milestone_id: milestoneId,
+          milestones:
+            milestoneId && names.has(milestoneId)
+              ? { name: names.get(milestoneId)! }
+              : null,
+        },
+        ...prev,
+      ])
+      onProjectChange?.()
       setNewExpense({
         date: format(new Date(), 'yyyy-MM-dd'),
         category: "",
@@ -219,7 +234,7 @@ export function ExpensesTab({ projectId: propProjectId, project }: ExpensesTabPr
       })
       setIsAddDialogOpen(false)
     }
-    
+
     setIsSubmitting(false)
   }
 

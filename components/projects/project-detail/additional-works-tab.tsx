@@ -29,6 +29,7 @@ import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/hooks/use-auth"
 import type { ProjectWithDetails } from "@/lib/types/database"
+import { createAdditionalWorkAction } from "@/lib/projects/tab-actions"
 
 interface AdditionalWorkRow {
   id: string
@@ -42,9 +43,14 @@ interface AdditionalWorkRow {
 interface AdditionalWorksTabProps {
   projectId?: string
   project?: ProjectWithDetails
+  onProjectChange?: () => void
 }
 
-export function AdditionalWorksTab({ projectId: propProjectId, project }: AdditionalWorksTabProps) {
+export function AdditionalWorksTab({
+  projectId: propProjectId,
+  project,
+  onProjectChange,
+}: AdditionalWorksTabProps) {
   const params = useParams()
   const projectId = propProjectId || project?.id || (params?.id as string)
   const { canManageProjects } = useAuth()
@@ -120,23 +126,28 @@ export function AdditionalWorksTab({ projectId: propProjectId, project }: Additi
     }
 
     setIsSubmitting(true)
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from("additional_works")
-      .insert({
-        project_id: projectId,
-        description: description.trim(),
-        amount: parseFloat(amount),
-        requested_date: requestedDate,
-        approval_status: "pending",
-      })
-      .select("id, description, amount, approval_status, requested_date, notes")
-      .single()
+    const result = await createAdditionalWorkAction({
+      projectId,
+      description: description.trim(),
+      amount: parseFloat(amount),
+      requestedDate,
+    })
 
-    if (error) {
-      toast.error(`Failed to add work: ${error.message}`)
-    } else if (data) {
-      setAdditionalWorks((prev) => [data, ...prev])
+    if (!result.ok) {
+      toast.error(result.error)
+    } else {
+      setAdditionalWorks((prev) => [
+        {
+          id: result.data.id as string,
+          description: result.data.description as string,
+          amount: Number(result.data.amount),
+          approval_status: result.data.approval_status as string,
+          requested_date: result.data.requested_date as string,
+          notes: (result.data.notes as string | null) ?? null,
+        },
+        ...prev,
+      ])
+      onProjectChange?.()
       toast.success("Additional work added")
       setDescription("")
       setAmount("")
