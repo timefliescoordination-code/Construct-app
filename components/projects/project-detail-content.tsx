@@ -293,33 +293,33 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           <OverviewTab projectData={calculatedData} restrictFinancials={!showFinancials} />
         </TabsContent>
 
-        <TabsContent value="expenses" className="mt-6">
-          <ExpensesTab projectId={project.id} />
+        <TabsContent value="expenses" className="mt-6" forceMount>
+          <ExpensesTab projectId={project.id} project={project} />
         </TabsContent>
 
         {showFinancials && (
-          <TabsContent value="payments" className="mt-6">
-            <PaymentsTab projectId={project.id} />
+          <TabsContent value="payments" className="mt-6" forceMount>
+            <PaymentsTab projectId={project.id} project={project} />
           </TabsContent>
         )}
 
-        <TabsContent value="milestones" className="mt-6">
-          <MilestonesTab projectId={project.id} />
+        <TabsContent value="milestones" className="mt-6" forceMount>
+          <MilestonesTab projectId={project.id} project={project} />
         </TabsContent>
 
         {showFinancials && (
-          <TabsContent value="additional-works" className="mt-6">
-            <AdditionalWorksTab projectId={project.id} />
+          <TabsContent value="additional-works" className="mt-6" forceMount>
+            <AdditionalWorksTab projectId={project.id} project={project} />
           </TabsContent>
         )}
 
         {showFinancials && (
-          <TabsContent value="reports" className="mt-6">
-            <ReportsTab projectId={project.id} />
+          <TabsContent value="reports" className="mt-6" forceMount>
+            <ReportsTab projectId={project.id} project={project} />
           </TabsContent>
         )}
 
-        <TabsContent value="photos" className="mt-6">
+        <TabsContent value="photos" className="mt-6" forceMount>
           <PhotosTab projectId={project.id} projectName={project.name} />
         </TabsContent>
       </Tabs>

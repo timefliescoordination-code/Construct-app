@@ -64,6 +64,8 @@ import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { canViewProjectFinancials } from "@/lib/permissions"
+import type { ProjectWithDetails } from "@/lib/types/database"
+import { milestonesWithCalculatedExpenses } from "@/lib/project-tab-hydration"
 
 // Helper function to round to nearest 0.25%
 function roundToQuarter(value: number): number {
@@ -101,17 +103,32 @@ interface Project {
 
 interface MilestonesTabProps {
   projectId?: string
+  project?: ProjectWithDetails
 }
 
-export function MilestonesTab({ projectId: propProjectId }: MilestonesTabProps = {}) {
+function projectHeaderFromDetails(p: ProjectWithDetails): Project {
+  return {
+    id: p.id,
+    name: p.name,
+    contract_value: Number(p.contract_value),
+    additional_works_value: Number(p.additional_works_value),
+    expected_margin_percent: Number(p.expected_margin_percent),
+  }
+}
+
+export function MilestonesTab({ projectId: propProjectId, project: projectDetails }: MilestonesTabProps = {}) {
   const { role, canManageProjects } = useAuth()
   const showFinancials = canViewProjectFinancials(role)
   const params = useParams()
-  const projectId = propProjectId || (params?.id as string)
+  const projectId = propProjectId || projectDetails?.id || (params?.id as string)
   
-  const [project, setProject] = useState<Project | null>(null)
-  const [milestones, setMilestones] = useState<Milestone[]>([])
-  const [loading, setLoading] = useState(true)
+  const [project, setProject] = useState<Project | null>(() =>
+    projectDetails ? projectHeaderFromDetails(projectDetails) : null,
+  )
+  const [milestones, setMilestones] = useState<Milestone[]>(() =>
+    projectDetails ? milestonesWithCalculatedExpenses(projectDetails) as Milestone[] : [],
+  )
+  const [loading, setLoading] = useState(!projectDetails)
   const [saving, setSaving] = useState(false)
   
   // Edit mode state
@@ -134,8 +151,16 @@ export function MilestonesTab({ projectId: propProjectId }: MilestonesTabProps =
   const [originalEditPercent, setOriginalEditPercent] = useState(0)
 
   useEffect(() => {
+    if (projectDetails) {
+      setProject(projectHeaderFromDetails(projectDetails))
+      const hydrated = milestonesWithCalculatedExpenses(projectDetails) as Milestone[]
+      setMilestones(hydrated)
+      setEditedMilestones(hydrated)
+      setLoading(false)
+      return
+    }
     fetchData()
-  }, [projectId])
+  }, [projectId, projectDetails])
 
   async function fetchData() {
     if (!projectId) {
@@ -144,6 +169,7 @@ export function MilestonesTab({ projectId: propProjectId }: MilestonesTabProps =
     }
 
     setLoading(true)
+    try {
     const supabase = createClient()
     
     const { data: projectData, error: projectError } = await supabase
@@ -154,13 +180,11 @@ export function MilestonesTab({ projectId: propProjectId }: MilestonesTabProps =
     
     if (projectError) {
       console.error("Error fetching project:", projectError)
-      setLoading(false)
       return
     }
     
     setProject(projectData)
     
-    // Fetch milestones
     const { data: milestonesData, error: milestonesError } = await supabase
       .from('milestones')
       .select('*')
@@ -169,7 +193,6 @@ export function MilestonesTab({ projectId: propProjectId }: MilestonesTabProps =
     
     if (milestonesError) {
       console.error("Error fetching milestones:", milestonesError)
-      setLoading(false)
       return
     }
     
@@ -202,8 +225,9 @@ export function MilestonesTab({ projectId: propProjectId }: MilestonesTabProps =
     
     setMilestones(milestonesWithExpenses)
     setEditedMilestones(milestonesWithExpenses)
-    
-    setLoading(false)
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Calculate financials

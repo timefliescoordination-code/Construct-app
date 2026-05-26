@@ -29,6 +29,7 @@ import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { formatINR } from "@/lib/currency"
+import type { ProjectWithDetails } from "@/lib/types/database"
 
 interface Milestone {
   id: string
@@ -51,19 +52,64 @@ const COLORS = ["#3b82f6", "#22c55e", "#eab308", "#ef4444", "#8b5cf6", "#ec4899"
 
 interface ReportsTabProps {
   projectId?: string
+  project?: ProjectWithDetails
 }
 
-export function ReportsTab({ projectId: propProjectId }: ReportsTabProps = {}) {
+export function ReportsTab({ projectId: propProjectId, project }: ReportsTabProps = {}) {
   const params = useParams()
-  const projectId = propProjectId || (params?.id as string)
+  const projectId = propProjectId || project?.id || (params?.id as string)
   const [selectedReport, setSelectedReport] = useState("estimate-vs-actual")
-  const [loading, setLoading] = useState(true)
-  const [milestones, setMilestones] = useState<Milestone[]>([])
-  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [loading, setLoading] = useState(!project)
+  const [milestones, setMilestones] = useState<Milestone[]>(() =>
+    project
+      ? project.milestones.map((m) => ({
+          id: m.id,
+          name: m.name,
+          target_budget: Number(m.target_budget),
+          actual_expenses: Number(m.actual_expenses),
+          expected_cost_percent: Number(m.expected_cost_percent),
+        }))
+      : [],
+  )
+  const [expenses, setExpenses] = useState<Expense[]>(() =>
+    project
+      ? project.expenses.map((e) => ({
+          id: e.id,
+          milestone_id: e.milestone_id,
+          category: e.category,
+          amount: Number(e.amount),
+          expense_date: e.expense_date,
+          status: e.status,
+        }))
+      : [],
+  )
 
   useEffect(() => {
+    if (project) {
+      setMilestones(
+        project.milestones.map((m) => ({
+          id: m.id,
+          name: m.name,
+          target_budget: Number(m.target_budget),
+          actual_expenses: Number(m.actual_expenses),
+          expected_cost_percent: Number(m.expected_cost_percent),
+        })),
+      )
+      setExpenses(
+        project.expenses.map((e) => ({
+          id: e.id,
+          milestone_id: e.milestone_id,
+          category: e.category,
+          amount: Number(e.amount),
+          expense_date: e.expense_date,
+          status: e.status,
+        })),
+      )
+      setLoading(false)
+      return
+    }
     fetchData()
-  }, [projectId])
+  }, [projectId, project])
 
   async function fetchData() {
     if (!projectId) {
@@ -72,6 +118,7 @@ export function ReportsTab({ projectId: propProjectId }: ReportsTabProps = {}) {
     }
 
     setLoading(true)
+    try {
     const supabase = createClient()
     
     // Fetch milestones
@@ -99,8 +146,9 @@ export function ReportsTab({ projectId: propProjectId }: ReportsTabProps = {}) {
     } else {
       setExpenses(expensesData || [])
     }
-    
-    setLoading(false)
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Calculate actual expenses per milestone from expenses table

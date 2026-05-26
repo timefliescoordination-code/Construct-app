@@ -35,6 +35,8 @@ import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useParams } from "next/navigation"
 import { useAuth } from "@/lib/hooks/use-auth"
+import type { ProjectWithDetails } from "@/lib/types/database"
+import { milestoneNameById } from "@/lib/project-tab-hydration"
 
 const categories = ["Materials", "Labour", "Equipment", "Miscellaneous"]
 const subcategories: Record<string, string[]> = {
@@ -65,16 +67,39 @@ interface Milestone {
 
 interface ExpensesTabProps {
   projectId?: string
+  project?: ProjectWithDetails
 }
 
-export function ExpensesTab({ projectId: propProjectId }: ExpensesTabProps) {
+function mapExpensesFromProject(project: ProjectWithDetails): Expense[] {
+  const names = milestoneNameById(project)
+  return project.expenses.map((exp) => ({
+    id: exp.id,
+    expense_date: exp.expense_date,
+    category: exp.category,
+    description: exp.description,
+    vendor_name: exp.vendor_name,
+    amount: Number(exp.amount),
+    bill_number: exp.bill_number,
+    status: exp.status,
+    milestone_id: exp.milestone_id,
+    milestones: exp.milestone_id && names.has(exp.milestone_id)
+      ? { name: names.get(exp.milestone_id)! }
+      : null,
+  }))
+}
+
+export function ExpensesTab({ projectId: propProjectId, project }: ExpensesTabProps) {
   const params = useParams()
-  const projectId = propProjectId || (params?.id as string)
+  const projectId = propProjectId || project?.id || (params?.id as string)
   const { user, canEnterData, profile } = useAuth()
   
-  const [expenses, setExpenses] = useState<Expense[]>([])
-  const [milestones, setMilestones] = useState<Milestone[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [expenses, setExpenses] = useState<Expense[]>(() =>
+    project ? mapExpensesFromProject(project) : [],
+  )
+  const [milestones, setMilestones] = useState<Milestone[]>(() =>
+    project ? project.milestones.map((m) => ({ id: m.id, name: m.name })) : [],
+  )
+  const [isLoading, setIsLoading] = useState(!project)
   const [filterCategory, setFilterCategory] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -90,8 +115,14 @@ export function ExpensesTab({ projectId: propProjectId }: ExpensesTabProps) {
     milestoneId: "",
   })
 
-  // Fetch expenses and milestones from Supabase
   useEffect(() => {
+    if (project) {
+      setExpenses(mapExpensesFromProject(project))
+      setMilestones(project.milestones.map((m) => ({ id: m.id, name: m.name })))
+      setIsLoading(false)
+      return
+    }
+
     async function fetchData() {
       if (!projectId) {
         setIsLoading(false)
@@ -99,40 +130,40 @@ export function ExpensesTab({ projectId: propProjectId }: ExpensesTabProps) {
       }
 
       setIsLoading(true)
-      const supabase = createClient()
-      
-      // Fetch expenses
-      const { data: expensesData, error: expensesError } = await supabase
-        .from('expenses')
-        .select('*, milestones(name)')
-        .eq('project_id', projectId)
-        .order('expense_date', { ascending: false })
-      
-      if (expensesError) {
-        console.error("[v0] Error fetching expenses:", expensesError)
-        toast.error("Failed to load expenses")
-      } else {
-        setExpenses(expensesData || [])
+      try {
+        const supabase = createClient()
+
+        const { data: expensesData, error: expensesError } = await supabase
+          .from('expenses')
+          .select('*, milestones(name)')
+          .eq('project_id', projectId)
+          .order('expense_date', { ascending: false })
+
+        if (expensesError) {
+          console.error("[expenses-tab] fetch expenses:", expensesError)
+          toast.error("Failed to load expenses")
+        } else {
+          setExpenses(expensesData || [])
+        }
+
+        const { data: milestonesData, error: milestonesError } = await supabase
+          .from('milestones')
+          .select('id, name')
+          .eq('project_id', projectId)
+          .order('sort_order')
+
+        if (milestonesError) {
+          console.error("[expenses-tab] fetch milestones:", milestonesError)
+        } else {
+          setMilestones(milestonesData || [])
+        }
+      } finally {
+        setIsLoading(false)
       }
-      
-      // Fetch milestones for dropdown
-      const { data: milestonesData, error: milestonesError } = await supabase
-        .from('milestones')
-        .select('id, name')
-        .eq('project_id', projectId)
-        .order('sort_order')
-      
-      if (milestonesError) {
-        console.error("[v0] Error fetching milestones:", milestonesError)
-      } else {
-        setMilestones(milestonesData || [])
-      }
-      
-      setIsLoading(false)
     }
-    
+
     fetchData()
-  }, [projectId])
+  }, [projectId, project])
 
   const handleAddExpense = async () => {
     if (!projectId) {

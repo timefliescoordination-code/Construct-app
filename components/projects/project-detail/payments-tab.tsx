@@ -34,6 +34,7 @@ import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/hooks/use-auth"
+import type { ProjectWithDetails } from "@/lib/types/database"
 
 interface ClientPayment {
   id: string
@@ -60,16 +61,21 @@ interface VendorPayment {
 
 interface PaymentsTabProps {
   projectId?: string
+  project?: ProjectWithDetails
 }
 
-export function PaymentsTab({ projectId: propProjectId }: PaymentsTabProps = {}) {
+export function PaymentsTab({ projectId: propProjectId, project }: PaymentsTabProps = {}) {
   const params = useParams()
-  const projectId = propProjectId || (params?.id as string)
+  const projectId = propProjectId || project?.id || (params?.id as string)
   const { user, canEnterData } = useAuth()
   
-  const [clientPayments, setClientPayments] = useState<ClientPayment[]>([])
-  const [vendorPayments, setVendorPayments] = useState<VendorPayment[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [clientPayments, setClientPayments] = useState<ClientPayment[]>(
+    () => (project?.client_payments as ClientPayment[]) ?? [],
+  )
+  const [vendorPayments, setVendorPayments] = useState<VendorPayment[]>(
+    () => (project?.vendor_payments as VendorPayment[]) ?? [],
+  )
+  const [isLoading, setIsLoading] = useState(!project)
   const [isClientDialogOpen, setIsClientDialogOpen] = useState(false)
   const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -89,8 +95,14 @@ export function PaymentsTab({ projectId: propProjectId }: PaymentsTabProps = {})
   const [vendorCategory, setVendorCategory] = useState("")
 
   useEffect(() => {
+    if (project) {
+      setClientPayments(project.client_payments as ClientPayment[])
+      setVendorPayments(project.vendor_payments as VendorPayment[])
+      setIsLoading(false)
+      return
+    }
     fetchPayments()
-  }, [projectId])
+  }, [projectId, project])
 
   const fetchPayments = async () => {
     if (!projectId) {

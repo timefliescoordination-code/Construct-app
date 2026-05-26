@@ -28,6 +28,7 @@ import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/hooks/use-auth"
+import type { ProjectWithDetails } from "@/lib/types/database"
 
 interface AdditionalWorkRow {
   id: string
@@ -40,15 +41,27 @@ interface AdditionalWorkRow {
 
 interface AdditionalWorksTabProps {
   projectId?: string
+  project?: ProjectWithDetails
 }
 
-export function AdditionalWorksTab({ projectId: propProjectId }: AdditionalWorksTabProps) {
+export function AdditionalWorksTab({ projectId: propProjectId, project }: AdditionalWorksTabProps) {
   const params = useParams()
-  const projectId = propProjectId || (params?.id as string)
+  const projectId = propProjectId || project?.id || (params?.id as string)
   const { canManageProjects } = useAuth()
 
-  const [additionalWorks, setAdditionalWorks] = useState<AdditionalWorkRow[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [additionalWorks, setAdditionalWorks] = useState<AdditionalWorkRow[]>(() =>
+    project
+      ? project.additional_works.map((w) => ({
+          id: w.id,
+          description: w.description,
+          amount: Number(w.amount),
+          approval_status: w.approval_status,
+          requested_date: w.requested_date,
+          notes: w.notes,
+        }))
+      : [],
+  )
+  const [isLoading, setIsLoading] = useState(!project)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [description, setDescription] = useState("")
@@ -56,8 +69,22 @@ export function AdditionalWorksTab({ projectId: propProjectId }: AdditionalWorks
   const [requestedDate, setRequestedDate] = useState(format(new Date(), "yyyy-MM-dd"))
 
   useEffect(() => {
+    if (project) {
+      setAdditionalWorks(
+        project.additional_works.map((w) => ({
+          id: w.id,
+          description: w.description,
+          amount: Number(w.amount),
+          approval_status: w.approval_status,
+          requested_date: w.requested_date,
+          notes: w.notes,
+        })),
+      )
+      setIsLoading(false)
+      return
+    }
     fetchWorks()
-  }, [projectId])
+  }, [projectId, project])
 
   async function fetchWorks() {
     if (!projectId) {
@@ -66,20 +93,23 @@ export function AdditionalWorksTab({ projectId: propProjectId }: AdditionalWorks
     }
 
     setIsLoading(true)
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from("additional_works")
-      .select("id, description, amount, approval_status, requested_date, notes")
-      .eq("project_id", projectId)
-      .order("requested_date", { ascending: false })
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("additional_works")
+        .select("id, description, amount, approval_status, requested_date, notes")
+        .eq("project_id", projectId)
+        .order("requested_date", { ascending: false })
 
-    if (error) {
-      console.error("[additional-works] fetch error:", error)
-      toast.error("Failed to load additional works")
-    } else {
-      setAdditionalWorks(data || [])
+      if (error) {
+        console.error("[additional-works] fetch error:", error)
+        toast.error("Failed to load additional works")
+      } else {
+        setAdditionalWorks(data || [])
+      }
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }
 
   const handleAddWork = async () => {
