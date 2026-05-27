@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import { calculateMilestoneCompletionFromExpenses } from '@/lib/financial-calculations'
 import { expensesByMilestoneId } from '@/lib/project-tab-hydration'
-import type { Expense, UserRole } from '@/lib/types/database'
+import { notifyExpenseStatusChange } from '@/lib/notifications'
+import type { Expense, ExpenseStatus, UserRole } from '@/lib/types/database'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type TabActionResult<T = void> =
@@ -194,7 +195,7 @@ export async function updateExpenseAction(input: {
 export async function updateExpenseStatusAction(input: {
   projectId: string
   expenseId: string
-  status: 'approved' | 'rejected' | 'pending'
+  status: ExpenseStatus
 }): Promise<TabActionResult> {
   const session = await getSession()
   if (!session.ok) return session
@@ -202,14 +203,57 @@ export async function updateExpenseStatusAction(input: {
     return { ok: false, error: 'Only admins and project managers can update expense status.' }
   }
 
+  const { data: expense, error: fetchError } = await session.supabase
+    .from('expenses')
+    .select('id, description, amount, status')
+    .eq('id', input.expenseId)
+    .eq('project_id', input.projectId)
+    .maybeSingle()
+
+  if (fetchError) {
+    return { ok: false, error: getSupabaseErrorMessage(fetchError) }
+  }
+  if (!expense) {
+    return { ok: false, error: 'Expense not found.' }
+  }
+
+  const updates: Record<string, unknown> = {
+    status: input.status,
+    approved_by:
+      input.status === 'approved' || input.status === 'rejected'
+        ? session.userId
+        : null,
+  }
+
   const { error } = await session.supabase
     .from('expenses')
-    .update({ status: input.status })
+    .update(updates)
     .eq('id', input.expenseId)
     .eq('project_id', input.projectId)
 
   if (error) {
     return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  if (
+    input.status !== expense.status &&
+    (input.status === 'approved' || input.status === 'rejected')
+  ) {
+    const { data: project } = await session.supabase
+      .from('projects')
+      .select('name')
+      .eq('id', input.projectId)
+      .maybeSingle()
+
+    await notifyExpenseStatusChange(session.supabase, {
+      projectId: input.projectId,
+      projectName: project?.name ?? 'Project',
+      expenseId: input.expenseId,
+      expenseDescription: expense.description,
+      amount: Number(expense.amount),
+      status: input.status,
+      actorUserId: session.userId,
+    })
   }
 
   await syncProjectMilestoneMetrics(session.supabase, input.projectId)

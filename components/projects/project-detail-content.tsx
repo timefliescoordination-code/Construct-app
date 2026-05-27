@@ -148,16 +148,23 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       })
       .filter(cp => cp.overdueDays > 0)
 
-    // Pending expense approvals
-    const pendingApprovals = project.expenses
-      .filter(exp => exp.status === 'pending')
-      .map(exp => ({
+    const expenseApprovals = [...project.expenses]
+      .sort(
+        (a, b) =>
+          new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime(),
+      )
+      .map((exp) => ({
+        id: exp.id,
         type: 'Expense',
         description: exp.description,
+        category: exp.category,
         amount: Number(exp.amount),
         requestedBy: 'Site Engineer',
-        date: exp.expense_date
+        date: exp.expense_date,
+        status: exp.status as 'pending' | 'approved' | 'rejected',
       }))
+
+    const pendingApprovals = expenseApprovals.filter((exp) => exp.status === 'pending')
 
     return {
       originalContractValue: Number(project.contract_value),
@@ -170,6 +177,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       unpaidVendorBills,
       delayedClientPayments,
       pendingApprovals,
+      expenseApprovals,
     }
   }, [project])
 
@@ -348,7 +356,13 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
-          <OverviewTab projectData={calculatedData} restrictFinancials={!showFinancials} />
+          <OverviewTab
+            projectId={project.id}
+            projectData={calculatedData}
+            restrictFinancials={!showFinancials}
+            canApproveExpenses={canManageProjects}
+            onExpenseStatusChange={refreshProject}
+          />
         </TabsContent>
 
         <TabsContent value="expenses" className="mt-6">

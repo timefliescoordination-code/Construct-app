@@ -1,7 +1,9 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { Button } from "@/components/ui/button"
 import { 
   IndianRupee, 
   TrendingUp, 
@@ -14,12 +16,18 @@ import {
   CheckCircle2,
   Activity,
   Milestone,
-  CalendarClock
+  CalendarClock,
+  Receipt,
+  Loader2,
+  XCircle,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { formatINR } from "@/lib/currency"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { updateExpenseStatusAction } from "@/lib/projects/tab-actions"
+import { toast } from "sonner"
+import type { ExpenseStatus } from "@/lib/types/database"
 import {
   calculateTotalContractValue,
   calculateExpectedProfit,
@@ -56,15 +64,19 @@ interface ClientPaymentDue {
   overdueDays: number
 }
 
-interface PendingApproval {
+interface ExpenseApprovalItem {
+  id: string
   type: string
   description: string
+  category: string
   amount: number
   requestedBy: string
   date: string
+  status: ExpenseStatus
 }
 
 interface OverviewTabProps {
+  projectId: string
   projectData: {
     originalContractValue: number
     additionalWorksApproved: number
@@ -75,12 +87,45 @@ interface OverviewTabProps {
     milestones: Milestone[]
     unpaidVendorBills: VendorPayable[]
     delayedClientPayments: ClientPaymentDue[]
-    pendingApprovals: PendingApproval[]
+    pendingApprovals: ExpenseApprovalItem[]
+    expenseApprovals: ExpenseApprovalItem[]
   }
   restrictFinancials?: boolean
+  canApproveExpenses?: boolean
+  onExpenseStatusChange?: () => void
 }
 
-export function OverviewTab({ projectData, restrictFinancials = false }: OverviewTabProps) {
+function ExpenseStatusBadge({ status }: { status: ExpenseStatus }) {
+  switch (status) {
+    case "approved":
+      return (
+        <Badge className="bg-green-500/20 text-green-500 border-green-500/30 text-xs">
+          Approved
+        </Badge>
+      )
+    case "rejected":
+      return (
+        <Badge className="bg-destructive/20 text-destructive border-destructive/30 text-xs">
+          Rejected
+        </Badge>
+      )
+    default:
+      return (
+        <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 text-xs">
+          Pending
+        </Badge>
+      )
+  }
+}
+
+export function OverviewTab({
+  projectId,
+  projectData,
+  restrictFinancials = false,
+  canApproveExpenses = false,
+  onExpenseStatusChange,
+}: OverviewTabProps) {
+  const [processingId, setProcessingId] = useState<string | null>(null)
   // Use centralized calculations
   const originalContractValue = projectData.originalContractValue
   const additionalWorksApproved = projectData.additionalWorksApproved
@@ -117,14 +162,46 @@ export function OverviewTab({ projectData, restrictFinancials = false }: Overvie
   const unpaidVendorBills = projectData.unpaidVendorBills || []
   const delayedClientPayments = projectData.delayedClientPayments || []
   const pendingApprovals = projectData.pendingApprovals || []
+  const expenseApprovals = projectData.expenseApprovals || []
+  const showExpenseApprovals =
+    expenseApprovals.length > 0 && (canApproveExpenses || restrictFinancials)
+
+  async function handleExpenseStatus(expenseId: string, status: ExpenseStatus) {
+    setProcessingId(expenseId)
+    try {
+      const result = await updateExpenseStatusAction({
+        projectId,
+        expenseId,
+        status,
+      })
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(
+        status === "approved"
+          ? "Expense approved"
+          : status === "rejected"
+            ? "Expense rejected"
+            : "Expense status updated",
+      )
+      onExpenseStatusChange?.()
+    } finally {
+      setProcessingId(null)
+    }
+  }
   
   // Count critical items
   const overdueVendorBills = unpaidVendorBills.filter(v => v.overdueDays > 0)
   const overdueClientPayments = delayedClientPayments.filter(c => c.overdueDays > 0)
-  const engineerAttentionCount = pendingApprovals.length
+  const pendingInAttention = canApproveExpenses ? 0 : pendingApprovals.length
+  const engineerAttentionCount = pendingInAttention
   const totalAttentionItems = restrictFinancials
     ? engineerAttentionCount
-    : overdueVendorBills.length + overdueClientPayments.length + overbudgetStages.length + pendingApprovals.length
+    : overdueVendorBills.length +
+      overdueClientPayments.length +
+      overbudgetStages.length +
+      pendingInAttention
   
   // Use centralized calculations
   const remainingBudget = calculateRemainingBudget(revisedContractValue, totalExpenses)
@@ -444,6 +521,96 @@ export function OverviewTab({ projectData, restrictFinancials = false }: Overvie
         </>
         )}
 
+        {showExpenseApprovals && (
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt className="h-5 w-5 text-primary" />
+                Expense Approvals
+                {pendingApprovals.length > 0 && (
+                  <Badge variant="outline" className="text-xs border-yellow-500 text-yellow-500">
+                    {pendingApprovals.length} pending
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {expenseApprovals.map((expense) => (
+                <div
+                  key={expense.id}
+                  className={cn(
+                    "flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border",
+                    expense.status === "pending"
+                      ? "bg-yellow-500/10 border-yellow-500/20"
+                      : expense.status === "approved"
+                        ? "bg-green-500/5 border-green-500/20"
+                        : "bg-muted/30 border-border",
+                  )}
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div
+                      className={cn(
+                        "w-2 h-2 rounded-full shrink-0 mt-2",
+                        expense.status === "pending"
+                          ? "bg-yellow-500"
+                          : expense.status === "approved"
+                            ? "bg-green-500"
+                            : "bg-muted-foreground",
+                      )}
+                    />
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">
+                        {expense.category}: {expense.description}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatINR(expense.amount)} | {expense.requestedBy} | {expense.date}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 sm:ml-auto">
+                    <ExpenseStatusBadge status={expense.status} />
+                    {canApproveExpenses && expense.status === "pending" && (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs"
+                          disabled={processingId === expense.id}
+                          onClick={() => void handleExpenseStatus(expense.id, "rejected")}
+                        >
+                          {processingId === expense.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <>
+                              <XCircle className="h-3 w-3 mr-1" />
+                              Reject
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-8 text-xs"
+                          disabled={processingId === expense.id}
+                          onClick={() => void handleExpenseStatus(expense.id, "approved")}
+                        >
+                          {processingId === expense.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <>
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              Approve
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Attention Required Section */}
         <Card className="bg-card border-border">
           <CardHeader>
@@ -534,27 +701,30 @@ export function OverviewTab({ projectData, restrictFinancials = false }: Overvie
                   </div>
                 ))}
 
-                {/* Pending Approvals */}
-                {pendingApprovals.map((approval, index) => (
-                  <div 
-                    key={`approval-${index}`}
-                    className="flex items-center justify-between p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                      <div>
-                        <p className="font-medium text-sm">{approval.type}: {approval.description}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatINR(approval.amount)} | Requested by {approval.requestedBy} on {approval.date}
-                        </p>
+                {!canApproveExpenses &&
+                  pendingApprovals.map((approval) => (
+                    <div
+                      key={approval.id}
+                      className="flex items-center justify-between p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                        <div>
+                          <p className="font-medium text-sm">
+                            {approval.type}: {approval.description}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatINR(approval.amount)} | Requested by {approval.requestedBy} on{" "}
+                            {approval.date}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <FileWarning className="h-4 w-4 text-yellow-500" />
+                        <ExpenseStatusBadge status="pending" />
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <FileWarning className="h-4 w-4 text-yellow-500" />
-                      <Badge variant="outline" className="text-xs border-yellow-500 text-yellow-500">Approval Needed</Badge>
-                    </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
           </CardContent>

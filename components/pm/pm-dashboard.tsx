@@ -33,6 +33,7 @@ import { updateExpenseStatusAction } from "@/lib/projects/tab-actions"
 import { calculateMilestoneCompletionFromExpenses } from "@/lib/financial-calculations"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { DashboardHeader } from "@/components/dashboard/header"
+import { toast } from "sonner"
 
 interface PmProjectRow {
   id: string
@@ -265,7 +266,10 @@ export function PMDashboard() {
     })
 
     if (result.ok) {
+      toast.success("Expense approved")
       await loadDashboard()
+    } else {
+      toast.error(result.error)
     }
   }
 
@@ -280,7 +284,10 @@ export function PMDashboard() {
     })
 
     if (result.ok) {
+      toast.success("Expense rejected")
       await loadDashboard()
+    } else {
+      toast.error(result.error)
     }
   }
 

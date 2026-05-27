@@ -1,5 +1,6 @@
 "use client"
 
+import { useCallback, useEffect, useState } from "react"
 import { Bell, Search, Shield, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,6 +19,8 @@ import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { toast } from "sonner"
+import type { AppNotification } from "@/lib/notifications"
+import { formatDistanceToNow } from "date-fns"
 
 const roleLabels: Record<string, string> = {
   admin: "Admin",
@@ -33,13 +36,48 @@ const roleColors: Record<string, string> = {
 }
 
 interface DashboardHeaderProps {
+  /** Optional extra badge count (e.g. PM pending approvals on dashboard). */
   notificationCount?: number
 }
 
 export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const { profile, isLoading, signOut, role } = useAuth()
+  const { profile, isLoading, signOut, role, isAuthenticated } = useAuth()
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  const loadNotifications = useCallback(async () => {
+    if (!isAuthenticated) {
+      setNotifications([])
+      setUnreadCount(0)
+      return
+    }
+    try {
+      const res = await fetch("/api/notifications", {
+        credentials: "include",
+        cache: "no-store",
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: AppNotification[]
+        unreadCount?: number
+      }
+      if (res.ok) {
+        setNotifications(json.data ?? [])
+        setUnreadCount(json.unreadCount ?? 0)
+      }
+    } catch {
+      // notifications table may not exist yet
+    }
+  }, [isAuthenticated])
+
+  useEffect(() => {
+    void loadNotifications()
+    const interval = setInterval(() => void loadNotifications(), 60_000)
+    return () => clearInterval(interval)
+  }, [loadNotifications])
+
+  const badgeCount = Math.max(unreadCount, notificationCount)
 
   const getDashboardHome = () => {
     switch (role) {
@@ -85,6 +123,31 @@ export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps)
       return pathname === "/projects" || pathname.startsWith("/projects/")
     }
     return pathname === href
+  }
+
+  const handleNotificationClick = async (notification: AppNotification) => {
+    if (!notification.read_at) {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationId: notification.id }),
+      })
+      void loadNotifications()
+    }
+    if (notification.project_id) {
+      router.push(`/projects/${notification.project_id}`)
+    }
+  }
+
+  const handleMarkAllRead = async () => {
+    await fetch("/api/notifications", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markAllRead: true }),
+    })
+    void loadNotifications()
   }
 
   return (
@@ -149,14 +212,63 @@ export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps)
             />
           </div>
 
-          <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground">
-            <Bell className="h-5 w-5" />
-            {notificationCount > 0 && (
-              <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center">
-                {notificationCount}
-              </span>
-            )}
-          </Button>
+          <DropdownMenu onOpenChange={(open) => open && void loadNotifications()}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative text-muted-foreground hover:text-foreground"
+              >
+                <Bell className="h-5 w-5" />
+                {badgeCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center">
+                    {badgeCount > 9 ? "9+" : badgeCount}
+                  </span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              <DropdownMenuLabel className="flex items-center justify-between">
+                <span>Notifications</span>
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => void handleMarkAllRead()}
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {notifications.length === 0 ? (
+                <p className="px-2 py-4 text-sm text-muted-foreground text-center">
+                  No notifications yet
+                </p>
+              ) : (
+                notifications.slice(0, 8).map((notification) => (
+                  <DropdownMenuItem
+                    key={notification.id}
+                    className={cn(
+                      "flex flex-col items-start gap-1 cursor-pointer py-2",
+                      !notification.read_at && "bg-primary/5",
+                    )}
+                    onClick={() => void handleNotificationClick(notification)}
+                  >
+                    <span className="font-medium text-sm">{notification.title}</span>
+                    <span className="text-xs text-muted-foreground line-clamp-2">
+                      {notification.message}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {formatDistanceToNow(new Date(notification.created_at), {
+                        addSuffix: true,
+                      })}
+                    </span>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
