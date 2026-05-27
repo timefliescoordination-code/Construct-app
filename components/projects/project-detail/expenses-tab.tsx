@@ -397,6 +397,7 @@ export function ExpensesTab({
           vendorName: vendor || null,
           billNumber: null,
           expenseDate: date || format(new Date(), "yyyy-MM-dd"),
+          status: "approved",
         })
 
         if (result.ok) {

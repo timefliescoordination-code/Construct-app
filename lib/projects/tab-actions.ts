@@ -102,6 +102,7 @@ export async function createExpenseAction(input: {
   vendorName: string | null
   billNumber: string | null
   expenseDate: string
+  status?: 'approved' | 'rejected' | 'pending'
 }): Promise<TabActionResult<Record<string, unknown>>> {
   const session = await getSession()
   if (!session.ok) return session
@@ -120,7 +121,7 @@ export async function createExpenseAction(input: {
       vendor_name: input.vendorName,
       bill_number: input.billNumber,
       expense_date: input.expenseDate,
-      status: 'pending',
+      status: input.status ?? 'pending',
       entered_by: session.userId,
     })
     .select('*')
@@ -128,6 +129,10 @@ export async function createExpenseAction(input: {
 
   if (error) {
     return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  if ((input.status ?? 'pending') === 'approved') {
+    await syncProjectMilestoneMetrics(session.supabase, input.projectId)
   }
 
   revalidateProject(input.projectId)
