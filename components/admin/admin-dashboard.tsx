@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
+import { aggregateAdminCompanyMetrics } from "@/lib/admin-dashboard-data"
 import { formatINR } from "@/lib/currency"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -29,6 +30,14 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { Plus } from "lucide-react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { useAdminDashboard } from "@/lib/hooks/use-admin-dashboard"
 import { PM_NOT_CREATED } from "@/lib/staff-labels"
 import { DashboardHeader } from "@/components/dashboard/header"
@@ -85,13 +94,40 @@ function PmCardSkeleton() {
   )
 }
 
+const SHOW_ALL_PROJECTS = "all"
+
 export function AdminDashboard() {
   const [selectedPeriod, setSelectedPeriod] = useState("30d")
+  const [selectedProjectId, setSelectedProjectId] = useState(SHOW_ALL_PROJECTS)
   const { projects, company, projectManagers, isLoading, error } = useAdminDashboard()
   const { isAdmin, canManageProjects, isLoading: authLoading } = useAuth()
   const showCreateProject = !authLoading && (isAdmin || canManageProjects)
 
-  const cashflowWarnings = company?.cashflowWarnings ?? 0
+  const showAllProjects = selectedProjectId === SHOW_ALL_PROJECTS
+
+  const visibleProjects = useMemo(() => {
+    if (showAllProjects) return projects
+    return projects.filter((project) => project.id === selectedProjectId)
+  }, [projects, selectedProjectId, showAllProjects])
+
+  const displayCompany = useMemo(() => {
+    if (!company) return null
+    if (showAllProjects) return company
+    return aggregateAdminCompanyMetrics(visibleProjects, {
+      totalPMs: company.totalPMs,
+      totalEngineers: company.totalEngineers,
+    })
+  }, [company, showAllProjects, visibleProjects])
+
+  const selectedProject = showAllProjects
+    ? null
+    : projects.find((project) => project.id === selectedProjectId)
+
+  const cashflowWarnings = displayCompany?.cashflowWarnings ?? 0
+
+  const scopeLabel = showAllProjects
+    ? `all ${projects.length} project${projects.length === 1 ? "" : "s"}`
+    : selectedProject?.name ?? "selected project"
 
   return (
     <div className="min-h-screen bg-background">
@@ -106,7 +142,21 @@ export function AdminDashboard() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+              <SelectTrigger className="w-[200px] bg-secondary border-border">
+                <SelectValue placeholder="Select project" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SHOW_ALL_PROJECTS}>Show all</SelectItem>
+                {projects.map((project, index) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name || `Project ${index + 1}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
               <SelectTrigger className="w-[140px] bg-secondary border-border">
                 <SelectValue />
@@ -118,10 +168,6 @@ export function AdminDashboard() {
                 <SelectItem value="1y">Last year</SelectItem>
               </SelectContent>
             </Select>
-
-            <Button variant="outline" className="border-border" asChild>
-              <Link href="/projects">View Projects</Link>
-            </Button>
 
             {showCreateProject && (
               <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
@@ -145,9 +191,109 @@ export function AdminDashboard() {
           </div>
         )}
 
+        {showAllProjects && !isLoading && projects.length > 0 && (
+          <section className="mb-8">
+            <Card>
+              <CardHeader>
+                <CardTitle>Profit &amp; Loss by Project</CardTitle>
+                <CardDescription>
+                  Contract value vs approved spend — profit or loss at a glance
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Project</TableHead>
+                      <TableHead className="text-right">Contract</TableHead>
+                      <TableHead className="text-right">Spent</TableHead>
+                      <TableHead className="text-right">Received</TableHead>
+                      <TableHead className="text-right">Profit / Loss</TableHead>
+                      <TableHead>PM</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {projects.map((project, index) => (
+                      <TableRow key={project.id}>
+                        <TableCell className="font-medium">
+                          <Link
+                            href={`/projects/${project.id}`}
+                            className="text-primary hover:underline"
+                          >
+                            {project.name || `Project ${index + 1}`}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatINR(project.contract_value)}
+                        </TableCell>
+                        <TableCell className="text-right text-destructive">
+                          {formatINR(project.total_expenses)}
+                        </TableCell>
+                        <TableCell className="text-right text-green-500">
+                          {formatINR(project.total_received)}
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            "text-right font-semibold",
+                            project.profit_loss >= 0 ? "text-green-500" : "text-destructive",
+                          )}
+                        >
+                          {project.profit_loss >= 0 ? "+" : ""}
+                          {formatINR(project.profit_loss)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm">
+                          {project.pm_label}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize">
+                            {project.status.replace("-", " ")}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="bg-muted/40 font-semibold">
+                      <TableCell>Total</TableCell>
+                      <TableCell className="text-right">
+                        {formatINR(
+                          projects.reduce((sum, p) => sum + p.contract_value, 0),
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-destructive">
+                        {formatINR(
+                          projects.reduce((sum, p) => sum + p.total_expenses, 0),
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-green-500">
+                        {formatINR(
+                          projects.reduce((sum, p) => sum + p.total_received, 0),
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          "text-right",
+                          projects.reduce((sum, p) => sum + p.profit_loss, 0) >= 0
+                            ? "text-green-500"
+                            : "text-destructive",
+                        )}
+                      >
+                        {(() => {
+                          const total = projects.reduce((sum, p) => sum + p.profit_loss, 0)
+                          return `${total >= 0 ? "+" : ""}${formatINR(total)}`
+                        })()}
+                      </TableCell>
+                      <TableCell colSpan={2} />
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
         <section className="mb-8">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {isLoading || !company ? (
+            {isLoading || !displayCompany ? (
               <>
                 <StatCardSkeleton />
                 <StatCardSkeleton />
@@ -164,13 +310,13 @@ export function AdminDashboard() {
                     <Briefcase className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">{company.totalProjects}</div>
+                    <div className="text-3xl font-bold">{displayCompany.totalProjects}</div>
                     <div className="flex items-center gap-2 mt-2 text-xs">
                       <Badge variant="outline" className="text-green-500 border-green-500/30">
-                        {company.activeProjects} Active
+                        {displayCompany.activeProjects} Active
                       </Badge>
                       <Badge variant="outline" className="text-muted-foreground">
-                        {company.completedProjects} Completed
+                        {displayCompany.completedProjects} Completed
                       </Badge>
                     </div>
                   </CardContent>
@@ -185,10 +331,10 @@ export function AdminDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold">
-                      {formatINR(company.totalContractValue)}
+                      {formatINR(displayCompany.totalContractValue)}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
-                      Across all {company.totalProjects} projects
+                      Across {scopeLabel}
                     </p>
                   </CardContent>
                 </Card>
@@ -202,11 +348,11 @@ export function AdminDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-green-500">
-                      {formatINR(company.expectedProfit)}
+                      {formatINR(displayCompany.expectedProfit)}
                     </div>
                     <div className="flex items-center gap-1 mt-2 text-xs text-green-500">
                       <ArrowUpRight className="h-3 w-3" />
-                      {company.weightedMarginPercent}% margin
+                      {displayCompany.weightedMarginPercent}% margin
                     </div>
                   </CardContent>
                 </Card>
@@ -216,16 +362,26 @@ export function AdminDashboard() {
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       Projected Profit
                     </CardTitle>
-                    {company.projectedProfit >= company.expectedProfit ? (
+                    {displayCompany.projectedProfit >= displayCompany.expectedProfit ? (
                       <TrendingUp className="h-4 w-4 text-green-500" />
                     ) : (
                       <TrendingDown className="h-4 w-4 text-yellow-500" />
                     )}
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">{formatINR(company.projectedProfit)}</div>
+                    <div
+                      className={cn(
+                        "text-3xl font-bold",
+                        displayCompany.projectedProfit >= 0
+                          ? "text-green-500"
+                          : "text-destructive",
+                      )}
+                    >
+                      {displayCompany.projectedProfit >= 0 ? "+" : ""}
+                      {formatINR(displayCompany.projectedProfit)}
+                    </div>
                     <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-                      {company.projectedProfit >= company.expectedProfit ? (
+                      {displayCompany.projectedProfit >= displayCompany.expectedProfit ? (
                         <>
                           <ArrowUpRight className="h-3 w-3 text-green-500" />
                           <span className="text-green-500">On track</span>
@@ -245,9 +401,11 @@ export function AdminDashboard() {
         </section>
 
         <section className="mb-8">
-          <h2 className="text-lg font-semibold text-foreground mb-4">Company Cashflow</h2>
+          <h2 className="text-lg font-semibold text-foreground mb-4">
+            {showAllProjects ? "Company Cashflow" : "Project Cashflow"}
+          </h2>
           <div className="grid gap-4 md:grid-cols-3">
-            {isLoading || !company ? (
+            {isLoading || !displayCompany ? (
               <>
                 <StatCardSkeleton />
                 <StatCardSkeleton />
@@ -258,7 +416,7 @@ export function AdminDashboard() {
                 <Card
                   className={cn(
                     "border-2",
-                    company.currentCashflow >= 0
+                    displayCompany.currentCashflow >= 0
                       ? "bg-green-500/5 border-green-500/30"
                       : "bg-destructive/5 border-destructive/30"
                   )}
@@ -272,14 +430,16 @@ export function AdminDashboard() {
                     <div
                       className={cn(
                         "text-3xl font-bold",
-                        company.currentCashflow >= 0 ? "text-green-500" : "text-destructive"
+                        displayCompany.currentCashflow >= 0
+                          ? "text-green-500"
+                          : "text-destructive",
                       )}
                     >
-                      {company.currentCashflow >= 0 ? "+" : ""}
-                      {formatINR(company.currentCashflow)}
+                      {displayCompany.currentCashflow >= 0 ? "+" : ""}
+                      {formatINR(displayCompany.currentCashflow)}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
-                      Net cash position across all projects
+                      Net cash position across {scopeLabel}
                     </p>
                   </CardContent>
                 </Card>
@@ -292,7 +452,7 @@ export function AdminDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-green-500">
-                      {formatINR(company.totalReceivables)}
+                      {formatINR(displayCompany.totalReceivables)}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">Client payments due</p>
                   </CardContent>
@@ -306,7 +466,7 @@ export function AdminDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-destructive">
-                      {formatINR(company.totalPayables)}
+                      {formatINR(displayCompany.totalPayables)}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">Vendor payments due</p>
                   </CardContent>
@@ -319,7 +479,7 @@ export function AdminDashboard() {
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-foreground mb-4">Risk Alerts</h2>
           <div className="grid gap-4 md:grid-cols-3">
-            {isLoading || !company ? (
+            {isLoading || !displayCompany ? (
               <>
                 <MetricSkeleton />
                 <MetricSkeleton />
@@ -329,7 +489,7 @@ export function AdminDashboard() {
               <>
                 <Card
                   className={
-                    company.overbudgetProjects > 0
+                    displayCompany.overbudgetProjects > 0
                       ? "bg-destructive/5 border-destructive/30"
                       : "bg-card border-border"
                   }
@@ -339,13 +499,13 @@ export function AdminDashboard() {
                       <div
                         className={cn(
                           "p-3 rounded-lg",
-                          company.overbudgetProjects > 0 ? "bg-destructive/20" : "bg-muted"
+                          displayCompany.overbudgetProjects > 0 ? "bg-destructive/20" : "bg-muted"
                         )}
                       >
                         <AlertCircle
                           className={cn(
                             "h-6 w-6",
-                            company.overbudgetProjects > 0
+                            displayCompany.overbudgetProjects > 0
                               ? "text-destructive"
                               : "text-muted-foreground"
                           )}
@@ -355,12 +515,14 @@ export function AdminDashboard() {
                         <p
                           className={cn(
                             "text-2xl font-bold",
-                            company.overbudgetProjects > 0 ? "text-destructive" : ""
+                            displayCompany.overbudgetProjects > 0 ? "text-destructive" : ""
                           )}
                         >
-                          {company.overbudgetProjects}
+                          {displayCompany.overbudgetProjects}
                         </p>
-                        <p className="text-sm text-muted-foreground">Over Budget Projects</p>
+                        <p className="text-sm text-muted-foreground">
+                          {showAllProjects ? "Over Budget Projects" : "Over Budget"}
+                        </p>
                       </div>
                     </div>
                   </CardContent>
@@ -368,7 +530,7 @@ export function AdminDashboard() {
 
                 <Card
                   className={
-                    company.cashflowWarnings > 0
+                    displayCompany.cashflowWarnings > 0
                       ? "bg-yellow-500/5 border-yellow-500/30"
                       : "bg-card border-border"
                   }
@@ -378,13 +540,13 @@ export function AdminDashboard() {
                       <div
                         className={cn(
                           "p-3 rounded-lg",
-                          company.cashflowWarnings > 0 ? "bg-yellow-500/20" : "bg-muted"
+                          displayCompany.cashflowWarnings > 0 ? "bg-yellow-500/20" : "bg-muted"
                         )}
                       >
                         <AlertTriangle
                           className={cn(
                             "h-6 w-6",
-                            company.cashflowWarnings > 0
+                            displayCompany.cashflowWarnings > 0
                               ? "text-yellow-500"
                               : "text-muted-foreground"
                           )}
@@ -394,10 +556,10 @@ export function AdminDashboard() {
                         <p
                           className={cn(
                             "text-2xl font-bold",
-                            company.cashflowWarnings > 0 ? "text-yellow-500" : ""
+                            displayCompany.cashflowWarnings > 0 ? "text-yellow-500" : ""
                           )}
                         >
-                          {company.cashflowWarnings}
+                          {displayCompany.cashflowWarnings}
                         </p>
                         <p className="text-sm text-muted-foreground">Cashflow Warnings</p>
                       </div>
@@ -413,7 +575,7 @@ export function AdminDashboard() {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">
-                          {company.totalPMs} / {company.totalEngineers}
+                          {displayCompany.totalPMs} / {displayCompany.totalEngineers}
                         </p>
                         <p className="text-sm text-muted-foreground">PMs / Engineers</p>
                       </div>
@@ -448,9 +610,16 @@ export function AdminDashboard() {
                 </div>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                  {projectManagers.map((pm) => {
+                  {projectManagers
+                    .filter((pm) => {
+                      const pmName = pm.full_name || pm.email
+                      return visibleProjects.some((project) => project.pm_label === pmName)
+                    })
+                    .map((pm) => {
                     const pmName = pm.full_name || pm.email
-                    const assignedProjects = projects.filter((project) => project.pm_label === pmName)
+                    const assignedProjects = visibleProjects.filter(
+                      (project) => project.pm_label === pmName,
+                    )
                     const avgCompletion = assignedProjects.length
                       ? Math.round(
                           assignedProjects.reduce((sum, project) => sum + project.progress, 0) /

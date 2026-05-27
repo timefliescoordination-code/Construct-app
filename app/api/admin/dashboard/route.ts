@@ -61,7 +61,7 @@ export async function GET() {
         .from("additional_works")
         .select("project_id, amount")
         .eq("approval_status", "approved"),
-      supabase.from("vendor_payments").select("pending_amount, status"),
+      supabase.from("vendor_payments").select("project_id, pending_amount, status"),
       supabase
         .from("profiles")
         .select("id, email, full_name, role")

@@ -14,8 +14,12 @@ export interface AdminProjectSummary {
   contract_value: number
   total_expenses: number
   total_received: number
+  pending_receivables: number
+  pending_payables: number
+  cashflow_warnings: number
   progress: number
   profit_loss: number
+  expected_profit: number
   pm_label: string
   expected_margin_percent: number
 }
@@ -66,12 +70,36 @@ type MilestoneRow = {
 
 type AmountRow = { project_id: string; amount: number }
 type ClientPaymentRow = { project_id: string; amount: number; status: string }
-type VendorPaymentRow = { pending_amount: number; status: string }
+type VendorPaymentRow = {
+  project_id: string
+  pending_amount: number
+  status: string
+}
 
 function sumByProjectId(rows: AmountRow[]): Map<string, number> {
   const totals = new Map<string, number>()
   for (const row of rows) {
     totals.set(row.project_id, (totals.get(row.project_id) ?? 0) + Number(row.amount))
+  }
+  return totals
+}
+
+function sumPayablesByProjectId(rows: VendorPaymentRow[]): Map<string, number> {
+  const totals = new Map<string, number>()
+  for (const row of rows) {
+    totals.set(
+      row.project_id,
+      (totals.get(row.project_id) ?? 0) + Number(row.pending_amount),
+    )
+  }
+  return totals
+}
+
+function countOverdueByProjectId(rows: VendorPaymentRow[]): Map<string, number> {
+  const totals = new Map<string, number>()
+  for (const row of rows) {
+    if (row.status !== "overdue") continue
+    totals.set(row.project_id, (totals.get(row.project_id) ?? 0) + 1)
   }
   return totals
 }
@@ -112,6 +140,8 @@ export function buildAdminDashboardData(input: {
     )
   )
   const additionalWorkTotals = sumByProjectId(input.additionalWorks)
+  const payableTotals = sumPayablesByProjectId(input.vendorPayments)
+  const overdueTotals = countOverdueByProjectId(input.vendorPayments)
   const milestonesByProject = groupMilestonesByProject(input.milestones)
 
   const projects: AdminProjectSummary[] = input.projects.map((project) => {
@@ -125,6 +155,8 @@ export function buildAdminDashboardData(input: {
     const milestones = milestonesByProject.get(project.id) ?? []
     const progress = calculateCompletionPercent(milestones)
     const profitLoss = calculateProjectedProfit(totalContractValue, totalExpenses)
+    const marginPercent = Number(project.expected_margin_percent)
+    const expectedProfit = totalContractValue * (marginPercent / 100)
 
     return {
       id: project.id,
@@ -133,40 +165,54 @@ export function buildAdminDashboardData(input: {
       contract_value: totalContractValue,
       total_expenses: totalExpenses,
       total_received: totalReceived,
+      pending_receivables: receivableTotals.get(project.id) ?? 0,
+      pending_payables: payableTotals.get(project.id) ?? 0,
+      cashflow_warnings: overdueTotals.get(project.id) ?? 0,
       progress,
       profit_loss: profitLoss,
+      expected_profit: expectedProfit,
       pm_label: getProjectPmLabel(project),
-      expected_margin_percent: Number(project.expected_margin_percent),
+      expected_margin_percent: marginPercent,
     }
   })
 
   const projectManagers = input.staffProfiles.filter((profile) => profile.role === "pm")
   const siteEngineers = input.staffProfiles.filter((profile) => profile.role === "engineer")
 
+  const company = aggregateAdminCompanyMetrics(projects, {
+    totalPMs: projectManagers.length,
+    totalEngineers: siteEngineers.length,
+    cashflowWarnings: input.vendorPayments.filter(
+      (payment) => payment.status === "overdue",
+    ).length,
+  })
+
+  return {
+    projects,
+    company,
+    projectManagers,
+    siteEngineers,
+  }
+}
+
+export function aggregateAdminCompanyMetrics(
+  projects: AdminProjectSummary[],
+  staff: { totalPMs: number; totalEngineers: number; cashflowWarnings?: number },
+): AdminCompanyMetrics {
   const totalContractValue = projects.reduce((sum, project) => sum + project.contract_value, 0)
   const totalExpenses = projects.reduce((sum, project) => sum + project.total_expenses, 0)
   const receivedPayments = projects.reduce((sum, project) => sum + project.total_received, 0)
   const projectedProfit = projects.reduce((sum, project) => sum + project.profit_loss, 0)
-  const expectedProfit = projects.reduce(
-    (sum, project) =>
-      sum + project.contract_value * (project.expected_margin_percent / 100),
-    0
+  const expectedProfit = projects.reduce((sum, project) => sum + project.expected_profit, 0)
+  const totalReceivables = projects.reduce(
+    (sum, project) => sum + project.pending_receivables,
+    0,
   )
-  const totalReceivables = Array.from(receivableTotals.values()).reduce(
-    (sum, amount) => sum + amount,
-    0
-  )
-  const totalPayables = input.vendorPayments.reduce(
-    (sum, payment) => sum + Number(payment.pending_amount),
-    0
-  )
-  const cashflowWarnings = input.vendorPayments.filter(
-    (payment) => payment.status === "overdue"
-  ).length
+  const totalPayables = projects.reduce((sum, project) => sum + project.pending_payables, 0)
   const weightedMarginPercent =
     totalContractValue > 0 ? Math.round((expectedProfit / totalContractValue) * 100) : 0
 
-  const company: AdminCompanyMetrics = {
+  return {
     totalProjects: projects.length,
     activeProjects: projects.filter((project) => project.status === "active").length,
     completedProjects: projects.filter((project) => project.status === "completed").length,
@@ -178,16 +224,11 @@ export function buildAdminDashboardData(input: {
     expectedProfit,
     projectedProfit,
     overbudgetProjects: projects.filter((project) => project.profit_loss < 0).length,
-    cashflowWarnings,
-    totalPMs: projectManagers.length,
-    totalEngineers: siteEngineers.length,
+    cashflowWarnings:
+      staff.cashflowWarnings ??
+      projects.reduce((sum, project) => sum + project.cashflow_warnings, 0),
+    totalPMs: staff.totalPMs,
+    totalEngineers: staff.totalEngineers,
     weightedMarginPercent,
-  }
-
-  return {
-    projects,
-    company,
-    projectManagers,
-    siteEngineers,
   }
 }
