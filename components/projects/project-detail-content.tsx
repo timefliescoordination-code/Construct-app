@@ -16,7 +16,8 @@ import {
   Users,
   Edit,
   MoreVertical,
-  Loader2
+  Loader2,
+  AlertCircle,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -41,6 +42,8 @@ import {
   canViewProjectFinancials,
   ENGINEER_RESTRICTED_PROJECT_TABS,
 } from "@/lib/permissions"
+import { isDatabaseSetupError } from "@/lib/supabase/db-errors"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface ProjectDetailContentProps {
   projectId: string
@@ -57,16 +60,19 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   const {
     project: specificProject,
     isLoading: specificLoading,
+    error: specificError,
     mutate: mutateProject,
   } = useProject(isLegacyDefaultId ? null : projectId)
   const {
     project: defaultProject,
     isLoading: defaultLoading,
+    error: defaultError,
     mutate: mutateDefaultProject,
   } = useDefaultProject(isLegacyDefaultId)
 
   const project = isLegacyDefaultId ? defaultProject : specificProject
   const isLoading = isLegacyDefaultId ? defaultLoading : specificLoading
+  const loadError = isLegacyDefaultId ? defaultError : specificError
   const refreshProject = () => {
     if (isLegacyDefaultId) {
       void mutateDefaultProject()
@@ -215,6 +221,11 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   }
 
   if (!project || !calculatedData) {
+    const setupError =
+      loadError instanceof Error && isDatabaseSetupError(loadError)
+    const errorMessage =
+      loadError instanceof Error ? loadError.message : null
+
     return (
       <main className="p-4 md:p-6 lg:p-8">
         <div className="flex items-center gap-2 mb-4">
@@ -225,9 +236,38 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           </Button>
           <span className="text-muted-foreground">Back to Projects</span>
         </div>
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">Project not found</p>
-        </div>
+        {errorMessage ? (
+          <Card className="border-amber-500/30 bg-amber-500/5 max-w-2xl mx-auto">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <AlertCircle className="h-5 w-5 text-amber-500" />
+                {setupError ? "Database setup required" : "Could not load project"}
+              </CardTitle>
+              <CardDescription className="text-base text-foreground/80">
+                {errorMessage}
+              </CardDescription>
+            </CardHeader>
+            {setupError && (
+              <CardContent className="text-sm text-muted-foreground space-y-2">
+                <p>
+                  If other tabs worked before Manpower was added, run{" "}
+                  <code className="rounded bg-muted px-1">supabase/manpower-module.sql</code>{" "}
+                  in the Supabase SQL Editor (paste the full file, then Run).
+                </p>
+                <p>
+                  For a new database, run{" "}
+                  <code className="rounded bg-muted px-1">schema.sql</code>, then{" "}
+                  <code className="rounded bg-muted px-1">assignment-scoped-access.sql</code>, then{" "}
+                  <code className="rounded bg-muted px-1">manpower-module.sql</code>.
+                </p>
+              </CardContent>
+            )}
+          </Card>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Project not found</p>
+          </div>
+        )}
       </main>
     )
   }

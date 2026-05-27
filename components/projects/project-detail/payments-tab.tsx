@@ -63,6 +63,11 @@ interface VendorPayment {
   category: string | null
 }
 
+interface MilestoneOption {
+  id: string
+  name: string
+}
+
 interface PaymentsTabProps {
   projectId?: string
   project?: ProjectWithDetails
@@ -84,6 +89,9 @@ export function PaymentsTab({
   const [vendorPayments, setVendorPayments] = useState<VendorPayment[]>(
     () => (project?.vendor_payments as VendorPayment[]) ?? [],
   )
+  const [milestones, setMilestones] = useState<MilestoneOption[]>(() =>
+    project ? project.milestones.map((m) => ({ id: m.id, name: m.name })) : [],
+  )
   const [isLoading, setIsLoading] = useState(!project)
   const [isClientDialogOpen, setIsClientDialogOpen] = useState(false)
   const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false)
@@ -94,7 +102,7 @@ export function PaymentsTab({
   const [clientDate, setClientDate] = useState("")
   const [clientPaymentMode, setClientPaymentMode] = useState("")
   const [clientRemarks, setClientRemarks] = useState("")
-  const [clientStageName, setClientStageName] = useState("")
+  const [clientMilestoneId, setClientMilestoneId] = useState("")
   
   // Vendor payment form state
   const [vendorName, setVendorName] = useState("")
@@ -107,6 +115,7 @@ export function PaymentsTab({
     if (project) {
       setClientPayments(project.client_payments as ClientPayment[])
       setVendorPayments(project.vendor_payments as VendorPayment[])
+      setMilestones(project.milestones.map((m) => ({ id: m.id, name: m.name })))
       setIsLoading(false)
       return
     }
@@ -142,6 +151,18 @@ export function PaymentsTab({
       
       if (vendorError) throw vendorError
       setVendorPayments(vendorData || [])
+
+      const { data: milestonesData, error: milestonesError } = await supabase
+        .from('milestones')
+        .select('id, name')
+        .eq('project_id', projectId)
+        .order('sort_order')
+
+      if (milestonesError) {
+        console.error("[payments-tab] fetch milestones:", milestonesError)
+      } else {
+        setMilestones(milestonesData || [])
+      }
     } catch (error: any) {
       console.error("[v0] Error fetching payments:", error)
       toast.error(`Failed to load payments: ${error.message}`)
@@ -151,8 +172,9 @@ export function PaymentsTab({
   }
 
   const handleAddClientPayment = async () => {
-    if (!clientAmount || !clientStageName) {
-      toast.error("Please fill in required fields (Stage Name and Amount)")
+    const stage = milestones.find((m) => m.id === clientMilestoneId)
+    if (!clientAmount || !stage) {
+      toast.error("Please select a stage and enter an amount")
       return
     }
     
@@ -161,7 +183,8 @@ export function PaymentsTab({
     try {
       const result = await createClientPaymentAction({
         projectId,
-        stageName: clientStageName,
+        milestoneId: stage.id,
+        stageName: stage.name,
         amount: parseFloat(clientAmount),
         receivedDate: clientDate || null,
         status: clientDate ? 'received' : 'pending',
@@ -181,7 +204,7 @@ export function PaymentsTab({
       setClientDate("")
       setClientPaymentMode("")
       setClientRemarks("")
-      setClientStageName("")
+      setClientMilestoneId("")
       setIsClientDialogOpen(false)
     } finally {
       setIsSubmitting(false)
@@ -323,13 +346,28 @@ export function PaymentsTab({
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="space-y-2">
-                  <Label>Stage/Milestone Name *</Label>
-                  <Input 
-                    placeholder="e.g., Foundation Completion" 
-                    className="bg-muted border-border"
-                    value={clientStageName}
-                    onChange={(e) => setClientStageName(e.target.value)}
-                  />
+                  <Label>Project stage *</Label>
+                  {milestones.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No stages found. Add stages on the Milestones tab first.
+                    </p>
+                  ) : (
+                    <Select
+                      value={clientMilestoneId}
+                      onValueChange={setClientMilestoneId}
+                    >
+                      <SelectTrigger className="w-full bg-muted border-border">
+                        <SelectValue placeholder="Select stage" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[100]">
+                        {milestones.map((milestone) => (
+                          <SelectItem key={milestone.id} value={milestone.id}>
+                            {milestone.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Amount *</Label>
@@ -356,7 +394,7 @@ export function PaymentsTab({
                     <SelectTrigger className="bg-muted border-border">
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[100]">
                       <SelectItem value="Cash">Cash</SelectItem>
                       <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
                       <SelectItem value="UPI">UPI</SelectItem>
@@ -377,7 +415,10 @@ export function PaymentsTab({
               </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setIsClientDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleAddClientPayment} disabled={isSubmitting}>
+                <Button
+                  onClick={handleAddClientPayment}
+                  disabled={isSubmitting || milestones.length === 0}
+                >
                   {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                   Save Payment
                 </Button>

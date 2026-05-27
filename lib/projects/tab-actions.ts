@@ -162,6 +162,7 @@ export async function updateExpenseStatusAction(input: {
 
 export async function createClientPaymentAction(input: {
   projectId: string
+  milestoneId: string | null
   stageName: string
   amount: number
   receivedDate: string | null
@@ -179,6 +180,7 @@ export async function createClientPaymentAction(input: {
     .from('client_payments')
     .insert({
       project_id: input.projectId,
+      milestone_id: input.milestoneId,
       stage_name: input.stageName,
       amount: input.amount,
       received_date: input.receivedDate,
