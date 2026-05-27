@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useRef, useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,6 +29,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Plus, Upload, Filter, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
@@ -38,6 +44,7 @@ import { useAuth } from "@/lib/hooks/use-auth"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { milestoneNameById } from "@/lib/project-tab-hydration"
 import { createExpenseAction } from "@/lib/projects/tab-actions"
+import * as XLSX from "xlsx"
 
 const categories = ["Materials", "Labour", "Equipment", "Miscellaneous"]
 const subcategories: Record<string, string[]> = {
@@ -110,6 +117,9 @@ export function ExpensesTab({
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const csvInputRef = useRef<HTMLInputElement | null>(null)
+  const excelInputRef = useRef<HTMLInputElement | null>(null)
   const [newExpense, setNewExpense] = useState({
     date: format(new Date(), 'yyyy-MM-dd'),
     category: "",
@@ -238,6 +248,120 @@ export function ExpensesTab({
     setIsSubmitting(false)
   }
 
+  const downloadSampleCsv = () => {
+    const header =
+      "date,category,subcategory,description,vendor,amount,milestone,status"
+    const sampleRows = [
+      "2026-05-01,Materials,Cement,OPC 53 grade bags,ABC Traders,25000,Foundation,pending",
+      "2026-05-02,Labour,Mason,Masonry work day shift,,12000,,Plinth,approved",
+    ]
+    const csv = [header, ...sampleRows].join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = "expenses-import-sample.csv"
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+    URL.revokeObjectURL(url)
+  }
+
+  const toExpenseDescription = (subcategory: string, description: string) =>
+    subcategory ? `${subcategory} - ${description}` : description
+
+  const handleImportFile = async (file: File | null) => {
+    if (!file || !projectId) return
+
+    setIsImporting(true)
+    try {
+      const buffer = await file.arrayBuffer()
+      const workbook = XLSX.read(buffer, { type: "array" })
+      const firstSheet = workbook.SheetNames[0]
+      if (!firstSheet) {
+        toast.error("File has no sheets to import.")
+        return
+      }
+
+      const sheet = workbook.Sheets[firstSheet]
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+        defval: "",
+        raw: false,
+      })
+
+      if (rows.length === 0) {
+        toast.error("No rows found in the selected file.")
+        return
+      }
+
+      const milestoneByName = new Map(
+        milestones.map((m) => [m.name.trim().toLowerCase(), m.id]),
+      )
+
+      let successCount = 0
+      let failedCount = 0
+
+      for (const row of rows) {
+        const date = String(row.date ?? "").trim()
+        const category = String(row.category ?? "").trim()
+        const subcategory = String(row.subcategory ?? "").trim()
+        const description = String(row.description ?? "").trim()
+        const vendor = String(row.vendor ?? "").trim()
+        const amountRaw = String(row.amount ?? "").trim()
+        const milestoneName = String(row.milestone ?? "").trim().toLowerCase()
+
+        const amount = Number(amountRaw)
+        if (!category || !description || Number.isNaN(amount) || amount <= 0) {
+          failedCount += 1
+          continue
+        }
+
+        const milestoneId = milestoneName ? (milestoneByName.get(milestoneName) ?? null) : null
+        const result = await createExpenseAction({
+          projectId,
+          milestoneId,
+          category,
+          description: toExpenseDescription(subcategory, description),
+          amount,
+          vendorName: vendor || null,
+          billNumber: null,
+          expenseDate: date || format(new Date(), "yyyy-MM-dd"),
+        })
+
+        if (result.ok) {
+          successCount += 1
+        } else {
+          failedCount += 1
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Imported ${successCount} expense(s).`)
+        onProjectChange?.()
+        const supabase = createClient()
+        const { data: refreshed } = await supabase
+          .from("expenses")
+          .select("*, milestones(name)")
+          .eq("project_id", projectId)
+          .order("expense_date", { ascending: false })
+        setExpenses((refreshed ?? []) as Expense[])
+      }
+
+      if (failedCount > 0) {
+        toast.warning(
+          `${failedCount} row(s) were skipped. Required columns: date, category, description, amount.`,
+        )
+      }
+    } catch (error) {
+      console.error("[expenses-tab] import error:", error)
+      toast.error("Failed to import file. Check format and try again.")
+    } finally {
+      setIsImporting(false)
+      if (csvInputRef.current) csvInputRef.current.value = ""
+      if (excelInputRef.current) excelInputRef.current.value = ""
+    }
+  }
+
   const filteredExpenses = expenses.filter((expense) => {
     if (filterCategory !== "all" && expense.category !== filterCategory) return false
     if (filterStatus !== "all" && expense.status !== filterStatus) return false
@@ -275,6 +399,43 @@ export function ExpensesTab({
           <div className="flex flex-col sm:flex-row gap-4 justify-between">
             <CardTitle>Manage Expenses</CardTitle>
             <div className="flex gap-2 flex-wrap">
+              <input
+                ref={csvInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => void handleImportFile(e.target.files?.[0] ?? null)}
+              />
+              <input
+                ref={excelInputRef}
+                type="file"
+                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                className="hidden"
+                onChange={(e) => void handleImportFile(e.target.files?.[0] ?? null)}
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2" disabled={isImporting}>
+                    {isImporting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    Import / Sample
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => csvInputRef.current?.click()}>
+                    Import as .csv
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => excelInputRef.current?.click()}>
+                    Import as .excel
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={downloadSampleCsv}>
+                    Download sample .csv
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Select value={filterCategory} onValueChange={setFilterCategory}>
                 <SelectTrigger className="w-[150px] bg-muted border-border">
                   <Filter className="h-4 w-4 mr-2" />
