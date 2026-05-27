@@ -270,6 +270,67 @@ export function ExpensesTab({
   const toExpenseDescription = (subcategory: string, description: string) =>
     subcategory ? `${subcategory} - ${description}` : description
 
+  const normalizeRow = (row: Record<string, unknown>) => {
+    const normalized: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(row)) {
+      normalized[key.trim().toLowerCase().replace(/\s+/g, "_")] = value
+    }
+    return normalized
+  }
+
+  const parseAmount = (value: unknown): number => {
+    if (typeof value === "number") return value
+    const cleaned = String(value ?? "")
+      .replace(/[₹,\s]/g, "")
+      .trim()
+    return Number(cleaned)
+  }
+
+  const parseExpenseDate = (value: unknown): string => {
+    if (typeof value === "number") {
+      const parsed = XLSX.SSF.parse_date_code(value)
+      if (parsed) {
+        const jsDate = new Date(parsed.y, parsed.m - 1, parsed.d)
+        return format(jsDate, "yyyy-MM-dd")
+      }
+    }
+
+    const text = String(value ?? "").trim()
+    if (!text) return format(new Date(), "yyyy-MM-dd")
+
+    const normalized = text.replace(/\./g, "/").replace(/-/g, "/")
+    const parts = normalized.split("/")
+    if (parts.length === 3) {
+      const [a, b, c] = parts.map((p) => p.trim())
+      // Handles dd/mm/yyyy and mm/dd/yyyy by preferring day-first if >12.
+      const first = Number(a)
+      const second = Number(b)
+      const year = Number(c.length === 2 ? `20${c}` : c)
+      if (!Number.isNaN(first) && !Number.isNaN(second) && !Number.isNaN(year)) {
+        const day = first > 12 ? first : second
+        const month = first > 12 ? second : first
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          const jsDate = new Date(year, month - 1, day)
+          return format(jsDate, "yyyy-MM-dd")
+        }
+      }
+    }
+
+    const nativeDate = new Date(text)
+    if (!Number.isNaN(nativeDate.getTime())) {
+      return format(nativeDate, "yyyy-MM-dd")
+    }
+
+    return format(new Date(), "yyyy-MM-dd")
+  }
+
+  const normalizeCategory = (value: string): string => {
+    const cleaned = value.trim().toLowerCase()
+    if (!cleaned) return ""
+    const match = categories.find((cat) => cat.toLowerCase() === cleaned)
+    return match ?? value.trim()
+  }
+
   const handleImportFile = async (file: File | null) => {
     if (!file || !projectId) return
 
@@ -286,7 +347,7 @@ export function ExpensesTab({
       const sheet = workbook.Sheets[firstSheet]
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
         defval: "",
-        raw: false,
+        raw: true,
       })
 
       if (rows.length === 0) {
@@ -300,23 +361,33 @@ export function ExpensesTab({
 
       let successCount = 0
       let failedCount = 0
+      const failedReasons: string[] = []
 
-      for (const row of rows) {
-        const date = String(row.date ?? "").trim()
-        const category = String(row.category ?? "").trim()
+      for (let index = 0; index < rows.length; index += 1) {
+        const row = normalizeRow(rows[index])
+        const date = parseExpenseDate(row.date)
+        const category = normalizeCategory(String(row.category ?? ""))
         const subcategory = String(row.subcategory ?? "").trim()
         const description = String(row.description ?? "").trim()
         const vendor = String(row.vendor ?? "").trim()
-        const amountRaw = String(row.amount ?? "").trim()
+        const amount = parseAmount(row.amount)
         const milestoneName = String(row.milestone ?? "").trim().toLowerCase()
 
-        const amount = Number(amountRaw)
         if (!category || !description || Number.isNaN(amount) || amount <= 0) {
           failedCount += 1
+          failedReasons.push(
+            `Row ${index + 2}: missing/invalid category, description, or amount`,
+          )
           continue
         }
 
         const milestoneId = milestoneName ? (milestoneByName.get(milestoneName) ?? null) : null
+        if (milestoneName && !milestoneId) {
+          failedCount += 1
+          failedReasons.push(`Row ${index + 2}: milestone "${milestoneName}" not found`)
+          continue
+        }
+
         const result = await createExpenseAction({
           projectId,
           milestoneId,
@@ -332,6 +403,7 @@ export function ExpensesTab({
           successCount += 1
         } else {
           failedCount += 1
+          failedReasons.push(`Row ${index + 2}: ${result.error}`)
         }
       }
 
@@ -348,8 +420,9 @@ export function ExpensesTab({
       }
 
       if (failedCount > 0) {
+        const preview = failedReasons.slice(0, 3).join(" | ")
         toast.warning(
-          `${failedCount} row(s) were skipped. Required columns: date, category, description, amount.`,
+          `${failedCount} row(s) were skipped. ${preview || "Check required fields and milestone names."}`,
         )
       }
     } catch (error) {
