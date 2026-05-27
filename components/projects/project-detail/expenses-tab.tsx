@@ -73,6 +73,19 @@ interface Milestone {
   name: string
 }
 
+interface ImportDraftRow {
+  id: string
+  rowNumber: number
+  date: string
+  category: string
+  subcategory: string
+  description: string
+  vendor: string
+  amount: string
+  milestone: string
+  selected: boolean
+}
+
 interface ExpensesTabProps {
   projectId?: string
   project?: ProjectWithDetails
@@ -118,6 +131,9 @@ export function ExpensesTab({
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [importDraftRows, setImportDraftRows] = useState<ImportDraftRow[]>([])
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null)
   const csvInputRef = useRef<HTMLInputElement | null>(null)
   const excelInputRef = useRef<HTMLInputElement | null>(null)
   const [newExpense, setNewExpense] = useState({
@@ -331,6 +347,128 @@ export function ExpensesTab({
     return match ?? value.trim()
   }
 
+  const toggleDraftRowSelection = (
+    index: number,
+    checked: boolean,
+    shiftKey: boolean,
+  ) => {
+    setImportDraftRows((prev) => {
+      const next = [...prev]
+      if (shiftKey && lastSelectedIndex !== null) {
+        const start = Math.min(lastSelectedIndex, index)
+        const end = Math.max(lastSelectedIndex, index)
+        for (let i = start; i <= end; i += 1) {
+          next[i] = { ...next[i], selected: checked }
+        }
+      } else {
+        next[index] = { ...next[index], selected: checked }
+      }
+      return next
+    })
+    setLastSelectedIndex(index)
+  }
+
+  const updateDraftRow = (
+    index: number,
+    field: keyof Pick<ImportDraftRow, "date" | "category" | "subcategory" | "description" | "vendor" | "amount" | "milestone">,
+    value: string,
+  ) => {
+    setImportDraftRows((prev) => {
+      const next = [...prev]
+      const target = next[index]
+      if (!target) return prev
+
+      // Bulk-edit milestone for all selected rows when editing any selected row's milestone.
+      if (field === "milestone" && target.selected) {
+        return next.map((row) =>
+          row.selected ? { ...row, milestone: value } : row,
+        )
+      }
+
+      next[index] = { ...target, [field]: value }
+      return next
+    })
+  }
+
+  const importDraftRowsToProject = async () => {
+    if (!projectId || importDraftRows.length === 0) return
+    setIsImporting(true)
+    try {
+      const milestoneByName = new Map(
+        milestones.map((m) => [m.name.trim().toLowerCase(), m.id]),
+      )
+      let successCount = 0
+      let failedCount = 0
+      const failedReasons: string[] = []
+
+      for (const row of importDraftRows) {
+        const category = normalizeCategory(row.category)
+        const description = row.description.trim()
+        const amount = parseAmount(row.amount)
+        const milestoneName = row.milestone.trim().toLowerCase()
+
+        if (!category || !description || Number.isNaN(amount) || amount <= 0) {
+          failedCount += 1
+          failedReasons.push(
+            `Row ${row.rowNumber}: missing/invalid category, description, or amount`,
+          )
+          continue
+        }
+
+        const milestoneId = milestoneName ? (milestoneByName.get(milestoneName) ?? null) : null
+        if (milestoneName && !milestoneId) {
+          failedCount += 1
+          failedReasons.push(`Row ${row.rowNumber}: milestone "${row.milestone}" not found`)
+          continue
+        }
+
+        const result = await createExpenseAction({
+          projectId,
+          milestoneId,
+          category,
+          description: toExpenseDescription(row.subcategory.trim(), description),
+          amount,
+          vendorName: row.vendor.trim() || null,
+          billNumber: null,
+          expenseDate: parseExpenseDate(row.date),
+          status: "approved",
+        })
+
+        if (result.ok) {
+          successCount += 1
+        } else {
+          failedCount += 1
+          failedReasons.push(`Row ${row.rowNumber}: ${result.error}`)
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Imported ${successCount} expense(s).`)
+        onProjectChange?.()
+        const supabase = createClient()
+        const { data: refreshed } = await supabase
+          .from("expenses")
+          .select("*, milestones(name)")
+          .eq("project_id", projectId)
+          .order("expense_date", { ascending: false })
+        setExpenses((refreshed ?? []) as Expense[])
+      }
+
+      if (failedCount > 0) {
+        const preview = failedReasons.slice(0, 3).join(" | ")
+        toast.warning(
+          `${failedCount} row(s) were skipped. ${preview || "Check required fields and milestone names."}`,
+        )
+      }
+
+      setIsImportDialogOpen(false)
+      setImportDraftRows([])
+      setLastSelectedIndex(null)
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   const handleImportFile = async (file: File | null) => {
     if (!file || !projectId) return
 
@@ -355,77 +493,26 @@ export function ExpensesTab({
         return
       }
 
-      const milestoneByName = new Map(
-        milestones.map((m) => [m.name.trim().toLowerCase(), m.id]),
-      )
-
-      let successCount = 0
-      let failedCount = 0
-      const failedReasons: string[] = []
-
+      const draftRows: ImportDraftRow[] = []
       for (let index = 0; index < rows.length; index += 1) {
         const row = normalizeRow(rows[index])
-        const date = parseExpenseDate(row.date)
-        const category = normalizeCategory(String(row.category ?? ""))
-        const subcategory = String(row.subcategory ?? "").trim()
-        const description = String(row.description ?? "").trim()
-        const vendor = String(row.vendor ?? "").trim()
-        const amount = parseAmount(row.amount)
-        const milestoneName = String(row.milestone ?? "").trim().toLowerCase()
-
-        if (!category || !description || Number.isNaN(amount) || amount <= 0) {
-          failedCount += 1
-          failedReasons.push(
-            `Row ${index + 2}: missing/invalid category, description, or amount`,
-          )
-          continue
-        }
-
-        const milestoneId = milestoneName ? (milestoneByName.get(milestoneName) ?? null) : null
-        if (milestoneName && !milestoneId) {
-          failedCount += 1
-          failedReasons.push(`Row ${index + 2}: milestone "${milestoneName}" not found`)
-          continue
-        }
-
-        const result = await createExpenseAction({
-          projectId,
-          milestoneId,
-          category,
-          description: toExpenseDescription(subcategory, description),
-          amount,
-          vendorName: vendor || null,
-          billNumber: null,
-          expenseDate: date || format(new Date(), "yyyy-MM-dd"),
-          status: "approved",
+        draftRows.push({
+          id: `${Date.now()}-${index}`,
+          rowNumber: index + 2,
+          date: String(row.date ?? "").trim(),
+          category: normalizeCategory(String(row.category ?? "")),
+          subcategory: String(row.subcategory ?? "").trim(),
+          description: String(row.description ?? "").trim(),
+          vendor: String(row.vendor ?? "").trim(),
+          amount: String(row.amount ?? "").trim(),
+          milestone: String(row.milestone ?? "").trim(),
+          selected: false,
         })
-
-        if (result.ok) {
-          successCount += 1
-        } else {
-          failedCount += 1
-          failedReasons.push(`Row ${index + 2}: ${result.error}`)
-        }
       }
 
-      if (successCount > 0) {
-        toast.success(`Imported ${successCount} expense(s).`)
-        onProjectChange?.()
-        const supabase = createClient()
-        const { data: refreshed } = await supabase
-          .from("expenses")
-          .select("*, milestones(name)")
-          .eq("project_id", projectId)
-          .order("expense_date", { ascending: false })
-        setExpenses((refreshed ?? []) as Expense[])
-      }
-
-      if (failedCount > 0) {
-        const preview = failedReasons.slice(0, 3).join(" | ")
-        toast.warning(
-          `${failedCount} row(s) were skipped. ${preview || "Check required fields and milestone names."}`,
-        )
-      }
+      setImportDraftRows(draftRows)
+      setLastSelectedIndex(null)
+      setIsImportDialogOpen(true)
     } catch (error) {
       console.error("[expenses-tab] import error:", error)
       toast.error("Failed to import file. Check format and try again.")
@@ -510,6 +597,110 @@ export function ExpensesTab({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+                <DialogContent className="max-w-6xl bg-card border-border">
+                  <DialogHeader>
+                    <DialogTitle>Review Import Rows</DialogTitle>
+                  </DialogHeader>
+                  <p className="text-sm text-muted-foreground">
+                    Tip: select multiple rows, then change milestone in any selected row to apply to all selected rows.
+                  </p>
+                  <div className="max-h-[60vh] overflow-auto rounded-md border border-border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Select</TableHead>
+                          <TableHead>Row</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Category</TableHead>
+                          <TableHead>Description</TableHead>
+                          <TableHead>Vendor</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Milestone</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {importDraftRows.map((row, index) => (
+                          <TableRow key={row.id}>
+                            <TableCell>
+                              <input
+                                type="checkbox"
+                                checked={row.selected}
+                                onChange={(e) =>
+                                  toggleDraftRowSelection(
+                                    index,
+                                    e.target.checked,
+                                    (e.nativeEvent as MouseEvent).shiftKey,
+                                  )
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>{row.rowNumber}</TableCell>
+                            <TableCell>
+                              <Input
+                                value={row.date}
+                                onChange={(e) => updateDraftRow(index, "date", e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={row.category}
+                                onChange={(e) => updateDraftRow(index, "category", e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={row.description}
+                                onChange={(e) => updateDraftRow(index, "description", e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={row.vendor}
+                                onChange={(e) => updateDraftRow(index, "vendor", e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={row.amount}
+                                onChange={(e) => updateDraftRow(index, "amount", e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={row.milestone}
+                                onChange={(e) => updateDraftRow(index, "milestone", e.target.value)}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsImportDialogOpen(false)
+                        setImportDraftRows([])
+                        setLastSelectedIndex(null)
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button onClick={() => void importDraftRowsToProject()} disabled={isImporting}>
+                      {isImporting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Importing...
+                        </>
+                      ) : (
+                        "Import All Rows"
+                      )}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
               <Select value={filterCategory} onValueChange={setFilterCategory}>
                 <SelectTrigger className="w-[150px] bg-muted border-border">
                   <Filter className="h-4 w-4 mr-2" />
