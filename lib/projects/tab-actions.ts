@@ -139,6 +139,58 @@ export async function createExpenseAction(input: {
   return { ok: true, data: data as Record<string, unknown> }
 }
 
+export async function updateExpenseAction(input: {
+  projectId: string
+  expenseId: string
+  milestoneId: string | null
+  category: string
+  description: string
+  amount: number
+  vendorName: string | null
+  billNumber: string | null
+  expenseDate: string
+  status?: 'approved' | 'rejected' | 'pending'
+}): Promise<TabActionResult<Record<string, unknown>>> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canEnterExpenses(session.role)) {
+    return { ok: false, error: 'You do not have permission to edit expenses.' }
+  }
+
+  const updates: Record<string, unknown> = {
+    milestone_id: input.milestoneId,
+    category: input.category,
+    description: input.description,
+    amount: input.amount,
+    vendor_name: input.vendorName,
+    bill_number: input.billNumber,
+    expense_date: input.expenseDate,
+  }
+
+  if (input.status !== undefined) {
+    if (!canManageProjectData(session.role)) {
+      return { ok: false, error: 'Only admins and project managers can change expense status.' }
+    }
+    updates.status = input.status
+  }
+
+  const { data, error } = await session.supabase
+    .from('expenses')
+    .update(updates)
+    .eq('id', input.expenseId)
+    .eq('project_id', input.projectId)
+    .select('*')
+    .single()
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  await syncProjectMilestoneMetrics(session.supabase, input.projectId)
+  revalidateProject(input.projectId)
+  return { ok: true, data: data as Record<string, unknown> }
+}
+
 export async function updateExpenseStatusAction(input: {
   projectId: string
   expenseId: string

@@ -35,7 +35,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Plus, Upload, Filter, Loader2 } from "lucide-react"
+import { Plus, Upload, Filter, Loader2, Pencil } from "lucide-react"
 import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
@@ -43,7 +43,7 @@ import { useParams } from "next/navigation"
 import { useAuth } from "@/lib/hooks/use-auth"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { milestoneNameById } from "@/lib/project-tab-hydration"
-import { createExpenseAction } from "@/lib/projects/tab-actions"
+import { createExpenseAction, updateExpenseAction } from "@/lib/projects/tab-actions"
 import * as XLSX from "xlsx"
 
 const categories = ["Materials", "Labour", "Equipment", "Miscellaneous"]
@@ -92,6 +92,16 @@ interface ExpensesTabProps {
   onProjectChange?: () => void
 }
 
+function splitExpenseDescription(full: string): { subcategory: string; description: string } {
+  const separator = " - "
+  const idx = full.indexOf(separator)
+  if (idx === -1) return { subcategory: "", description: full }
+  return {
+    subcategory: full.slice(0, idx),
+    description: full.slice(idx + separator.length),
+  }
+}
+
 function mapExpensesFromProject(project: ProjectWithDetails): Expense[] {
   const names = milestoneNameById(project)
   return project.expenses.map((exp) => ({
@@ -117,7 +127,7 @@ export function ExpensesTab({
 }: ExpensesTabProps) {
   const params = useParams()
   const projectId = propProjectId || project?.id || (params?.id as string)
-  const { canEnterData } = useAuth()
+  const { canEnterData, canManageProjects } = useAuth()
   
   const [expenses, setExpenses] = useState<Expense[]>(() =>
     project ? mapExpensesFromProject(project) : [],
@@ -129,7 +139,9 @@ export function ExpensesTab({
   const [filterCategory, setFilterCategory] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [importDraftRows, setImportDraftRows] = useState<ImportDraftRow[]>([])
@@ -145,6 +157,17 @@ export function ExpensesTab({
     amount: "",
     billNumber: "",
     milestoneId: "",
+  })
+  const [editExpense, setEditExpense] = useState({
+    date: format(new Date(), "yyyy-MM-dd"),
+    category: "",
+    subcategory: "",
+    description: "",
+    vendor: "",
+    amount: "",
+    billNumber: "",
+    milestoneId: "",
+    status: "pending",
   })
 
   useEffect(() => {
@@ -264,6 +287,88 @@ export function ExpensesTab({
     setIsSubmitting(false)
   }
 
+  const openEditExpense = (expense: Expense) => {
+    const { subcategory, description } = splitExpenseDescription(expense.description)
+    setEditingExpenseId(expense.id)
+    setEditExpense({
+      date: expense.expense_date,
+      category: expense.category,
+      subcategory,
+      description,
+      vendor: expense.vendor_name ?? "",
+      amount: String(expense.amount),
+      billNumber: expense.bill_number ?? "",
+      milestoneId: expense.milestone_id ?? "",
+      status: expense.status,
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleUpdateExpense = async () => {
+    if (!projectId || !editingExpenseId) {
+      toast.error("Expense not found")
+      return
+    }
+
+    if (!editExpense.category || !editExpense.description || !editExpense.amount) {
+      toast.error("Please fill in all required fields")
+      return
+    }
+
+    setIsSubmitting(true)
+    const description = toExpenseDescription(editExpense.subcategory, editExpense.description)
+    const result = await updateExpenseAction({
+      projectId,
+      expenseId: editingExpenseId,
+      milestoneId: editExpense.milestoneId || null,
+      category: editExpense.category,
+      description,
+      amount: parseFloat(editExpense.amount),
+      vendorName: editExpense.vendor || null,
+      billNumber: editExpense.billNumber || null,
+      expenseDate: editExpense.date,
+      status: canManageProjects
+        ? (editExpense.status as "approved" | "rejected" | "pending")
+        : undefined,
+    })
+
+    if (!result.ok) {
+      toast.error(result.error)
+    } else {
+      const row = result.data
+      const milestoneId = (row.milestone_id as string | null) ?? null
+      const milestoneName =
+        milestoneId != null
+          ? milestones.find((m) => m.id === milestoneId)?.name ??
+            (project ? milestoneNameById(project).get(milestoneId) : undefined)
+          : undefined
+      toast.success("Expense updated successfully!")
+      setExpenses((prev) =>
+        prev.map((exp) =>
+          exp.id === editingExpenseId
+            ? {
+                id: exp.id,
+                expense_date: row.expense_date as string,
+                category: row.category as string,
+                description: row.description as string,
+                vendor_name: (row.vendor_name as string | null) ?? null,
+                amount: Number(row.amount),
+                bill_number: (row.bill_number as string | null) ?? null,
+                status: row.status as string,
+                milestone_id: milestoneId,
+                milestones: milestoneName ? { name: milestoneName } : null,
+              }
+            : exp,
+        ),
+      )
+      onProjectChange?.()
+      setIsEditDialogOpen(false)
+      setEditingExpenseId(null)
+    }
+
+    setIsSubmitting(false)
+  }
+
   const downloadSampleCsv = () => {
     const header =
       "date,category,subcategory,description,vendor,amount,milestone,status"
@@ -302,39 +407,64 @@ export function ExpensesTab({
     return Number(cleaned)
   }
 
+  const formatDraftAmount = (value: unknown): string => {
+    if (typeof value === "number" && !Number.isNaN(value)) return String(value)
+    return String(value ?? "").trim()
+  }
+
+  const toIsoDate = (year: number, month: number, day: number): string | null => {
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null
+    const d = new Date(year, month - 1, day)
+    if (
+      d.getFullYear() !== year ||
+      d.getMonth() !== month - 1 ||
+      d.getDate() !== day
+    ) {
+      return null
+    }
+    return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+  }
+
   const parseExpenseDate = (value: unknown): string => {
-    if (typeof value === "number") {
+    if (typeof value === "number" && value > 0) {
       const parsed = XLSX.SSF.parse_date_code(value)
       if (parsed) {
-        const jsDate = new Date(parsed.y, parsed.m - 1, parsed.d)
-        return format(jsDate, "yyyy-MM-dd")
+        const iso = toIsoDate(parsed.y, parsed.m, parsed.d)
+        if (iso) return iso
       }
     }
 
     const text = String(value ?? "").trim()
     if (!text) return format(new Date(), "yyyy-MM-dd")
 
-    const normalized = text.replace(/\./g, "/").replace(/-/g, "/")
-    const parts = normalized.split("/")
-    if (parts.length === 3) {
-      const [a, b, c] = parts.map((p) => p.trim())
-      // Handles dd/mm/yyyy and mm/dd/yyyy by preferring day-first if >12.
-      const first = Number(a)
-      const second = Number(b)
-      const year = Number(c.length === 2 ? `20${c}` : c)
-      if (!Number.isNaN(first) && !Number.isNaN(second) && !Number.isNaN(year)) {
-        const day = first > 12 ? first : second
-        const month = first > 12 ? second : first
-        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-          const jsDate = new Date(year, month - 1, day)
-          return format(jsDate, "yyyy-MM-dd")
-        }
-      }
+    const isoMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/)
+    if (isoMatch) {
+      const iso = toIsoDate(
+        Number(isoMatch[1]),
+        Number(isoMatch[2]),
+        Number(isoMatch[3]),
+      )
+      if (iso) return iso
     }
 
-    const nativeDate = new Date(text)
-    if (!Number.isNaN(nativeDate.getTime())) {
-      return format(nativeDate, "yyyy-MM-dd")
+    // India-style default: dd/mm/yyyy (also handles dd-mm-yyyy, dd.mm.yyyy)
+    const dmyMatch = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/)
+    if (dmyMatch) {
+      const day = Number(dmyMatch[1])
+      const month = Number(dmyMatch[2])
+      let year = Number(dmyMatch[3])
+      if (year < 100) year += 2000
+      const iso = toIsoDate(year, month, day)
+      if (iso) return iso
+    }
+
+    const serial = Number(text)
+    if (!Number.isNaN(serial) && serial > 20000 && serial < 60000) {
+      const parsed = XLSX.SSF.parse_date_code(serial)
+      if (parsed) {
+        const iso = toIsoDate(parsed.y, parsed.m, parsed.d)
+        if (iso) return iso
+      }
     }
 
     return format(new Date(), "yyyy-MM-dd")
@@ -499,12 +629,12 @@ export function ExpensesTab({
         draftRows.push({
           id: `${Date.now()}-${index}`,
           rowNumber: index + 2,
-          date: String(row.date ?? "").trim(),
+          date: parseExpenseDate(row.date),
           category: normalizeCategory(String(row.category ?? "")),
           subcategory: String(row.subcategory ?? "").trim(),
           description: String(row.description ?? "").trim(),
           vendor: String(row.vendor ?? "").trim(),
-          amount: String(row.amount ?? "").trim(),
+          amount: formatDraftAmount(row.amount),
           milestone: String(row.milestone ?? "").trim(),
           selected: false,
         })
@@ -598,31 +728,31 @@ export function ExpensesTab({
                 </DropdownMenuContent>
               </DropdownMenu>
               <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
-                <DialogContent className="max-w-6xl bg-card border-border">
+                <DialogContent className="w-[95vw] max-w-7xl bg-card border-border">
                   <DialogHeader>
                     <DialogTitle>Review Import Rows</DialogTitle>
                   </DialogHeader>
                   <p className="text-sm text-muted-foreground">
-                    Tip: select multiple rows, then change milestone in any selected row to apply to all selected rows.
+                    Tip: select multiple rows, then change milestone in any selected row to apply to all selected rows. Dates use dd/mm/yyyy from Excel/CSV.
                   </p>
                   <div className="max-h-[60vh] overflow-auto rounded-md border border-border">
-                    <Table>
+                    <Table className="min-w-[1280px] table-fixed">
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Select</TableHead>
-                          <TableHead>Row</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Category</TableHead>
-                          <TableHead>Description</TableHead>
-                          <TableHead>Vendor</TableHead>
-                          <TableHead>Amount</TableHead>
-                          <TableHead>Milestone</TableHead>
+                          <TableHead className="w-12">Select</TableHead>
+                          <TableHead className="w-14">Row</TableHead>
+                          <TableHead className="w-36">Date</TableHead>
+                          <TableHead className="w-32">Category</TableHead>
+                          <TableHead className="w-56">Description</TableHead>
+                          <TableHead className="w-36">Vendor</TableHead>
+                          <TableHead className="w-28">Amount</TableHead>
+                          <TableHead className="w-40">Milestone</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {importDraftRows.map((row, index) => (
                           <TableRow key={row.id}>
-                            <TableCell>
+                            <TableCell className="align-top">
                               <input
                                 type="checkbox"
                                 checked={row.selected}
@@ -635,41 +765,48 @@ export function ExpensesTab({
                                 }
                               />
                             </TableCell>
-                            <TableCell>{row.rowNumber}</TableCell>
-                            <TableCell>
+                            <TableCell className="align-top text-sm">{row.rowNumber}</TableCell>
+                            <TableCell className="align-top">
                               <Input
+                                type="date"
                                 value={row.date}
                                 onChange={(e) => updateDraftRow(index, "date", e.target.value)}
+                                className="min-w-[9rem] bg-muted border-border"
                               />
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="align-top">
                               <Input
                                 value={row.category}
                                 onChange={(e) => updateDraftRow(index, "category", e.target.value)}
+                                className="min-w-[7rem] bg-muted border-border"
                               />
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="align-top">
                               <Input
                                 value={row.description}
                                 onChange={(e) => updateDraftRow(index, "description", e.target.value)}
+                                className="min-w-[12rem] bg-muted border-border"
                               />
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="align-top">
                               <Input
                                 value={row.vendor}
                                 onChange={(e) => updateDraftRow(index, "vendor", e.target.value)}
+                                className="min-w-[8rem] bg-muted border-border"
                               />
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="align-top">
                               <Input
                                 value={row.amount}
                                 onChange={(e) => updateDraftRow(index, "amount", e.target.value)}
+                                className="min-w-[6rem] bg-muted border-border"
                               />
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="align-top">
                               <Input
                                 value={row.milestone}
                                 onChange={(e) => updateDraftRow(index, "milestone", e.target.value)}
+                                className="min-w-[9rem] bg-muted border-border"
                               />
                             </TableCell>
                           </TableRow>
@@ -864,6 +1001,169 @@ export function ExpensesTab({
                   </div>
                 </DialogContent>
               </Dialog>
+              <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent className="sm:max-w-[600px] bg-card border-border">
+                  <DialogHeader>
+                    <DialogTitle>Edit Expense</DialogTitle>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Date *</Label>
+                        <Input
+                          type="date"
+                          value={editExpense.date}
+                          onChange={(e) => setEditExpense({ ...editExpense, date: e.target.value })}
+                          className="bg-muted border-border"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Category *</Label>
+                        <Select
+                          value={editExpense.category}
+                          onValueChange={(val) =>
+                            setEditExpense({ ...editExpense, category: val, subcategory: "" })
+                          }
+                        >
+                          <SelectTrigger className="bg-muted border-border">
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                          <SelectContent className="z-[100]">
+                            {categories.map((cat) => (
+                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Subcategory</Label>
+                        <Select
+                          value={editExpense.subcategory}
+                          onValueChange={(val) => setEditExpense({ ...editExpense, subcategory: val })}
+                          disabled={!editExpense.category}
+                        >
+                          <SelectTrigger className="bg-muted border-border">
+                            <SelectValue placeholder="Select subcategory" />
+                          </SelectTrigger>
+                          <SelectContent className="z-[100]">
+                            {editExpense.category &&
+                              subcategories[editExpense.category]?.map((sub) => (
+                                <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Stage/Milestone</Label>
+                        <Select
+                          value={editExpense.milestoneId}
+                          onValueChange={(val) => setEditExpense({ ...editExpense, milestoneId: val })}
+                        >
+                          <SelectTrigger className="bg-muted border-border">
+                            <SelectValue placeholder="Select milestone" />
+                          </SelectTrigger>
+                          <SelectContent className="z-[100]">
+                            {milestones.map((milestone) => (
+                              <SelectItem key={milestone.id} value={milestone.id}>
+                                {milestone.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Description *</Label>
+                      <Textarea
+                        value={editExpense.description}
+                        onChange={(e) =>
+                          setEditExpense({ ...editExpense, description: e.target.value })
+                        }
+                        placeholder="Enter expense description..."
+                        className="bg-muted border-border"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Vendor</Label>
+                        <Input
+                          value={editExpense.vendor}
+                          onChange={(e) => setEditExpense({ ...editExpense, vendor: e.target.value })}
+                          placeholder="Vendor name"
+                          className="bg-muted border-border"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Amount *</Label>
+                        <Input
+                          type="number"
+                          value={editExpense.amount}
+                          onChange={(e) => setEditExpense({ ...editExpense, amount: e.target.value })}
+                          placeholder="0.00"
+                          className="bg-muted border-border"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Bill Number</Label>
+                        <Input
+                          value={editExpense.billNumber}
+                          onChange={(e) =>
+                            setEditExpense({ ...editExpense, billNumber: e.target.value })
+                          }
+                          placeholder="INV-001"
+                          className="bg-muted border-border"
+                        />
+                      </div>
+                      {canManageProjects && (
+                        <div className="space-y-2">
+                          <Label>Status</Label>
+                          <Select
+                            value={editExpense.status}
+                            onValueChange={(val) => setEditExpense({ ...editExpense, status: val })}
+                          >
+                            <SelectTrigger className="bg-muted border-border">
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                            <SelectContent className="z-[100]">
+                              {statuses.map((status) => (
+                                <SelectItem key={status} value={status}>
+                                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsEditDialogOpen(false)
+                        setEditingExpenseId(null)
+                      }}
+                      disabled={isSubmitting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button onClick={() => void handleUpdateExpense()} disabled={isSubmitting}>
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Changes"
+                      )}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         </CardHeader>
@@ -879,12 +1179,13 @@ export function ExpensesTab({
                   <TableHead>Stage</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Status</TableHead>
+                  {canEnterData && <TableHead className="w-12">Edit</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredExpenses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={canEnterData ? 8 : 7} className="text-center py-8 text-muted-foreground">
                       No expenses found. Click "Add Expense" to create one.
                     </TableCell>
                   </TableRow>
@@ -912,6 +1213,18 @@ export function ExpensesTab({
                         Rs {Number(expense.amount).toLocaleString()}
                       </TableCell>
                       <TableCell>{getStatusBadge(expense.status)}</TableCell>
+                      {canEnterData && (
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => openEditExpense(expense)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}
