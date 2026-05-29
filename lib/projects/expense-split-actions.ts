@@ -6,7 +6,10 @@ import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import {
   MAX_EXPENSE_SPLITS,
   getSplitPaymentStatus,
-  validateSplitLines,
+  isGroupFullyRecorded,
+  sumRecordedSplitAmounts,
+  validateAppendSplits,
+  validateInitialSplitCreate,
   type SplitLineInput,
 } from '@/lib/expense-splits/calculations'
 import type { UserRole } from '@/lib/types/database'
@@ -114,6 +117,64 @@ async function loadGroupWithSplits(
   }
 }
 
+async function syncVendorPaymentForSplitGroup(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  groupId: string,
+  userId: string,
+) {
+  const loaded = await loadGroupWithSplits(supabase, projectId, groupId)
+  if (!loaded.ok) return
+
+  const { group, splits } = loaded
+  const vendorName = group.vendor_name?.trim()
+  if (!vendorName) return
+
+  const totalAmount = Number(group.total_amount)
+  const amountPaid = sumRecordedSplitAmounts(splits)
+
+  let status: 'pending' | 'partial' | 'paid' = 'pending'
+  if (isGroupFullyRecorded(totalAmount, splits)) {
+    status = 'paid'
+  } else if (amountPaid > 0) {
+    status = 'partial'
+  }
+
+  const payload = {
+    project_id: projectId,
+    vendor_name: vendorName,
+    total_amount: totalAmount,
+    amount_paid: amountPaid,
+    status,
+    category: group.category,
+    expense_split_group_id: groupId,
+    entered_by: userId,
+    notes: 'Linked to split expense payments',
+  }
+
+  const { data: existing } = await supabase
+    .from('vendor_payments')
+    .select('id')
+    .eq('expense_split_group_id', groupId)
+    .maybeSingle()
+
+  if (existing?.id) {
+    await supabase.from('vendor_payments').update(payload).eq('id', existing.id)
+  } else {
+    await supabase.from('vendor_payments').insert(payload)
+  }
+}
+
+async function removeVendorPaymentForSplitGroup(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  groupId: string,
+) {
+  await supabase
+    .from('vendor_payments')
+    .delete()
+    .eq('expense_split_group_id', groupId)
+}
+
 export async function createExpenseSplitGroupAction(input: {
   projectId: string
   totalAmount: number
@@ -133,7 +194,7 @@ export async function createExpenseSplitGroupAction(input: {
     return { ok: false, error: 'You do not have permission to add expenses.' }
   }
 
-  const validation = validateSplitLines(input.totalAmount, input.splits)
+  const validation = validateInitialSplitCreate(input.totalAmount, input.splits)
   if (!validation.ok) return validation
 
   const { data: group, error: groupError } = await session.supabase
@@ -190,6 +251,13 @@ export async function createExpenseSplitGroupAction(input: {
     await syncMilestoneMetrics(session.supabase, input.projectId)
   }
 
+  await syncVendorPaymentForSplitGroup(
+    session.supabase,
+    input.projectId,
+    group.id as string,
+    session.userId,
+  )
+
   revalidateProject(input.projectId)
   return {
     ok: true,
@@ -226,21 +294,11 @@ export async function updateExpenseSplitGroupAction(input: {
     (s) => !input.deleteSplitIds.includes(s.id) && input.existingSplitIds.includes(s.id),
   )
 
-  const nextLines: SplitLineInput[] = [
-    ...remaining.map((s) => ({
-      id: s.id,
-      amount: String(s.amount),
-      date: s.expense_date,
-      locked: true,
-    })),
-    ...input.newSplits,
-  ]
-
-  if (nextLines.length > MAX_EXPENSE_SPLITS) {
-    return { ok: false, error: `Maximum ${MAX_EXPENSE_SPLITS} splits allowed.` }
+  if (input.newSplits.length === 0 && input.deleteSplitIds.length === 0) {
+    return { ok: false, error: 'Add a payment amount and date to continue.' }
   }
 
-  const validation = validateSplitLines(totalAmount, nextLines)
+  const validation = validateAppendSplits(totalAmount, remaining, input.newSplits)
   if (!validation.ok) return validation
 
   for (const deleteId of input.deleteSplitIds) {
@@ -303,6 +361,12 @@ export async function updateExpenseSplitGroupAction(input: {
   }
 
   await syncMilestoneMetrics(session.supabase, input.projectId)
+  await syncVendorPaymentForSplitGroup(
+    session.supabase,
+    input.projectId,
+    input.groupId,
+    session.userId,
+  )
   revalidateProject(input.projectId)
 
   return {
@@ -350,6 +414,7 @@ export async function deleteExpenseSplitRowAction(input: {
       .eq('split_group_id', groupId)
 
     if ((count ?? 0) === 0) {
+      await removeVendorPaymentForSplitGroup(session.supabase, groupId)
       await session.supabase.from('expense_split_groups').delete().eq('id', groupId)
     } else {
       const { data: remaining } = await session.supabase
@@ -365,6 +430,12 @@ export async function deleteExpenseSplitRowAction(input: {
           .update({ split_number: i + 1 })
           .eq('id', ordered[i].id)
       }
+      await syncVendorPaymentForSplitGroup(
+        session.supabase,
+        input.projectId,
+        groupId,
+        session.userId,
+      )
     }
   }
 

@@ -57,7 +57,7 @@ import { Plus, Upload, Filter, Loader2, Pencil, Split } from "lucide-react"
 import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/hooks/use-auth"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { milestoneNameById } from "@/lib/project-tab-hydration"
@@ -69,13 +69,12 @@ import {
 import { createExpenseSplitGroupAction } from "@/lib/projects/expense-split-actions"
 import type { ExpenseCategoryView } from "@/lib/data/expense-categories"
 import { ExpenseCategoryManageDialog } from "@/components/projects/project-detail/expense-category-manage-dialog"
-import { ExpenseSplitLinesEditor } from "@/components/projects/project-detail/expense-split-lines-editor"
 import { ExpenseSplitGroupDialog } from "@/components/projects/project-detail/expense-split-group-dialog"
 import {
   buildExpenseGroupMatchKey,
   getSplitPaymentStatus,
-  validateSplitLines,
-  type SplitLineInput,
+  isGroupFullyRecorded,
+  validateInitialSplitCreate,
   type SplitPaymentDisplayStatus,
 } from "@/lib/expense-splits/calculations"
 import * as XLSX from "xlsx"
@@ -232,8 +231,9 @@ export function ExpensesTab({
   const [manageMode, setManageMode] = useState<"subcategories" | "labour-teams">(
     "subcategories",
   )
+  const searchParams = useSearchParams()
   const [splitMode, setSplitMode] = useState(false)
-  const [splitLines, setSplitLines] = useState<SplitLineInput[]>([])
+  const [splitFirstAmount, setSplitFirstAmount] = useState("")
   const [splitGroupEditId, setSplitGroupEditId] = useState<string | null>(null)
   const [continueSplitOpen, setContinueSplitOpen] = useState(false)
   const [continueSplitGroupId, setContinueSplitGroupId] = useState<string | null>(null)
@@ -345,6 +345,13 @@ export function ExpensesTab({
     void reloadExpenseOptions()
   }, [projectId])
 
+  useEffect(() => {
+    const continueId = searchParams.get("continueSplit")
+    if (continueId) {
+      setSplitGroupEditId(continueId)
+    }
+  }, [searchParams])
+
   const labourTeamNameById = useMemo(
     () => new Map(labourTeams.map((t) => [t.id, t.name])),
     [labourTeams],
@@ -426,8 +433,14 @@ export function ExpensesTab({
       const total =
         sample.split_total_amount ??
         splits.reduce((sum, s) => sum + Number(s.amount), 0)
-      const paymentStatus = getSplitPaymentStatus(total, splits)
-      if (paymentStatus !== "Fully paid") return groupId
+      if (
+        !isGroupFullyRecorded(
+          total,
+          splits.map((s) => ({ amount: Number(s.amount) })),
+        )
+      ) {
+        return groupId
+      }
     }
     return null
   }
@@ -466,7 +479,7 @@ export function ExpensesTab({
       milestoneId: "",
     })
     setSplitMode(false)
-    setSplitLines([])
+    setSplitFirstAmount("")
   }
 
   const resolveLabourTeamId = (
@@ -510,7 +523,7 @@ export function ExpensesTab({
       return
     }
 
-    if (!skipContinueCheck && !splitMode) {
+    if (!skipContinueCheck) {
       const openGroupId = findOpenMatchingSplitGroup()
       if (openGroupId) {
         setContinueSplitGroupId(openGroupId)
@@ -530,7 +543,22 @@ export function ExpensesTab({
     const totalAmount = parseFloat(newExpense.amount)
 
     if (splitMode) {
-      const validation = validateSplitLines(totalAmount, splitLines)
+      if (!newExpense.vendor.trim()) {
+        toast.error("Enter vendor name to track pending balance on the Payments tab")
+        setIsSubmitting(false)
+        return
+      }
+
+      if (!splitFirstAmount) {
+        toast.error("Enter today's first payment amount")
+        setIsSubmitting(false)
+        return
+      }
+
+      const firstSplits = [
+        { amount: splitFirstAmount, date: newExpense.date },
+      ]
+      const validation = validateInitialSplitCreate(totalAmount, firstSplits)
       if (!validation.ok) {
         toast.error(validation.error)
         setIsSubmitting(false)
@@ -547,13 +575,13 @@ export function ExpensesTab({
         milestoneId: newExpense.milestoneId || null,
         labourTeamId: usesLabour ? newExpense.labourTeamId : null,
         subcategoryName: usesLabour ? null : newExpense.subcategory || null,
-        splits: splitLines,
+        splits: firstSplits,
       })
 
       if (!result.ok) {
         toast.error(result.error)
       } else {
-        toast.success(`Split expense created (${splitLines.length} payments).`)
+        toast.success("Split expense started — add more payments when they happen.")
         await refreshExpenses()
         resetNewExpenseForm()
         setIsAddDialogOpen(false)
@@ -1420,14 +1448,7 @@ export function ExpensesTab({
                                     className="text-xs text-primary underline-offset-2 hover:underline"
                                     onClick={() => {
                                       setSplitMode(true)
-                                      if (splitLines.length === 0 && newExpense.amount) {
-                                        setSplitLines([
-                                          {
-                                            amount: newExpense.amount,
-                                            date: newExpense.date,
-                                          },
-                                        ])
-                                      }
+                                      setSplitFirstAmount("")
                                     }}
                                   >
                                     Want to split the payment?
@@ -1447,7 +1468,6 @@ export function ExpensesTab({
                           onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
                           placeholder="0.00"
                           className="bg-muted border-border"
-                          disabled={splitMode && splitLines.some((l) => l.locked)}
                         />
                         {splitMode && (
                           <button
@@ -1455,7 +1475,7 @@ export function ExpensesTab({
                             className="text-xs text-muted-foreground underline"
                             onClick={() => {
                               setSplitMode(false)
-                              setSplitLines([])
+                              setSplitFirstAmount("")
                             }}
                           >
                             Cancel split (single payment)
@@ -1464,12 +1484,24 @@ export function ExpensesTab({
                       </div>
                     </div>
                     {splitMode && (
-                      <ExpenseSplitLinesEditor
-                        totalAmount={newExpense.amount}
-                        lines={splitLines}
-                        onChange={setSplitLines}
-                        disabled={isSubmitting}
-                      />
+                      <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+                        <Label>First payment today *</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={splitFirstAmount}
+                          onChange={(e) => setSplitFirstAmount(e.target.value)}
+                          placeholder="Amount paid today"
+                          className="bg-muted border-border"
+                          disabled={isSubmitting}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Uses the expense date above. You can record split 2, 3, and
+                          more on their actual dates later — no need to finish the full
+                          total now. Each payment appears in the expenses table by date.
+                        </p>
+                      </div>
                     )}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -1841,9 +1873,9 @@ export function ExpensesTab({
           <AlertDialogHeader>
             <AlertDialogTitle>Continue split payment?</AlertDialogTitle>
             <AlertDialogDescription>
-              An unpaid or partially paid split already exists for this category,
-              team, vendor, and description. Add another split to the same group, or
-              create a new expense.
+              There is a pending split payment for this vendor, category, team, and
+              description (balance not fully recorded yet). Continue that payment group,
+              or create a separate expense.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

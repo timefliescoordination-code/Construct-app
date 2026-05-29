@@ -29,6 +29,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import Link from "next/link"
 import { Plus, ArrowDownLeft, ArrowUpRight, Wallet, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
@@ -61,6 +62,7 @@ interface VendorPayment {
   due_date: string | null
   status: string
   category: string | null
+  expense_split_group_id?: string | null
 }
 
 interface MilestoneOption {
@@ -576,19 +578,30 @@ export function PaymentsTab({
                   <TableHead>Pending</TableHead>
                   <TableHead>Due Date</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="w-[140px]">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {vendorPayments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       No vendor payments recorded yet
                     </TableCell>
                   </TableRow>
                 ) : (
                   vendorPayments.map((payment) => (
                     <TableRow key={payment.id} className="border-border hover:bg-muted/50">
-                      <TableCell className="font-medium">{payment.vendor_name}</TableCell>
+                      <TableCell className="font-medium">
+                        {payment.vendor_name}
+                        {payment.expense_split_group_id && (
+                          <Badge
+                            variant="outline"
+                            className="ml-2 text-[10px] bg-primary/10 text-primary border-primary/30"
+                          >
+                            Split expense
+                          </Badge>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {payment.category ? (
                           <Badge variant="outline" className="bg-muted">{payment.category}</Badge>
@@ -616,6 +629,21 @@ export function PaymentsTab({
                           <Badge className="bg-destructive/20 text-destructive border-destructive/30">Overdue</Badge>
                         ) : (
                           <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">Pending</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {payment.expense_split_group_id &&
+                        payment.status !== "paid" &&
+                        projectId ? (
+                          <Button variant="link" size="sm" className="h-auto p-0" asChild>
+                            <Link
+                              href={`/projects/${projectId}?tab=expenses&continueSplit=${payment.expense_split_group_id}`}
+                            >
+                              Continue split
+                            </Link>
+                          </Button>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </TableCell>
                     </TableRow>

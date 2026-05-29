@@ -25,6 +25,26 @@ export function sumSplitAmounts(lines: { amount: string }[]): number {
   }, 0)
 }
 
+export function sumRecordedSplitAmounts(
+  splits: { amount: number }[],
+): number {
+  return splits.reduce((sum, s) => sum + Number(s.amount), 0)
+}
+
+export function getRemainingRecordedBalance(
+  totalAmount: number,
+  splits: { amount: number }[],
+): number {
+  return Math.max(0, totalAmount - sumRecordedSplitAmounts(splits))
+}
+
+export function isGroupFullyRecorded(
+  totalAmount: number,
+  splits: { amount: number }[],
+): boolean {
+  return sumRecordedSplitAmounts(splits) >= totalAmount - 0.01
+}
+
 export function getSplitPaymentStatus(
   totalAmount: number,
   splits: { amount: number; status: string }[],
@@ -61,34 +81,91 @@ export function buildExpenseGroupMatchKey(input: {
   ].join('|')
 }
 
-export function validateSplitLines(
+function validateSplitLineFields(
+  lines: SplitLineInput[],
+  labelOffset = 0,
+): { ok: true } | { ok: false; error: string } {
+  for (let i = 0; i < lines.length; i++) {
+    const amount = parseSplitAmount(lines[i].amount)
+    if (Number.isNaN(amount) || amount <= 0) {
+      return {
+        ok: false,
+        error: `Split ${i + 1 + labelOffset}: enter a valid amount.`,
+      }
+    }
+    if (!lines[i].date) {
+      return {
+        ok: false,
+        error: `Split ${i + 1 + labelOffset}: date is required.`,
+      }
+    }
+  }
+  return { ok: true }
+}
+
+/** First record: at least one split; amounts may be less than total (finish later). */
+export function validateInitialSplitCreate(
   totalAmount: number,
   lines: SplitLineInput[],
 ): { ok: true } | { ok: false; error: string } {
+  if (totalAmount <= 0) {
+    return { ok: false, error: 'Enter a valid total amount.' }
+  }
   if (lines.length === 0) {
-    return { ok: false, error: 'Add at least one split payment.' }
+    return { ok: false, error: 'Enter the first payment amount for today.' }
   }
   if (lines.length > MAX_EXPENSE_SPLITS) {
     return { ok: false, error: `Maximum ${MAX_EXPENSE_SPLITS} splits allowed.` }
   }
 
-  for (let i = 0; i < lines.length; i++) {
-    const amount = parseSplitAmount(lines[i].amount)
-    if (Number.isNaN(amount) || amount <= 0) {
-      return { ok: false, error: `Split ${i + 1}: enter a valid amount.` }
-    }
-    if (!lines[i].date) {
-      return { ok: false, error: `Split ${i + 1}: date is required.` }
-    }
-  }
+  const fields = validateSplitLineFields(lines)
+  if (!fields.ok) return fields
 
   const sum = sumSplitAmounts(lines)
-  if (Math.abs(sum - totalAmount) > 0.01) {
+  if (sum > totalAmount + 0.01) {
     return {
       ok: false,
-      error: `Split amounts (₹${sum.toLocaleString()}) must equal total (₹${totalAmount.toLocaleString()}).`,
+      error: `First payment cannot exceed total (₹${totalAmount.toLocaleString()}).`,
     }
   }
 
   return { ok: true }
+}
+
+/** Adding more splits later: existing + new must not exceed total. */
+export function validateAppendSplits(
+  totalAmount: number,
+  existingSplits: { amount: number }[],
+  newLines: SplitLineInput[],
+): { ok: true } | { ok: false; error: string } {
+  if (newLines.length === 0) {
+    return { ok: false, error: 'Enter the payment amount and date.' }
+  }
+
+  const totalCount = existingSplits.length + newLines.length
+  if (totalCount > MAX_EXPENSE_SPLITS) {
+    return { ok: false, error: `Maximum ${MAX_EXPENSE_SPLITS} splits allowed.` }
+  }
+
+  const fields = validateSplitLineFields(newLines, existingSplits.length)
+  if (!fields.ok) return fields
+
+  const existingSum = sumRecordedSplitAmounts(existingSplits)
+  const newSum = sumSplitAmounts(newLines)
+  if (existingSum + newSum > totalAmount + 0.01) {
+    return {
+      ok: false,
+      error: `Total recorded (₹${(existingSum + newSum).toLocaleString()}) cannot exceed obligation (₹${totalAmount.toLocaleString()}). Remaining: ₹${getRemainingRecordedBalance(totalAmount, existingSplits).toLocaleString()}.`,
+    }
+  }
+
+  return { ok: true }
+}
+
+/** @deprecated Use validateInitialSplitCreate or validateAppendSplits */
+export function validateSplitLines(
+  totalAmount: number,
+  lines: SplitLineInput[],
+): { ok: true } | { ok: false; error: string } {
+  return validateInitialSplitCreate(totalAmount, lines)
 }

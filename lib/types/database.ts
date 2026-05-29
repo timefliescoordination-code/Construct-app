@@ -122,6 +122,7 @@ export interface VendorPayment {
   status: VendorPaymentStatus
   category: string | null
   notes: string | null
+  expense_split_group_id?: string | null
   created_at: string
   updated_at: string
 }

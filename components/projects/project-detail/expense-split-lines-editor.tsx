@@ -27,6 +27,7 @@ export function ExpenseSplitLinesEditor({
   const total = parseFloat(totalAmount) || 0
   const allocated = sumSplitAmounts(lines)
   const remaining = total - allocated
+  const overAllocated = total > 0 && allocated > total + 0.01
 
   const addLine = () => {
     if (lines.length >= MAX_EXPENSE_SPLITS) return
@@ -52,18 +53,17 @@ export function ExpenseSplitLinesEditor({
   return (
     <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
       <div className="flex items-center justify-between gap-2">
-        <Label className="text-sm font-medium">Split payments</Label>
+        <Label className="text-sm font-medium">Next payment</Label>
         <p className="text-xs text-muted-foreground">
-          {lines.length}/{MAX_EXPENSE_SPLITS} · Allocated ₹{allocated.toLocaleString()}
+          {lines.length}/{MAX_EXPENSE_SPLITS} · ₹{allocated.toLocaleString()} this entry
           {total > 0 && (
             <span
               className={
-                Math.abs(remaining) < 0.01 ? " text-green-600" : " text-amber-600"
+                overAllocated ? " text-destructive" : " text-amber-600"
               }
             >
               {" "}
-              ({remaining >= 0 ? "₹" : "-₹"}
-              {Math.abs(remaining).toLocaleString()} left)
+              (₹{Math.max(0, remaining).toLocaleString()} left on obligation)
             </span>
           )}
         </p>

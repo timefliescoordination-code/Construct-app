@@ -17,7 +17,9 @@ import { toast } from "sonner"
 import { formatINR } from "@/lib/currency"
 import { ExpenseSplitLinesEditor } from "@/components/projects/project-detail/expense-split-lines-editor"
 import {
+  getRemainingRecordedBalance,
   getSplitPaymentStatus,
+  sumRecordedSplitAmounts,
   type SplitLineInput,
   type SplitPaymentDisplayStatus,
 } from "@/lib/expense-splits/calculations"
@@ -200,8 +202,26 @@ export function ExpenseSplitGroupDialog({
           <div className="space-y-4 py-2">
             <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm space-y-1">
               <p>
-                <span className="text-muted-foreground">Total: </span>
+                <span className="text-muted-foreground">Total obligation: </span>
                 <span className="font-semibold">{formatINR(totalAmount)}</span>
+              </p>
+              <p>
+                <span className="text-muted-foreground">Recorded: </span>
+                {formatINR(
+                  sumRecordedSplitAmounts(
+                    lockedLines.map((l) => ({ amount: Number(l.amount) })),
+                  ),
+                )}
+                {" · "}
+                <span className="text-muted-foreground">Remaining: </span>
+                <span className="font-medium text-amber-600">
+                  {formatINR(
+                    getRemainingRecordedBalance(
+                      totalAmount,
+                      lockedLines.map((l) => ({ amount: Number(l.amount) })),
+                    ),
+                  )}
+                </span>
               </p>
               <p>
                 <span className="text-muted-foreground">Category: </span>
@@ -218,8 +238,9 @@ export function ExpenseSplitGroupDialog({
                 </p>
               )}
               <p className="text-xs text-muted-foreground pt-1">
-                Category and team cannot be changed after splitting. Previous splits
-                cannot be edited—only deleted. Add new splits for remaining balance.
+                Add the next payment on its actual date. Previous payments cannot be
+                edited—only removed. Pending balance also appears on the Payments tab
+                until the total is fully recorded.
               </p>
             </div>
 
@@ -308,7 +329,7 @@ export function ExpenseSplitGroupDialog({
                 Saving...
               </>
             ) : (
-              "Save splits"
+              "Record payment"
             )}
           </Button>
         </DialogFooter>
