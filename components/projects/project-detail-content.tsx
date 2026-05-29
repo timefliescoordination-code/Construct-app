@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -49,7 +50,19 @@ interface ProjectDetailContentProps {
   projectId: string
 }
 
+const PROJECT_TAB_IDS = [
+  "overview",
+  "expenses",
+  "payments",
+  "milestones",
+  "manpower",
+  "additional-works",
+  "reports",
+  "photos",
+] as const
+
 export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
+  const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState("overview")
   const { role, canManageProjects } = useAuth()
   const showFinancials = canViewProjectFinancials(role)
@@ -195,6 +208,18 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       ].filter((tab) => showFinancials || !ENGINEER_RESTRICTED_PROJECT_TABS.has(tab.id)),
     [showFinancials],
   )
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab")
+    if (!tabParam || !PROJECT_TAB_IDS.includes(tabParam as (typeof PROJECT_TAB_IDS)[number])) {
+      return
+    }
+    if (!showFinancials && ENGINEER_RESTRICTED_PROJECT_TABS.has(tabParam)) {
+      setActiveTab("overview")
+      return
+    }
+    setActiveTab(tabParam)
+  }, [searchParams, showFinancials])
 
   useEffect(() => {
     if (!showFinancials && ENGINEER_RESTRICTED_PROJECT_TABS.has(activeTab)) {

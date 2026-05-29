@@ -41,6 +41,8 @@ import {
 import { useAdminDashboard } from "@/lib/hooks/use-admin-dashboard"
 import { PM_NOT_CREATED } from "@/lib/staff-labels"
 import { DashboardHeader } from "@/components/dashboard/header"
+import { ProjectMilestoneLink } from "@/components/admin/project-milestone-link"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { useAuth } from "@/lib/hooks/use-auth"
 
 function StatCardSkeleton() {
@@ -201,6 +203,7 @@ export function AdminDashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
+                <TooltipProvider delayDuration={200}>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -219,12 +222,15 @@ export function AdminDashboard() {
                     {projects.map((project, index) => (
                       <TableRow key={project.id}>
                         <TableCell className="font-medium">
-                          <Link
-                            href={`/projects/${project.id}`}
-                            className="text-primary hover:underline"
-                          >
-                            {project.name || `Project ${index + 1}`}
-                          </Link>
+                          <div className="flex items-center gap-2.5 min-w-[12rem]">
+                            <ProjectMilestoneLink projectId={project.id} />
+                            <Link
+                              href={`/projects/${project.id}`}
+                              className="truncate text-foreground hover:text-primary hover:underline underline-offset-4"
+                            >
+                              {project.name || `Project ${index + 1}`}
+                            </Link>
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           {formatINR(project.contract_value)}
@@ -317,6 +323,7 @@ export function AdminDashboard() {
                     </TableRow>
                   </TableBody>
                 </Table>
+                </TooltipProvider>
               </CardContent>
             </Card>
           </section>
