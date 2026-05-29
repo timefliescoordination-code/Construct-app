@@ -63,7 +63,7 @@ import {
   getRemainingRecordedBalance,
   getSplitPaymentStatus,
   isGroupFullyRecorded,
-  resolveCategoryMatchKey,
+  normalizeMatchText,
   sumRecordedSplitAmounts,
   validateInitialSplitCreate,
   type SplitPaymentDisplayStatus,
@@ -171,6 +171,43 @@ function splitExpenseDescription(full: string): { subcategory: string; descripti
 
 function toExpenseDescription(subcategory: string, description: string) {
   return subcategory ? `${subcategory} - ${description}` : description
+}
+
+function openSplitMatchesNewExpense(
+  sample: Expense,
+  category: string,
+  subcategory: string,
+  labourTeamId: string,
+  labourTeamNameById: Map<string, string>,
+): boolean {
+  if (normalizeMatchText(sample.category) !== normalizeMatchText(category)) {
+    return false
+  }
+
+  if (labourTeamId) {
+    const sampleTeamId =
+      sample.split_group_labour_team_id ?? sample.labour_team_id ?? ""
+    if (sampleTeamId) {
+      return sampleTeamId === labourTeamId
+    }
+    const formTeam = normalizeMatchText(labourTeamNameById.get(labourTeamId))
+    const { subcategory: teamFromDescription } = splitExpenseDescription(
+      sample.description,
+    )
+    return (
+      Boolean(formTeam) &&
+      formTeam === normalizeMatchText(teamFromDescription)
+    )
+  }
+
+  const sampleSubcategory = normalizeMatchText(
+    sample.split_group_subcategory_name ??
+      splitExpenseDescription(sample.description).subcategory,
+  )
+  return (
+    Boolean(subcategory) &&
+    normalizeMatchText(subcategory) === sampleSubcategory
+  )
 }
 
 function mapExpensesFromProject(project: ProjectWithDetails): Expense[] {
@@ -396,33 +433,7 @@ export function ExpensesTab({
 
   const suggestedSplitGroup = useMemo(() => {
     if (!newExpense.category) return null
-
-    const usesLabour = categoryUsesLabourTeams(
-      newExpense.category,
-      expenseCategories,
-    )
-    if (usesLabour) {
-      if (!newExpense.labourTeamId) return null
-    } else if (!newExpense.subcategory) {
-      return null
-    }
-
-    const teamName = labourTeamNameById.get(newExpense.labourTeamId)
-    const formDescription = usesLabour
-      ? teamName
-        ? `${teamName} - ${newExpense.description}`
-        : newExpense.description
-      : toExpenseDescription(newExpense.subcategory, newExpense.description)
-
-    const currentKey = resolveCategoryMatchKey({
-      category: newExpense.category,
-      usesLabourTeams: usesLabour,
-      labourTeamId: usesLabour ? newExpense.labourTeamId : null,
-      subcategoryName: usesLabour ? null : newExpense.subcategory,
-      description: formDescription,
-      labourTeams,
-    })
-    if (!currentKey) return null
+    if (!newExpense.labourTeamId && !newExpense.subcategory) return null
 
     const byGroup = new Map<string, Expense[]>()
     for (const exp of expenses) {
@@ -435,21 +446,17 @@ export function ExpensesTab({
     for (const [groupId, splits] of byGroup) {
       const sample = splits[0]
       if (!sample) continue
-      const sampleUsesLabour = categoryUsesLabourTeams(
-        sample.category,
-        expenseCategories,
-      )
-      const sampleKey = resolveCategoryMatchKey({
-        category: sample.category,
-        usesLabourTeams: sampleUsesLabour,
-        labourTeamId: sample.labour_team_id,
-        subcategoryName: null,
-        description: sample.description,
-        groupLabourTeamId: sample.split_group_labour_team_id,
-        groupSubcategoryName: sample.split_group_subcategory_name,
-        labourTeams,
-      })
-      if (!sampleKey || sampleKey !== currentKey) continue
+      if (
+        !openSplitMatchesNewExpense(
+          sample,
+          newExpense.category,
+          newExpense.subcategory,
+          newExpense.labourTeamId,
+          labourTeamNameById,
+        )
+      ) {
+        continue
+      }
 
       const total =
         sample.split_total_amount ??
@@ -458,11 +465,9 @@ export function ExpensesTab({
       if (isGroupFullyRecorded(total, recordedSplits)) continue
 
       const recorded = sumRecordedSplitAmounts(recordedSplits)
-      const teamLabel = usesLabour
+      const teamLabel = newExpense.labourTeamId
         ? labourTeamNameById.get(newExpense.labourTeamId) ?? "Labour team"
-        : newExpense.subcategory ||
-          sample.split_group_subcategory_name ||
-          splitExpenseDescription(sample.description).subcategory
+        : newExpense.subcategory
 
       return {
         groupId,
@@ -479,11 +484,8 @@ export function ExpensesTab({
     newExpense.category,
     newExpense.subcategory,
     newExpense.labourTeamId,
-    newExpense.description,
     expenses,
-    expenseCategories,
     labourTeamNameById,
-    labourTeams,
   ])
 
   const handleUseSuggestedSplit = () => {
@@ -514,6 +516,12 @@ export function ExpensesTab({
   }
 
   const refreshExpenses = refreshExpensesWithJoin
+
+  useEffect(() => {
+    if (isAddDialogOpen && projectId) {
+      void refreshExpensesWithJoin()
+    }
+  }, [isAddDialogOpen, projectId])
 
   const openSubcategoryManage = () => {
     if (categoryUsesLabourTeams(newExpense.category, expenseCategories)) {
@@ -1585,12 +1593,7 @@ export function ExpensesTab({
                         <p className="flex items-center gap-2 font-medium">
                           <Split className="h-4 w-4 shrink-0 text-primary" />
                           Split payment already exists for this{" "}
-                          {categoryUsesLabourTeams(
-                            newExpense.category,
-                            expenseCategories,
-                          )
-                            ? "team"
-                            : "subcategory"}
+                          {newExpense.labourTeamId ? "team" : "subcategory"}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {suggestedSplitGroup.teamLabel}
