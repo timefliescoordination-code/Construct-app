@@ -60,10 +60,10 @@ import type { ExpenseCategoryView } from "@/lib/data/expense-categories"
 import { ExpenseCategoryManageDialog } from "@/components/projects/project-detail/expense-category-manage-dialog"
 import { ExpenseSplitGroupDialog } from "@/components/projects/project-detail/expense-split-group-dialog"
 import {
-  buildExpenseCategoryMatchKey,
   getRemainingRecordedBalance,
   getSplitPaymentStatus,
   isGroupFullyRecorded,
+  resolveCategoryMatchKey,
   sumRecordedSplitAmounts,
   validateInitialSplitCreate,
   type SplitPaymentDisplayStatus,
@@ -94,6 +94,8 @@ interface Expense {
   split_group_id?: string | null
   split_number?: number | null
   split_total_amount?: number | null
+  split_group_subcategory_name?: string | null
+  split_group_labour_team_id?: string | null
   milestones?: { name: string } | null
 }
 
@@ -101,7 +103,11 @@ function mapExpenseRow(row: Record<string, unknown>): Expense {
   const groupRaw = row.expense_split_groups
   const group =
     groupRaw && typeof groupRaw === "object" && !Array.isArray(groupRaw)
-      ? (groupRaw as { total_amount: number })
+      ? (groupRaw as {
+          total_amount: number
+          subcategory_name?: string | null
+          labour_team_id?: string | null
+        })
       : null
 
   return {
@@ -118,6 +124,8 @@ function mapExpenseRow(row: Record<string, unknown>): Expense {
     split_group_id: (row.split_group_id as string | null) ?? null,
     split_number: (row.split_number as number | null) ?? null,
     split_total_amount: group ? Number(group.total_amount) : null,
+    split_group_subcategory_name: group?.subcategory_name ?? null,
+    split_group_labour_team_id: group?.labour_team_id ?? null,
     milestones: row.milestones as { name: string } | null,
   }
 }
@@ -163,26 +171,6 @@ function splitExpenseDescription(full: string): { subcategory: string; descripti
 
 function toExpenseDescription(subcategory: string, description: string) {
   return subcategory ? `${subcategory} - ${description}` : description
-}
-
-function categoryMatchKeyFromExpense(
-  sample: Expense,
-  expenseCategories: ExpenseCategoryView[],
-): string {
-  const usesLabour = categoryUsesLabourTeams(sample.category, expenseCategories)
-  if (usesLabour && sample.labour_team_id) {
-    return buildExpenseCategoryMatchKey({
-      category: sample.category,
-      labourTeamId: sample.labour_team_id,
-      subcategoryName: null,
-    })
-  }
-  const { subcategory } = splitExpenseDescription(sample.description)
-  return buildExpenseCategoryMatchKey({
-    category: sample.category,
-    labourTeamId: null,
-    subcategoryName: subcategory || null,
-  })
 }
 
 function mapExpensesFromProject(project: ProjectWithDetails): Expense[] {
@@ -272,9 +260,13 @@ export function ExpensesTab({
 
   useEffect(() => {
     if (project) {
-      setExpenses(mapExpensesFromProject(project))
       setMilestones(project.milestones.map((m) => ({ id: m.id, name: m.name })))
       setIsLoading(false)
+      if (projectId) {
+        void refreshExpensesWithJoin()
+      } else {
+        setExpenses(mapExpensesFromProject(project))
+      }
       return
     }
 
@@ -290,7 +282,9 @@ export function ExpensesTab({
 
         const { data: expensesData, error: expensesError } = await supabase
           .from('expenses')
-          .select('*, milestones(name), expense_split_groups(total_amount)')
+          .select(
+            '*, milestones(name), expense_split_groups(total_amount, subcategory_name, labour_team_id)',
+          )
           .eq('project_id', projectId)
           .order('expense_date', { ascending: false })
 
@@ -318,7 +312,7 @@ export function ExpensesTab({
     }
 
     fetchData()
-  }, [projectId, project])
+  }, [projectId, project?.id])
 
   const reloadExpenseOptions = async () => {
     if (!projectId) return
@@ -413,12 +407,22 @@ export function ExpensesTab({
       return null
     }
 
-    const currentKey = buildExpenseCategoryMatchKey({
+    const teamName = labourTeamNameById.get(newExpense.labourTeamId)
+    const formDescription = usesLabour
+      ? teamName
+        ? `${teamName} - ${newExpense.description}`
+        : newExpense.description
+      : toExpenseDescription(newExpense.subcategory, newExpense.description)
+
+    const currentKey = resolveCategoryMatchKey({
       category: newExpense.category,
+      usesLabourTeams: usesLabour,
       labourTeamId: usesLabour ? newExpense.labourTeamId : null,
       subcategoryName: usesLabour ? null : newExpense.subcategory,
+      description: formDescription,
+      labourTeams,
     })
-    if (!currentKey || currentKey === "|") return null
+    if (!currentKey) return null
 
     const byGroup = new Map<string, Expense[]>()
     for (const exp of expenses) {
@@ -431,8 +435,21 @@ export function ExpensesTab({
     for (const [groupId, splits] of byGroup) {
       const sample = splits[0]
       if (!sample) continue
-      const sampleKey = categoryMatchKeyFromExpense(sample, expenseCategories)
-      if (sampleKey !== currentKey) continue
+      const sampleUsesLabour = categoryUsesLabourTeams(
+        sample.category,
+        expenseCategories,
+      )
+      const sampleKey = resolveCategoryMatchKey({
+        category: sample.category,
+        usesLabourTeams: sampleUsesLabour,
+        labourTeamId: sample.labour_team_id,
+        subcategoryName: null,
+        description: sample.description,
+        groupLabourTeamId: sample.split_group_labour_team_id,
+        groupSubcategoryName: sample.split_group_subcategory_name,
+        labourTeams,
+      })
+      if (!sampleKey || sampleKey !== currentKey) continue
 
       const total =
         sample.split_total_amount ??
@@ -443,7 +460,9 @@ export function ExpensesTab({
       const recorded = sumRecordedSplitAmounts(recordedSplits)
       const teamLabel = usesLabour
         ? labourTeamNameById.get(newExpense.labourTeamId) ?? "Labour team"
-        : newExpense.subcategory
+        : newExpense.subcategory ||
+          sample.split_group_subcategory_name ||
+          splitExpenseDescription(sample.description).subcategory
 
       return {
         groupId,
@@ -460,9 +479,11 @@ export function ExpensesTab({
     newExpense.category,
     newExpense.subcategory,
     newExpense.labourTeamId,
+    newExpense.description,
     expenses,
     expenseCategories,
     labourTeamNameById,
+    labourTeams,
   ])
 
   const handleUseSuggestedSplit = () => {
@@ -472,17 +493,27 @@ export function ExpensesTab({
     setSplitGroupEditId(suggestedSplitGroup.groupId)
   }
 
-  const refreshExpenses = async () => {
+  const refreshExpensesWithJoin = async () => {
     if (!projectId) return
     const supabase = createClient()
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("expenses")
-      .select("*, milestones(name), expense_split_groups(total_amount)")
+      .select(
+        "*, milestones(name), expense_split_groups(total_amount, subcategory_name, labour_team_id)",
+      )
       .eq("project_id", projectId)
       .order("expense_date", { ascending: false })
+
+    if (error) {
+      console.error("[expenses-tab] refresh expenses:", error)
+      return
+    }
+
     setExpenses((data ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>)))
     onProjectChange?.()
   }
+
+  const refreshExpenses = refreshExpensesWithJoin
 
   const openSubcategoryManage = () => {
     if (categoryUsesLabourTeams(newExpense.category, expenseCategories)) {
