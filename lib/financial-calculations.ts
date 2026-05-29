@@ -161,13 +161,70 @@ export function calculateCurrentProfit(
 }
 
 /**
- * Calculate projected profit (if expenses continue at current rate)
+ * Contract minus approved spend. Misleading on early-stage projects — prefer
+ * {@link calculateRealizedProfit} and {@link calculateForecastProfit}.
  */
 export function calculateProjectedProfit(
   totalContractValue: number,
   totalExpenses: number
 ): number {
   return totalContractValue - totalExpenses
+}
+
+/**
+ * Realized profit: money collected minus money spent so far.
+ */
+export function calculateRealizedProfit(
+  totalReceived: number,
+  totalExpenses: number,
+): number {
+  return totalReceived - totalExpenses
+}
+
+/**
+ * Planned construction spend (contract minus target profit at margin).
+ */
+export function calculatePlannedCompletionCost(
+  totalContractValue: number,
+  expectedProfit: number,
+): number {
+  return calculateStageBudget(totalContractValue, expectedProfit)
+}
+
+/**
+ * Estimated total cost at completion from burn rate when work has started.
+ */
+export function calculateProjectedCompletionCost(
+  totalExpenses: number,
+  completionPercent: number,
+  plannedCompletionCost: number,
+): number {
+  if (completionPercent > 0) {
+    const extrapolated = totalExpenses / (completionPercent / 100)
+    return Math.max(extrapolated, totalExpenses)
+  }
+  return plannedCompletionCost
+}
+
+/**
+ * Forecast profit: contract value minus projected cost at completion.
+ */
+export function calculateForecastProfit(
+  totalContractValue: number,
+  projectedCompletionCost: number,
+): number {
+  return totalContractValue - projectedCompletionCost
+}
+
+/**
+ * Forecast margin as % of contract value (one decimal place).
+ */
+export function calculateForecastMarginPercent(
+  forecastProfit: number,
+  totalContractValue: number,
+): number {
+  if (totalContractValue <= 0) return 0
+  return Math.round((forecastProfit / totalContractValue) * 1000) / 10
 }
 
 /**

@@ -1,6 +1,10 @@
 import {
   calculateCompletionPercent,
-  calculateProjectedProfit,
+  calculateForecastMarginPercent,
+  calculateForecastProfit,
+  calculatePlannedCompletionCost,
+  calculateProjectedCompletionCost,
+  calculateRealizedProfit,
   calculateTotalContractValue,
   type MilestoneData,
 } from "@/lib/financial-calculations"
@@ -18,7 +22,9 @@ export interface AdminProjectSummary {
   pending_payables: number
   cashflow_warnings: number
   progress: number
-  profit_loss: number
+  realized_profit: number
+  forecast_profit: number
+  forecast_margin_percent: number
   expected_profit: number
   pm_label: string
   expected_margin_percent: number
@@ -34,7 +40,9 @@ export interface AdminCompanyMetrics {
   totalPayables: number
   currentCashflow: number
   expectedProfit: number
-  projectedProfit: number
+  realizedProfit: number
+  forecastProfit: number
+  forecastMarginPercent: number
   overbudgetProjects: number
   cashflowWarnings: number
   totalPMs: number
@@ -154,9 +162,26 @@ export function buildAdminDashboardData(input: {
     const totalReceived = receivedTotals.get(project.id) ?? 0
     const milestones = milestonesByProject.get(project.id) ?? []
     const progress = calculateCompletionPercent(milestones)
-    const profitLoss = calculateProjectedProfit(totalContractValue, totalExpenses)
     const marginPercent = Number(project.expected_margin_percent)
     const expectedProfit = totalContractValue * (marginPercent / 100)
+    const plannedCompletionCost = calculatePlannedCompletionCost(
+      totalContractValue,
+      expectedProfit,
+    )
+    const projectedCompletionCost = calculateProjectedCompletionCost(
+      totalExpenses,
+      progress,
+      plannedCompletionCost,
+    )
+    const realizedProfit = calculateRealizedProfit(totalReceived, totalExpenses)
+    const forecastProfit = calculateForecastProfit(
+      totalContractValue,
+      projectedCompletionCost,
+    )
+    const forecastMarginPercent = calculateForecastMarginPercent(
+      forecastProfit,
+      totalContractValue,
+    )
 
     return {
       id: project.id,
@@ -169,7 +194,9 @@ export function buildAdminDashboardData(input: {
       pending_payables: payableTotals.get(project.id) ?? 0,
       cashflow_warnings: overdueTotals.get(project.id) ?? 0,
       progress,
-      profit_loss: profitLoss,
+      realized_profit: realizedProfit,
+      forecast_profit: forecastProfit,
+      forecast_margin_percent: forecastMarginPercent,
       expected_profit: expectedProfit,
       pm_label: getProjectPmLabel(project),
       expected_margin_percent: marginPercent,
@@ -202,8 +229,10 @@ export function aggregateAdminCompanyMetrics(
   const totalContractValue = projects.reduce((sum, project) => sum + project.contract_value, 0)
   const totalExpenses = projects.reduce((sum, project) => sum + project.total_expenses, 0)
   const receivedPayments = projects.reduce((sum, project) => sum + project.total_received, 0)
-  const projectedProfit = projects.reduce((sum, project) => sum + project.profit_loss, 0)
+  const realizedProfit = projects.reduce((sum, project) => sum + project.realized_profit, 0)
+  const forecastProfit = projects.reduce((sum, project) => sum + project.forecast_profit, 0)
   const expectedProfit = projects.reduce((sum, project) => sum + project.expected_profit, 0)
+  const forecastMarginPercent = calculateForecastMarginPercent(forecastProfit, totalContractValue)
   const totalReceivables = projects.reduce(
     (sum, project) => sum + project.pending_receivables,
     0,
@@ -222,8 +251,10 @@ export function aggregateAdminCompanyMetrics(
     totalPayables,
     currentCashflow: receivedPayments - totalExpenses,
     expectedProfit,
-    projectedProfit,
-    overbudgetProjects: projects.filter((project) => project.profit_loss < 0).length,
+    realizedProfit,
+    forecastProfit,
+    forecastMarginPercent,
+    overbudgetProjects: projects.filter((project) => project.forecast_profit < 0).length,
     cashflowWarnings:
       staff.cashflowWarnings ??
       projects.reduce((sum, project) => sum + project.cashflow_warnings, 0),

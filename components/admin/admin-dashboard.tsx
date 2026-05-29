@@ -197,7 +197,7 @@ export function AdminDashboard() {
               <CardHeader>
                 <CardTitle>Profit &amp; Loss by Project</CardTitle>
                 <CardDescription>
-                  Contract value vs approved spend — profit or loss at a glance
+                  Realized profit (collected − spent) and forecast profit (contract − projected cost at completion)
                 </CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
@@ -208,7 +208,9 @@ export function AdminDashboard() {
                       <TableHead className="text-right">Contract</TableHead>
                       <TableHead className="text-right">Spent</TableHead>
                       <TableHead className="text-right">Received</TableHead>
-                      <TableHead className="text-right">Profit / Loss</TableHead>
+                      <TableHead className="text-right">Progress</TableHead>
+                      <TableHead className="text-right">Realized</TableHead>
+                      <TableHead className="text-right">Forecast</TableHead>
                       <TableHead>PM</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
@@ -233,14 +235,29 @@ export function AdminDashboard() {
                         <TableCell className="text-right text-green-500">
                           {formatINR(project.total_received)}
                         </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {project.progress}%
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            "text-right font-medium",
+                            project.realized_profit >= 0 ? "text-green-500" : "text-destructive",
+                          )}
+                        >
+                          {project.realized_profit >= 0 ? "+" : ""}
+                          {formatINR(project.realized_profit)}
+                        </TableCell>
                         <TableCell
                           className={cn(
                             "text-right font-semibold",
-                            project.profit_loss >= 0 ? "text-green-500" : "text-destructive",
+                            project.forecast_profit >= 0 ? "text-green-500" : "text-destructive",
                           )}
                         >
-                          {project.profit_loss >= 0 ? "+" : ""}
-                          {formatINR(project.profit_loss)}
+                          {project.forecast_profit >= 0 ? "+" : ""}
+                          {formatINR(project.forecast_profit)}
+                          <span className="block text-[10px] font-normal text-muted-foreground">
+                            {project.forecast_margin_percent}% margin
+                          </span>
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm">
                           {project.pm_label}
@@ -269,16 +286,30 @@ export function AdminDashboard() {
                           projects.reduce((sum, p) => sum + p.total_received, 0),
                         )}
                       </TableCell>
+                      <TableCell />
                       <TableCell
                         className={cn(
                           "text-right",
-                          projects.reduce((sum, p) => sum + p.profit_loss, 0) >= 0
+                          projects.reduce((sum, p) => sum + p.realized_profit, 0) >= 0
                             ? "text-green-500"
                             : "text-destructive",
                         )}
                       >
                         {(() => {
-                          const total = projects.reduce((sum, p) => sum + p.profit_loss, 0)
+                          const total = projects.reduce((sum, p) => sum + p.realized_profit, 0)
+                          return `${total >= 0 ? "+" : ""}${formatINR(total)}`
+                        })()}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          "text-right",
+                          projects.reduce((sum, p) => sum + p.forecast_profit, 0) >= 0
+                            ? "text-green-500"
+                            : "text-destructive",
+                        )}
+                      >
+                        {(() => {
+                          const total = projects.reduce((sum, p) => sum + p.forecast_profit, 0)
                           return `${total >= 0 ? "+" : ""}${formatINR(total)}`
                         })()}
                       </TableCell>
@@ -339,30 +370,46 @@ export function AdminDashboard() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20">
+                <Card
+                  className={cn(
+                    "border-2",
+                    displayCompany.realizedProfit >= 0
+                      ? "bg-green-500/5 border-green-500/30"
+                      : "bg-destructive/5 border-destructive/30",
+                  )}
+                >
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Expected Profit
+                      Realized Profit
                     </CardTitle>
-                    <TrendingUp className="h-4 w-4 text-green-500" />
+                    {displayCompany.realizedProfit >= 0 ? (
+                      <TrendingUp className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <TrendingDown className="h-4 w-4 text-destructive" />
+                    )}
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-green-500">
-                      {formatINR(displayCompany.expectedProfit)}
+                    <div
+                      className={cn(
+                        "text-3xl font-bold",
+                        displayCompany.realizedProfit >= 0 ? "text-green-500" : "text-destructive",
+                      )}
+                    >
+                      {displayCompany.realizedProfit >= 0 ? "+" : ""}
+                      {formatINR(displayCompany.realizedProfit)}
                     </div>
-                    <div className="flex items-center gap-1 mt-2 text-xs text-green-500">
-                      <ArrowUpRight className="h-3 w-3" />
-                      {displayCompany.weightedMarginPercent}% margin
-                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Collected − spent so far (cash position)
+                    </p>
                   </CardContent>
                 </Card>
 
                 <Card className="bg-card border-border">
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Projected Profit
+                      Forecast Profit
                     </CardTitle>
-                    {displayCompany.projectedProfit >= displayCompany.expectedProfit ? (
+                    {displayCompany.forecastProfit >= displayCompany.expectedProfit ? (
                       <TrendingUp className="h-4 w-4 text-green-500" />
                     ) : (
                       <TrendingDown className="h-4 w-4 text-yellow-500" />
@@ -372,26 +419,23 @@ export function AdminDashboard() {
                     <div
                       className={cn(
                         "text-3xl font-bold",
-                        displayCompany.projectedProfit >= 0
-                          ? "text-green-500"
-                          : "text-destructive",
+                        displayCompany.forecastProfit >= 0 ? "text-green-500" : "text-destructive",
                       )}
                     >
-                      {displayCompany.projectedProfit >= 0 ? "+" : ""}
-                      {formatINR(displayCompany.projectedProfit)}
+                      {displayCompany.forecastProfit >= 0 ? "+" : ""}
+                      {formatINR(displayCompany.forecastProfit)}
                     </div>
-                    <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-                      {displayCompany.projectedProfit >= displayCompany.expectedProfit ? (
-                        <>
-                          <ArrowUpRight className="h-3 w-3 text-green-500" />
-                          <span className="text-green-500">On track</span>
-                        </>
-                      ) : (
-                        <>
-                          <ArrowDownRight className="h-3 w-3 text-yellow-500" />
-                          <span className="text-yellow-500">Below expected</span>
-                        </>
-                      )}
+                    <div className="flex flex-col gap-0.5 mt-2 text-xs text-muted-foreground">
+                      <span>
+                        Forecast margin{" "}
+                        <span className="font-medium text-foreground">
+                          {displayCompany.forecastMarginPercent}%
+                        </span>
+                      </span>
+                      <span>
+                        Target at plan: {formatINR(displayCompany.expectedProfit)} (
+                        {displayCompany.weightedMarginPercent}%)
+                      </span>
                     </div>
                   </CardContent>
                 </Card>
