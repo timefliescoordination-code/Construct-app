@@ -15,6 +15,10 @@ export function getSupabaseErrorMessage(error: unknown): string {
       return 'Manpower tables are missing. In Supabase SQL Editor, run supabase/manpower-module.sql (paste the full file contents). Run assignment-scoped-access.sql first if that script errors on is_admin or user_can_access_project. Then refresh this page.'
     }
 
+    if (/labour_teams/i.test(msg)) {
+      return 'Labour team tables are missing. In Supabase SQL Editor, run supabase/labour-teams-module.sql after assignment-scoped-access.sql, then refresh this page.'
+    }
+
     return 'Database tables are missing. Run supabase/schema.sql in Supabase SQL Editor (copy the file contents, not the filename), then refresh this page.'
   }
 

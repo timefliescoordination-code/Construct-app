@@ -103,6 +103,7 @@ export async function createExpenseAction(input: {
   vendorName: string | null
   billNumber: string | null
   expenseDate: string
+  labourTeamId?: string | null
   status?: 'approved' | 'rejected' | 'pending'
 }): Promise<TabActionResult<Record<string, unknown>>> {
   const session = await getSession()
@@ -122,6 +123,8 @@ export async function createExpenseAction(input: {
       vendor_name: input.vendorName,
       bill_number: input.billNumber,
       expense_date: input.expenseDate,
+      labour_team_id:
+        input.category === 'Labour' ? input.labourTeamId ?? null : null,
       status: input.status ?? 'pending',
       entered_by: session.userId,
     })
@@ -150,6 +153,7 @@ export async function updateExpenseAction(input: {
   vendorName: string | null
   billNumber: string | null
   expenseDate: string
+  labourTeamId?: string | null
   status?: 'approved' | 'rejected' | 'pending'
 }): Promise<TabActionResult<Record<string, unknown>>> {
   const session = await getSession()
@@ -166,6 +170,8 @@ export async function updateExpenseAction(input: {
     vendor_name: input.vendorName,
     bill_number: input.billNumber,
     expense_date: input.expenseDate,
+    labour_team_id:
+      input.category === 'Labour' ? input.labourTeamId ?? null : null,
   }
 
   if (input.status !== undefined) {

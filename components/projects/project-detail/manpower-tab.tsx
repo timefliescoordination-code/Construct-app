@@ -44,7 +44,10 @@ import {
 import { toast } from "sonner"
 import { formatINR } from "@/lib/currency"
 import type { ManpowerPayload, ManpowerWeekView } from "@/lib/data/manpower"
+import type { LabourTeamExpenseSummary } from "@/lib/data/labour-teams"
 import type { LabourType } from "@/lib/types/database"
+import { useAuth } from "@/lib/hooks/use-auth"
+import { LabourTeamExpenseStrip } from "@/components/projects/project-detail/labour-team-expense-strip"
 import {
   createLabourTypeAction,
   createManpowerWeekAction,
@@ -54,6 +57,11 @@ import {
   updateManpowerWeekRateAction,
   upsertManpowerCellAction,
 } from "@/lib/projects/manpower-actions"
+import {
+  createLabourTeamAction,
+  deleteLabourTeamAction,
+  updateLabourTeamAction,
+} from "@/lib/projects/labour-team-actions"
 
 type ProjectStageOption = { id: string; name: string }
 
@@ -77,7 +85,10 @@ export function ManpowerTab({
   projectMilestones = [],
   readOnly = false,
 }: ManpowerTabProps) {
+  const { canManageProjects } = useAuth()
   const [data, setData] = useState<ManpowerPayload | null>(null)
+  const [teamSummaries, setTeamSummaries] = useState<LabourTeamExpenseSummary[]>([])
+  const [totalApprovedLabour, setTotalApprovedLabour] = useState(0)
   const [loading, setLoading] = useState(true)
   const [expandedWeekId, setExpandedWeekId] = useState<string | null>(null)
   const [editingCell, setEditingCell] = useState<EditingCell>(null)
@@ -87,29 +98,49 @@ export function ManpowerTab({
   const [selectedMilestoneId, setSelectedMilestoneId] = useState("")
 
   const [typesOpen, setTypesOpen] = useState(false)
+  const [teamsOpen, setTeamsOpen] = useState(false)
   const [typeForm, setTypeForm] = useState({
     id: "",
     name: "",
     shortLabel: "",
     defaultWage: "",
   })
+  const [teamForm, setTeamForm] = useState({ id: "", name: "" })
 
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}/manpower`, {
-        credentials: "include",
-        cache: "no-store",
-      })
-      const json = (await res.json().catch(() => ({}))) as {
+      const [manpowerRes, teamsRes] = await Promise.all([
+        fetch(`/api/projects/${projectId}/manpower`, {
+          credentials: "include",
+          cache: "no-store",
+        }),
+        fetch(`/api/projects/${projectId}/labour-teams`, {
+          credentials: "include",
+          cache: "no-store",
+        }),
+      ])
+
+      const json = (await manpowerRes.json().catch(() => ({}))) as {
         data?: ManpowerPayload
         error?: string
       }
-      if (!res.ok) {
+      if (!manpowerRes.ok) {
         throw new Error(json.error || "Failed to load manpower data.")
       }
       setData(json.data ?? null)
       setExpandedWeekId((current) => current ?? json.data?.weeks[0]?.id ?? null)
+
+      const teamsJson = (await teamsRes.json().catch(() => ({}))) as {
+        data?: {
+          summaries: LabourTeamExpenseSummary[]
+          totalApprovedLabour: number
+        }
+      }
+      if (teamsRes.ok && teamsJson.data) {
+        setTeamSummaries(teamsJson.data.summaries)
+        setTotalApprovedLabour(teamsJson.data.totalApprovedLabour)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load manpower.")
       setData(null)
@@ -265,6 +296,57 @@ export function ManpowerTab({
     await loadData()
   }
 
+  const openCreateTeam = () => {
+    setTeamForm({ id: "", name: "" })
+    setTeamsOpen(true)
+  }
+
+  const openEditTeam = (team: LabourTeamExpenseSummary) => {
+    setTeamForm({ id: team.teamId, name: team.teamName })
+    setTeamsOpen(true)
+  }
+
+  const handleSaveTeam = async () => {
+    if (!teamForm.name.trim()) {
+      toast.error("Team name is required.")
+      return
+    }
+
+    setSaving(true)
+    const result = teamForm.id
+      ? await updateLabourTeamAction({
+          projectId,
+          labourTeamId: teamForm.id,
+          name: teamForm.name,
+        })
+      : await createLabourTeamAction({
+          projectId,
+          name: teamForm.name,
+        })
+    setSaving(false)
+
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+
+    toast.success(teamForm.id ? "Labour team updated." : "Labour team added.")
+    setTeamsOpen(false)
+    await loadData()
+  }
+
+  const handleDeleteTeam = async (labourTeamId: string) => {
+    setSaving(true)
+    const result = await deleteLabourTeamAction({ projectId, labourTeamId })
+    setSaving(false)
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+    toast.success("Labour team deleted.")
+    await loadData()
+  }
+
   const handleDeleteType = async (labourTypeId: string) => {
     setSaving(true)
     const result = await deleteLabourTypeAction({ projectId, labourTypeId })
@@ -316,6 +398,12 @@ export function ManpowerTab({
           )}
           {!readOnly && (
             <>
+              {canManageProjects && (
+                <Button variant="outline" size="sm" onClick={openCreateTeam}>
+                  <Settings2 className="mr-1 h-4 w-4" />
+                  Manage Teams
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={openCreateType}>
                 <Settings2 className="mr-1 h-4 w-4" />
                 Manage Types
@@ -328,6 +416,13 @@ export function ManpowerTab({
           )}
         </div>
       </div>
+
+      {teamSummaries.length > 0 && (
+        <LabourTeamExpenseStrip
+          summaries={teamSummaries}
+          totalApprovedLabour={totalApprovedLabour}
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-xl border border-border bg-card p-3">
@@ -768,6 +863,106 @@ export function ManpowerTab({
                   : typeForm.id
                     ? "Save Type"
                     : "Add Type"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={teamsOpen} onOpenChange={setTeamsOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {teamForm.id ? "Edit Labour Team" : "Manage Labour Teams"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {teamForm.id && canManageProjects && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-fit px-0"
+              onClick={() => setTeamForm({ id: "", name: "" })}
+            >
+              Back to list
+            </Button>
+          )}
+
+          {!teamForm.id && (
+            <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border p-2">
+              {teamSummaries.map((team) => (
+                <div
+                  key={team.teamId}
+                  className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-2"
+                >
+                  <div>
+                    <p className="font-medium text-sm">{team.teamName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Approved {formatINR(team.approvedTotal)}
+                      {team.pendingTotal > 0 &&
+                        ` · ${formatINR(team.pendingTotal)} pending`}
+                    </p>
+                  </div>
+                  {canManageProjects && (
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => openEditTeam(team)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete {team.teamName}?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Teams linked to labour expenses cannot be deleted.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => void handleDeleteTeam(team.teamId)}
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {canManageProjects && (
+            <div className="space-y-2 py-2">
+              <Label>Team name</Label>
+              <Input
+                value={teamForm.name}
+                onChange={(e) =>
+                  setTeamForm((prev) => ({ ...prev, name: e.target.value }))
+                }
+                placeholder="e.g. Civil Team"
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTeamsOpen(false)}>
+              Close
+            </Button>
+            {canManageProjects && (
+              <Button onClick={() => void handleSaveTeam()} disabled={saving}>
+                {saving ? "Saving..." : teamForm.id ? "Save Team" : "Add Team"}
               </Button>
             )}
           </DialogFooter>

@@ -61,9 +61,19 @@ export interface Expense {
   vendor_name: string | null
   bill_number: string | null
   expense_date: string
+  labour_team_id: string | null
   status: ExpenseStatus
   submitted_by: string | null
   approved_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LabourTeam {
+  id: string
+  project_id: string
+  name: string
+  sort_order: number
   created_at: string
   updated_at: string
 }
