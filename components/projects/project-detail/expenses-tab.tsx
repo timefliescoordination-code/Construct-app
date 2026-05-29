@@ -29,7 +29,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import {
   Tooltip,
@@ -523,7 +522,7 @@ export function ExpensesTab({
       return
     }
 
-    if (!skipContinueCheck) {
+    if (!skipContinueCheck && !splitMode) {
       const openGroupId = findOpenMatchingSplitGroup()
       if (openGroupId) {
         setContinueSplitGroupId(openGroupId)
@@ -582,9 +581,9 @@ export function ExpensesTab({
         toast.error(result.error)
       } else {
         toast.success("Split expense started — add more payments when they happen.")
-        await refreshExpenses()
-        resetNewExpenseForm()
         setIsAddDialogOpen(false)
+        resetNewExpenseForm()
+        void refreshExpenses()
       }
       setIsSubmitting(false)
       return
@@ -1281,13 +1280,21 @@ export function ExpensesTab({
                   ))}
                 </SelectContent>
               </Select>
-              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="gap-2">
-                    <Plus className="h-4 w-4" />
-                    Add Expense
-                  </Button>
-                </DialogTrigger>
+              <Button
+                type="button"
+                className="gap-2"
+                onClick={() => setIsAddDialogOpen(true)}
+              >
+                <Plus className="h-4 w-4" />
+                Add Expense
+              </Button>
+              <Dialog
+                open={isAddDialogOpen}
+                onOpenChange={(open) => {
+                  setIsAddDialogOpen(open)
+                  if (!open) resetNewExpenseForm()
+                }}
+              >
                 <DialogContent className="sm:max-w-[600px] bg-card border-border">
                   <DialogHeader>
                     <DialogTitle>Add New Expense</DialogTitle>
@@ -1523,10 +1530,19 @@ export function ExpensesTab({
                     </div>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isSubmitting}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsAddDialogOpen(false)}
+                      disabled={isSubmitting}
+                    >
                       Cancel
                     </Button>
-                    <Button onClick={handleAddExpense} disabled={isSubmitting}>
+                    <Button
+                      type="button"
+                      onClick={() => void handleAddExpense()}
+                      disabled={isSubmitting}
+                    >
                       {isSubmitting ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1883,6 +1899,8 @@ export function ExpensesTab({
             <AlertDialogAction
               onClick={() => {
                 setContinueSplitOpen(false)
+                setIsAddDialogOpen(false)
+                resetNewExpenseForm()
                 if (continueSplitGroupId) {
                   setSplitGroupEditId(continueSplitGroupId)
                 }
