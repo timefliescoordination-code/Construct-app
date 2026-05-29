@@ -292,7 +292,8 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
                   <code className="rounded bg-muted px-1">schema.sql</code>, then{" "}
                   <code className="rounded bg-muted px-1">assignment-scoped-access.sql</code>, then{" "}
                   <code className="rounded bg-muted px-1">manpower-module.sql</code>, then{" "}
-                  <code className="rounded bg-muted px-1">labour-teams-module.sql</code>.
+                  <code className="rounded bg-muted px-1">labour-teams-module.sql</code>, then{" "}
+                  <code className="rounded bg-muted px-1">expense-categories-module.sql</code>.
                 </p>
               </CardContent>
             )}

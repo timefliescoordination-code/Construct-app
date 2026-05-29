@@ -44,17 +44,17 @@ import { useAuth } from "@/lib/hooks/use-auth"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { milestoneNameById } from "@/lib/project-tab-hydration"
 import { createExpenseAction, updateExpenseAction } from "@/lib/projects/tab-actions"
+import type { ExpenseCategoryView } from "@/lib/data/expense-categories"
+import { ExpenseCategoryManageDialog } from "@/components/projects/project-detail/expense-category-manage-dialog"
 import * as XLSX from "xlsx"
 
-const categories = ["Materials", "Labour", "Equipment", "Miscellaneous"]
-const subcategories: Record<string, string[]> = {
-  Materials: ["Cement", "Steel", "Sand", "Bricks", "Tiles", "Paint", "Plumbing", "Electrical"],
-  Equipment: ["Excavator", "Crane", "Mixer", "Compactor", "Generator"],
-  Miscellaneous: ["Transportation", "Permits", "Insurance", "Utilities", "Other"],
-}
-
-function isLabourCategory(category: string) {
-  return category.trim().toLowerCase() === "labour"
+function categoryUsesLabourTeams(
+  categoryName: string,
+  categories: ExpenseCategoryView[],
+) {
+  const match = categories.find((c) => c.name === categoryName)
+  if (match) return match.usesLabourTeams
+  return categoryName.trim().toLowerCase() === "labour"
 }
 const statuses = ["pending", "approved", "rejected"]
 
@@ -163,6 +163,12 @@ export function ExpensesTab({
   const csvInputRef = useRef<HTMLInputElement | null>(null)
   const excelInputRef = useRef<HTMLInputElement | null>(null)
   const [labourTeams, setLabourTeams] = useState<LabourTeamOption[]>([])
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryView[]>([])
+  const [categoryManageOpen, setCategoryManageOpen] = useState(false)
+  const [subcategoryManageOpen, setSubcategoryManageOpen] = useState(false)
+  const [manageMode, setManageMode] = useState<"subcategories" | "labour-teams">(
+    "subcategories",
+  )
   const [newExpense, setNewExpense] = useState({
     date: format(new Date(), 'yyyy-MM-dd'),
     category: "",
@@ -237,33 +243,69 @@ export function ExpensesTab({
     fetchData()
   }, [projectId, project])
 
-  useEffect(() => {
+  const reloadExpenseOptions = async () => {
     if (!projectId) return
-
-    async function fetchLabourTeams() {
-      try {
-        const res = await fetch(`/api/projects/${projectId}/labour-teams`, {
+    try {
+      const [teamsRes, categoriesRes] = await Promise.all([
+        fetch(`/api/projects/${projectId}/labour-teams`, {
           credentials: "include",
           cache: "no-store",
-        })
-        const json = (await res.json().catch(() => ({}))) as {
-          data?: { teams: LabourTeamOption[] }
-        }
-        if (res.ok && json.data?.teams) {
-          setLabourTeams(json.data.teams)
-        }
-      } catch {
-        // Non-blocking; labour team dropdown may be empty until migration runs
+        }),
+        fetch(`/api/projects/${projectId}/expense-categories`, {
+          credentials: "include",
+          cache: "no-store",
+        }),
+      ])
+      const teamsJson = (await teamsRes.json().catch(() => ({}))) as {
+        data?: { teams: LabourTeamOption[] }
       }
+      if (teamsRes.ok && teamsJson.data?.teams) {
+        setLabourTeams(teamsJson.data.teams)
+      }
+      const categoriesJson = (await categoriesRes.json().catch(() => ({}))) as {
+        data?: { categories: ExpenseCategoryView[] }
+      }
+      if (categoriesRes.ok && categoriesJson.data?.categories) {
+        setExpenseCategories(categoriesJson.data.categories)
+      }
+    } catch {
+      // Non-blocking until migrations are applied
     }
+  }
 
-    void fetchLabourTeams()
+  useEffect(() => {
+    void reloadExpenseOptions()
   }, [projectId])
 
   const labourTeamNameById = useMemo(
     () => new Map(labourTeams.map((t) => [t.id, t.name])),
     [labourTeams],
   )
+
+  const categoryNames = useMemo(
+    () => expenseCategories.map((c) => c.name),
+    [expenseCategories],
+  )
+
+  const subcategoriesForCategory = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const cat of expenseCategories) {
+      map.set(
+        cat.name,
+        cat.subcategories.map((s) => s.name),
+      )
+    }
+    return map
+  }, [expenseCategories])
+
+  const openSubcategoryManage = () => {
+    if (categoryUsesLabourTeams(newExpense.category, expenseCategories)) {
+      setManageMode("labour-teams")
+    } else {
+      setManageMode("subcategories")
+    }
+    setSubcategoryManageOpen(true)
+  }
 
   const resolveLabourTeamId = (
     teamId: string | null | undefined,
@@ -288,7 +330,10 @@ export function ExpensesTab({
       return
     }
 
-    if (isLabourCategory(newExpense.category) && !newExpense.labourTeamId) {
+    if (
+      categoryUsesLabourTeams(newExpense.category, expenseCategories) &&
+      !newExpense.labourTeamId
+    ) {
       toast.error("Select which labour team received this payment")
       return
     }
@@ -296,7 +341,8 @@ export function ExpensesTab({
     setIsSubmitting(true)
 
     const teamName = labourTeamNameById.get(newExpense.labourTeamId)
-    const description = isLabourCategory(newExpense.category)
+    const usesLabour = categoryUsesLabourTeams(newExpense.category, expenseCategories)
+    const description = usesLabour
       ? newExpense.description
       : toExpenseDescription(newExpense.subcategory, newExpense.description)
     const result = await createExpenseAction({
@@ -308,9 +354,7 @@ export function ExpensesTab({
       vendorName: newExpense.vendor || null,
       billNumber: newExpense.billNumber || null,
       expenseDate: newExpense.date,
-      labourTeamId: isLabourCategory(newExpense.category)
-        ? newExpense.labourTeamId
-        : null,
+      labourTeamId: usesLabour ? newExpense.labourTeamId : null,
     })
 
     if (!result.ok) {
@@ -363,9 +407,11 @@ export function ExpensesTab({
     setEditExpense({
       date: expense.expense_date,
       category: expense.category,
-      subcategory: isLabourCategory(expense.category) ? "" : subcategory,
+      subcategory: categoryUsesLabourTeams(expense.category, expenseCategories)
+        ? ""
+        : subcategory,
       labourTeamId,
-      description: isLabourCategory(expense.category)
+      description: categoryUsesLabourTeams(expense.category, expenseCategories)
         ? labourTeamId
           ? description
           : expense.description
@@ -390,14 +436,18 @@ export function ExpensesTab({
       return
     }
 
-    if (isLabourCategory(editExpense.category) && !editExpense.labourTeamId) {
+    if (
+      categoryUsesLabourTeams(editExpense.category, expenseCategories) &&
+      !editExpense.labourTeamId
+    ) {
       toast.error("Select which labour team received this payment")
       return
     }
 
     setIsSubmitting(true)
     const teamName = labourTeamNameById.get(editExpense.labourTeamId)
-    const description = isLabourCategory(editExpense.category)
+    const usesLabour = categoryUsesLabourTeams(editExpense.category, expenseCategories)
+    const description = usesLabour
       ? editExpense.description
       : toExpenseDescription(editExpense.subcategory, editExpense.description)
     const result = await updateExpenseAction({
@@ -410,9 +460,7 @@ export function ExpensesTab({
       vendorName: editExpense.vendor || null,
       billNumber: editExpense.billNumber || null,
       expenseDate: editExpense.date,
-      labourTeamId: isLabourCategory(editExpense.category)
-        ? editExpense.labourTeamId
-        : null,
+      labourTeamId: usesLabour ? editExpense.labourTeamId : null,
       status: canManageProjects
         ? (editExpense.status as "approved" | "rejected" | "pending")
         : undefined,
@@ -555,7 +603,7 @@ export function ExpensesTab({
   const normalizeCategory = (value: string): string => {
     const cleaned = value.trim().toLowerCase()
     if (!cleaned) return ""
-    const match = categories.find((cat) => cat.toLowerCase() === cleaned)
+    const match = categoryNames.find((cat) => cat.toLowerCase() === cleaned)
     return match ?? value.trim()
   }
 
@@ -635,8 +683,9 @@ export function ExpensesTab({
         }
 
         const subcategory = row.subcategory.trim()
+        const usesLabour = categoryUsesLabourTeams(category, expenseCategories)
         const labourTeam =
-          isLabourCategory(category) && subcategory
+          usesLabour && subcategory
             ? labourTeams.find(
                 (t) => t.name.toLowerCase() === subcategory.toLowerCase(),
               )
@@ -646,7 +695,7 @@ export function ExpensesTab({
           projectId,
           milestoneId,
           category,
-          description: isLabourCategory(category)
+          description: usesLabour
             ? labourTeam
               ? `${labourTeam.name} - ${description}`
               : description
@@ -940,7 +989,7 @@ export function ExpensesTab({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map((cat) => (
+                  {categoryNames.map((cat) => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                   ))}
                 </SelectContent>
@@ -979,7 +1028,21 @@ export function ExpensesTab({
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Category *</Label>
+                        <div className="flex items-center justify-between gap-2">
+                          <Label>Category *</Label>
+                          {canManageProjects && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 gap-1 px-2 text-xs"
+                              onClick={() => setCategoryManageOpen(true)}
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </Button>
+                          )}
+                        </div>
                         <Select 
                           value={newExpense.category}
                           onValueChange={(val) => setNewExpense({
@@ -993,7 +1056,7 @@ export function ExpensesTab({
                             <SelectValue placeholder="Select category" />
                           </SelectTrigger>
                           <SelectContent>
-                            {categories.map((cat) => (
+                            {categoryNames.map((cat) => (
                               <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                             ))}
                           </SelectContent>
@@ -1002,12 +1065,26 @@ export function ExpensesTab({
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>
-                          {isLabourCategory(newExpense.category)
-                            ? "Labour team *"
-                            : "Subcategory"}
-                        </Label>
-                        {isLabourCategory(newExpense.category) ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <Label>
+                            {categoryUsesLabourTeams(newExpense.category, expenseCategories)
+                              ? "Labour team *"
+                              : "Subcategory"}
+                          </Label>
+                          {canManageProjects && newExpense.category && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 gap-1 px-2 text-xs"
+                              onClick={openSubcategoryManage}
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </Button>
+                          )}
+                        </div>
+                        {categoryUsesLabourTeams(newExpense.category, expenseCategories) ? (
                           <Select
                             value={newExpense.labourTeamId}
                             onValueChange={(val) =>
@@ -1038,7 +1115,7 @@ export function ExpensesTab({
                             </SelectTrigger>
                             <SelectContent>
                               {newExpense.category &&
-                                subcategories[newExpense.category]?.map((sub) => (
+                                subcategoriesForCategory.get(newExpense.category)?.map((sub) => (
                                   <SelectItem key={sub} value={sub}>
                                     {sub}
                                   </SelectItem>
@@ -1163,7 +1240,7 @@ export function ExpensesTab({
                             <SelectValue placeholder="Select category" />
                           </SelectTrigger>
                           <SelectContent className="z-[100]">
-                            {categories.map((cat) => (
+                            {categoryNames.map((cat) => (
                               <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                             ))}
                           </SelectContent>
@@ -1173,11 +1250,11 @@ export function ExpensesTab({
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>
-                          {isLabourCategory(editExpense.category)
+                          {categoryUsesLabourTeams(editExpense.category, expenseCategories)
                             ? "Labour team *"
                             : "Subcategory"}
                         </Label>
-                        {isLabourCategory(editExpense.category) ? (
+                        {categoryUsesLabourTeams(editExpense.category, expenseCategories) ? (
                           <Select
                             value={editExpense.labourTeamId}
                             onValueChange={(val) =>
@@ -1208,7 +1285,7 @@ export function ExpensesTab({
                             </SelectTrigger>
                             <SelectContent className="z-[100]">
                               {editExpense.category &&
-                                subcategories[editExpense.category]?.map((sub) => (
+                                subcategoriesForCategory.get(editExpense.category)?.map((sub) => (
                                   <SelectItem key={sub} value={sub}>{sub}</SelectItem>
                                 ))}
                             </SelectContent>
@@ -1409,6 +1486,30 @@ export function ExpensesTab({
           </div>
         </CardContent>
       </Card>
+
+      {projectId && canManageProjects && (
+        <>
+          <ExpenseCategoryManageDialog
+            open={categoryManageOpen}
+            onOpenChange={setCategoryManageOpen}
+            projectId={projectId}
+            mode="categories"
+            categories={expenseCategories}
+            labourTeams={labourTeams}
+            onSaved={() => void reloadExpenseOptions()}
+          />
+          <ExpenseCategoryManageDialog
+            open={subcategoryManageOpen}
+            onOpenChange={setSubcategoryManageOpen}
+            projectId={projectId}
+            mode={manageMode}
+            categories={expenseCategories}
+            selectedCategoryName={newExpense.category}
+            labourTeams={labourTeams}
+            onSaved={() => void reloadExpenseOptions()}
+          />
+        </>
+      )}
     </div>
   )
 }
