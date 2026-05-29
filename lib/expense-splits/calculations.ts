@@ -81,6 +81,18 @@ export function buildExpenseGroupMatchKey(input: {
   ].join('|')
 }
 
+/** Match open split suggestions by category + labour team or subcategory only. */
+export function buildExpenseCategoryMatchKey(input: {
+  category: string
+  labourTeamId: string | null
+  subcategoryName: string | null
+}): string {
+  return [
+    normalizeMatchText(input.category),
+    normalizeMatchText(input.labourTeamId ?? input.subcategoryName),
+  ].join('|')
+}
+
 function validateSplitLineFields(
   lines: SplitLineInput[],
   labelOffset = 0,

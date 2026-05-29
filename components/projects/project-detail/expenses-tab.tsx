@@ -37,16 +37,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -70,9 +60,11 @@ import type { ExpenseCategoryView } from "@/lib/data/expense-categories"
 import { ExpenseCategoryManageDialog } from "@/components/projects/project-detail/expense-category-manage-dialog"
 import { ExpenseSplitGroupDialog } from "@/components/projects/project-detail/expense-split-group-dialog"
 import {
-  buildExpenseGroupMatchKey,
+  buildExpenseCategoryMatchKey,
+  getRemainingRecordedBalance,
   getSplitPaymentStatus,
   isGroupFullyRecorded,
+  sumRecordedSplitAmounts,
   validateInitialSplitCreate,
   type SplitPaymentDisplayStatus,
 } from "@/lib/expense-splits/calculations"
@@ -173,6 +165,26 @@ function toExpenseDescription(subcategory: string, description: string) {
   return subcategory ? `${subcategory} - ${description}` : description
 }
 
+function categoryMatchKeyFromExpense(
+  sample: Expense,
+  expenseCategories: ExpenseCategoryView[],
+): string {
+  const usesLabour = categoryUsesLabourTeams(sample.category, expenseCategories)
+  if (usesLabour && sample.labour_team_id) {
+    return buildExpenseCategoryMatchKey({
+      category: sample.category,
+      labourTeamId: sample.labour_team_id,
+      subcategoryName: null,
+    })
+  }
+  const { subcategory } = splitExpenseDescription(sample.description)
+  return buildExpenseCategoryMatchKey({
+    category: sample.category,
+    labourTeamId: null,
+    subcategoryName: subcategory || null,
+  })
+}
+
 function mapExpensesFromProject(project: ProjectWithDetails): Expense[] {
   const names = milestoneNameById(project)
   return project.expenses.map((exp) => ({
@@ -234,8 +246,6 @@ export function ExpensesTab({
   const [splitMode, setSplitMode] = useState(false)
   const [splitFirstAmount, setSplitFirstAmount] = useState("")
   const [splitGroupEditId, setSplitGroupEditId] = useState<string | null>(null)
-  const [continueSplitOpen, setContinueSplitOpen] = useState(false)
-  const [continueSplitGroupId, setContinueSplitGroupId] = useState<string | null>(null)
   const [newExpense, setNewExpense] = useState({
     date: format(new Date(), 'yyyy-MM-dd'),
     category: "",
@@ -390,25 +400,25 @@ export function ExpensesTab({
     return statusMap
   }, [expenses])
 
-  const buildCurrentExpenseMatchKey = () => {
-    const usesLabour = categoryUsesLabourTeams(newExpense.category, expenseCategories)
-    const teamName = labourTeamNameById.get(newExpense.labourTeamId)
-    const description = usesLabour
-      ? newExpense.description
-      : toExpenseDescription(newExpense.subcategory, newExpense.description)
-    const fullDescription = teamName ? `${teamName} - ${description}` : description
-    return buildExpenseGroupMatchKey({
-      category: newExpense.category,
-      description: fullDescription,
-      vendorName: newExpense.vendor || null,
-      labourTeamId: usesLabour ? newExpense.labourTeamId || null : null,
-      subcategoryName: usesLabour ? null : newExpense.subcategory || null,
-    })
-  }
+  const suggestedSplitGroup = useMemo(() => {
+    if (!newExpense.category) return null
 
-  const findOpenMatchingSplitGroup = (): string | null => {
-    const key = buildCurrentExpenseMatchKey()
-    if (!key || key === "|||") return null
+    const usesLabour = categoryUsesLabourTeams(
+      newExpense.category,
+      expenseCategories,
+    )
+    if (usesLabour) {
+      if (!newExpense.labourTeamId) return null
+    } else if (!newExpense.subcategory) {
+      return null
+    }
+
+    const currentKey = buildExpenseCategoryMatchKey({
+      category: newExpense.category,
+      labourTeamId: usesLabour ? newExpense.labourTeamId : null,
+      subcategoryName: usesLabour ? null : newExpense.subcategory,
+    })
+    if (!currentKey || currentKey === "|") return null
 
     const byGroup = new Map<string, Expense[]>()
     for (const exp of expenses) {
@@ -421,27 +431,45 @@ export function ExpensesTab({
     for (const [groupId, splits] of byGroup) {
       const sample = splits[0]
       if (!sample) continue
-      const sampleKey = buildExpenseGroupMatchKey({
-        category: sample.category,
-        description: sample.description,
-        vendorName: sample.vendor_name,
-        labourTeamId: sample.labour_team_id ?? null,
-        subcategoryName: null,
-      })
-      if (sampleKey !== key) continue
+      const sampleKey = categoryMatchKeyFromExpense(sample, expenseCategories)
+      if (sampleKey !== currentKey) continue
+
       const total =
         sample.split_total_amount ??
         splits.reduce((sum, s) => sum + Number(s.amount), 0)
-      if (
-        !isGroupFullyRecorded(
-          total,
-          splits.map((s) => ({ amount: Number(s.amount) })),
-        )
-      ) {
-        return groupId
+      const recordedSplits = splits.map((s) => ({ amount: Number(s.amount) }))
+      if (isGroupFullyRecorded(total, recordedSplits)) continue
+
+      const recorded = sumRecordedSplitAmounts(recordedSplits)
+      const teamLabel = usesLabour
+        ? labourTeamNameById.get(newExpense.labourTeamId) ?? "Labour team"
+        : newExpense.subcategory
+
+      return {
+        groupId,
+        total,
+        recorded,
+        remaining: getRemainingRecordedBalance(total, recordedSplits),
+        vendor: sample.vendor_name,
+        splitCount: splits.length,
+        teamLabel,
       }
     }
     return null
+  }, [
+    newExpense.category,
+    newExpense.subcategory,
+    newExpense.labourTeamId,
+    expenses,
+    expenseCategories,
+    labourTeamNameById,
+  ])
+
+  const handleUseSuggestedSplit = () => {
+    if (!suggestedSplitGroup) return
+    setIsAddDialogOpen(false)
+    resetNewExpenseForm()
+    setSplitGroupEditId(suggestedSplitGroup.groupId)
   }
 
   const refreshExpenses = async () => {
@@ -493,7 +521,7 @@ export function ExpensesTab({
     return match?.id ?? ""
   }
 
-  const handleAddExpense = async (skipContinueCheck = false) => {
+  const handleAddExpense = async () => {
     if (!projectId) {
       toast.error("Project ID not found")
       return
@@ -522,15 +550,6 @@ export function ExpensesTab({
       return
     }
 
-    if (!skipContinueCheck && !splitMode) {
-      const openGroupId = findOpenMatchingSplitGroup()
-      if (openGroupId) {
-        setContinueSplitGroupId(openGroupId)
-        setContinueSplitOpen(true)
-        return
-      }
-    }
-    
     setIsSubmitting(true)
 
     const teamName = labourTeamNameById.get(newExpense.labourTeamId)
@@ -1529,6 +1548,44 @@ export function ExpensesTab({
                       </div>
                     </div>
                   </div>
+                  {suggestedSplitGroup && (
+                    <div className="flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 space-y-1 text-sm">
+                        <p className="flex items-center gap-2 font-medium">
+                          <Split className="h-4 w-4 shrink-0 text-primary" />
+                          Split payment already exists for this{" "}
+                          {categoryUsesLabourTeams(
+                            newExpense.category,
+                            expenseCategories,
+                          )
+                            ? "team"
+                            : "subcategory"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {suggestedSplitGroup.teamLabel}
+                          {suggestedSplitGroup.vendor
+                            ? ` · ${suggestedSplitGroup.vendor}`
+                            : ""}
+                          {" · "}₹{suggestedSplitGroup.recorded.toLocaleString()} of ₹
+                          {suggestedSplitGroup.total.toLocaleString()} recorded (
+                          {suggestedSplitGroup.splitCount}{" "}
+                          {suggestedSplitGroup.splitCount === 1
+                            ? "payment"
+                            : "payments"}
+                          ) · ₹{suggestedSplitGroup.remaining.toLocaleString()}{" "}
+                          remaining
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={handleUseSuggestedSplit}
+                      >
+                        Use this
+                      </Button>
+                    </div>
+                  )}
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"
@@ -1883,42 +1940,6 @@ export function ExpensesTab({
           </div>
         </CardContent>
       </Card>
-
-      <AlertDialog open={continueSplitOpen} onOpenChange={setContinueSplitOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Continue split payment?</AlertDialogTitle>
-            <AlertDialogDescription>
-              There is a pending split payment for this vendor, category, team, and
-              description (balance not fully recorded yet). Continue that payment group,
-              or create a separate expense.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setContinueSplitOpen(false)
-                setIsAddDialogOpen(false)
-                resetNewExpenseForm()
-                if (continueSplitGroupId) {
-                  setSplitGroupEditId(continueSplitGroupId)
-                }
-              }}
-            >
-              Add to existing split
-            </AlertDialogAction>
-            <AlertDialogAction
-              onClick={() => {
-                setContinueSplitOpen(false)
-                void handleAddExpense(true)
-              }}
-            >
-              Create new anyway
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {projectId && splitGroupEditId && (
         <ExpenseSplitGroupDialog
