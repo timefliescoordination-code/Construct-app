@@ -1,5 +1,5 @@
 -- Project-scoped expense categories and subcategories
--- Run in Supabase SQL editor after assignment-scoped-access.sql
+-- Run in Supabase SQL editor after labour-teams-module.sql (or use apply-labour-and-expense-modules.sql for both)
 
 create table if not exists public.expense_categories (
   id uuid primary key default gen_random_uuid(),
@@ -93,3 +93,5 @@ create policy "Users view expense subcategories on accessible projects"
       where c.id = category_id and public.user_can_access_project(c.project_id)
     )
   );
+
+notify pgrst, 'reload schema';

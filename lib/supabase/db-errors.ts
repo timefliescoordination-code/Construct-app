@@ -16,11 +16,15 @@ export function getSupabaseErrorMessage(error: unknown): string {
     }
 
     if (/labour_teams/i.test(msg)) {
-      return 'Labour team tables are missing. In Supabase SQL Editor, run supabase/labour-teams-module.sql after assignment-scoped-access.sql, then refresh this page.'
+      return 'Labour team tables are missing. In Supabase SQL Editor, open supabase/apply-labour-and-expense-modules.sql (or labour-teams-module.sql), paste the full file, click Run, then refresh this page.'
     }
 
     if (/expense_categories|expense_subcategories/i.test(msg)) {
-      return 'Expense category tables are missing. In Supabase SQL Editor, run supabase/expense-categories-module.sql after assignment-scoped-access.sql, then refresh this page.'
+      return 'Expense category tables are missing. In Supabase SQL Editor, open supabase/apply-labour-and-expense-modules.sql (or expense-categories-module.sql), paste the full file, click Run, then refresh this page.'
+    }
+
+    if (/expense_split_groups/i.test(msg)) {
+      return 'Expense split tables are missing. In Supabase SQL Editor, run supabase/expense-splits-module.sql, then refresh this page.'
     }
 
     return 'Database tables are missing. Run supabase/schema.sql in Supabase SQL Editor (copy the file contents, not the filename), then refresh this page.'

@@ -1,6 +1,83 @@
 -- Labour teams: project-scoped teams for labour expense attribution
--- Run in Supabase SQL editor after assignment-scoped-access.sql
+-- Run in Supabase SQL Editor after schema.sql (and assignment-scoped-access.sql if you use it).
+-- Safe to re-run: uses IF NOT EXISTS / DROP IF EXISTS throughout.
 
+-- ---------------------------------------------------------------------------
+-- RLS helpers (required by policies below; no-op if already created)
+-- ---------------------------------------------------------------------------
+create or replace function public.current_user_role()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+set row_security = off
+as $$
+  select role from public.profiles where id = auth.uid();
+$$;
+
+create or replace function public.is_pm_for_project(p_project_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+set row_security = off
+as $$
+  select exists (
+    select 1 from public.projects pr
+    where pr.id = p_project_id and pr.pm_id = auth.uid()
+  );
+$$;
+
+create or replace function public.is_engineer_for_project(p_project_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+set row_security = off
+as $$
+  select exists (
+    select 1 from public.project_engineers pe
+    where pe.project_id = p_project_id and pe.engineer_id = auth.uid()
+  );
+$$;
+
+create or replace function public.is_customer_for_project(p_project_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+set row_security = off
+as $$
+  select exists (
+    select 1 from public.projects pr
+    where pr.id = p_project_id and pr.customer_id = auth.uid()
+  );
+$$;
+
+create or replace function public.user_can_access_project(p_project_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+set row_security = off
+as $$
+  select case public.current_user_role()
+    when 'admin' then true
+    when 'pm' then public.is_pm_for_project(p_project_id)
+    when 'engineer' then public.is_engineer_for_project(p_project_id)
+    when 'customer' then public.is_customer_for_project(p_project_id)
+    else false
+  end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- labour_teams table
+-- ---------------------------------------------------------------------------
 create table if not exists public.labour_teams (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
@@ -48,3 +125,6 @@ drop policy if exists "Users view labour teams on accessible projects" on public
 create policy "Users view labour teams on accessible projects"
   on public.labour_teams for select to authenticated
   using (public.user_can_access_project(project_id));
+
+-- Refresh API schema cache so the app sees the new table immediately
+notify pgrst, 'reload schema';

@@ -25,17 +25,35 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Plus, Upload, Filter, Loader2, Pencil } from "lucide-react"
+import { Plus, Upload, Filter, Loader2, Pencil, Split } from "lucide-react"
 import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
@@ -43,9 +61,23 @@ import { useParams } from "next/navigation"
 import { useAuth } from "@/lib/hooks/use-auth"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { milestoneNameById } from "@/lib/project-tab-hydration"
-import { createExpenseAction, updateExpenseAction } from "@/lib/projects/tab-actions"
+import {
+  createExpenseAction,
+  updateExpenseAction,
+  updateExpenseStatusAction,
+} from "@/lib/projects/tab-actions"
+import { createExpenseSplitGroupAction } from "@/lib/projects/expense-split-actions"
 import type { ExpenseCategoryView } from "@/lib/data/expense-categories"
 import { ExpenseCategoryManageDialog } from "@/components/projects/project-detail/expense-category-manage-dialog"
+import { ExpenseSplitLinesEditor } from "@/components/projects/project-detail/expense-split-lines-editor"
+import { ExpenseSplitGroupDialog } from "@/components/projects/project-detail/expense-split-group-dialog"
+import {
+  buildExpenseGroupMatchKey,
+  getSplitPaymentStatus,
+  validateSplitLines,
+  type SplitLineInput,
+  type SplitPaymentDisplayStatus,
+} from "@/lib/expense-splits/calculations"
 import * as XLSX from "xlsx"
 
 function categoryUsesLabourTeams(
@@ -69,7 +101,35 @@ interface Expense {
   status: string
   milestone_id: string | null
   labour_team_id?: string | null
+  split_group_id?: string | null
+  split_number?: number | null
+  split_total_amount?: number | null
   milestones?: { name: string } | null
+}
+
+function mapExpenseRow(row: Record<string, unknown>): Expense {
+  const groupRaw = row.expense_split_groups
+  const group =
+    groupRaw && typeof groupRaw === "object" && !Array.isArray(groupRaw)
+      ? (groupRaw as { total_amount: number })
+      : null
+
+  return {
+    id: row.id as string,
+    expense_date: row.expense_date as string,
+    category: row.category as string,
+    description: row.description as string,
+    vendor_name: (row.vendor_name as string | null) ?? null,
+    amount: Number(row.amount),
+    bill_number: (row.bill_number as string | null) ?? null,
+    status: row.status as string,
+    milestone_id: (row.milestone_id as string | null) ?? null,
+    labour_team_id: (row.labour_team_id as string | null) ?? null,
+    split_group_id: (row.split_group_id as string | null) ?? null,
+    split_number: (row.split_number as number | null) ?? null,
+    split_total_amount: group ? Number(group.total_amount) : null,
+    milestones: row.milestones as { name: string } | null,
+  }
 }
 
 interface LabourTeamOption {
@@ -128,6 +188,9 @@ function mapExpensesFromProject(project: ProjectWithDetails): Expense[] {
     status: exp.status,
     milestone_id: exp.milestone_id,
     labour_team_id: exp.labour_team_id ?? null,
+    split_group_id: exp.split_group_id ?? null,
+    split_number: exp.split_number ?? null,
+    split_total_amount: null,
     milestones: exp.milestone_id && names.has(exp.milestone_id)
       ? { name: names.get(exp.milestone_id)! }
       : null,
@@ -169,6 +232,11 @@ export function ExpensesTab({
   const [manageMode, setManageMode] = useState<"subcategories" | "labour-teams">(
     "subcategories",
   )
+  const [splitMode, setSplitMode] = useState(false)
+  const [splitLines, setSplitLines] = useState<SplitLineInput[]>([])
+  const [splitGroupEditId, setSplitGroupEditId] = useState<string | null>(null)
+  const [continueSplitOpen, setContinueSplitOpen] = useState(false)
+  const [continueSplitGroupId, setContinueSplitGroupId] = useState<string | null>(null)
   const [newExpense, setNewExpense] = useState({
     date: format(new Date(), 'yyyy-MM-dd'),
     category: "",
@@ -213,7 +281,7 @@ export function ExpensesTab({
 
         const { data: expensesData, error: expensesError } = await supabase
           .from('expenses')
-          .select('*, milestones(name)')
+          .select('*, milestones(name), expense_split_groups(total_amount)')
           .eq('project_id', projectId)
           .order('expense_date', { ascending: false })
 
@@ -221,7 +289,7 @@ export function ExpensesTab({
           console.error("[expenses-tab] fetch expenses:", expensesError)
           toast.error("Failed to load expenses")
         } else {
-          setExpenses(expensesData || [])
+          setExpenses((expensesData ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>)))
         }
 
         const { data: milestonesData, error: milestonesError } = await supabase
@@ -298,6 +366,84 @@ export function ExpensesTab({
     return map
   }, [expenseCategories])
 
+  const splitPaymentByGroupId = useMemo(() => {
+    const byGroup = new Map<string, Expense[]>()
+    for (const exp of expenses) {
+      if (!exp.split_group_id) continue
+      const list = byGroup.get(exp.split_group_id) ?? []
+      list.push(exp)
+      byGroup.set(exp.split_group_id, list)
+    }
+    const statusMap = new Map<string, SplitPaymentDisplayStatus>()
+    for (const [groupId, splits] of byGroup) {
+      const total =
+        splits[0]?.split_total_amount ??
+        splits.reduce((sum, s) => sum + Number(s.amount), 0)
+      statusMap.set(groupId, getSplitPaymentStatus(total, splits))
+    }
+    return statusMap
+  }, [expenses])
+
+  const buildCurrentExpenseMatchKey = () => {
+    const usesLabour = categoryUsesLabourTeams(newExpense.category, expenseCategories)
+    const teamName = labourTeamNameById.get(newExpense.labourTeamId)
+    const description = usesLabour
+      ? newExpense.description
+      : toExpenseDescription(newExpense.subcategory, newExpense.description)
+    const fullDescription = teamName ? `${teamName} - ${description}` : description
+    return buildExpenseGroupMatchKey({
+      category: newExpense.category,
+      description: fullDescription,
+      vendorName: newExpense.vendor || null,
+      labourTeamId: usesLabour ? newExpense.labourTeamId || null : null,
+      subcategoryName: usesLabour ? null : newExpense.subcategory || null,
+    })
+  }
+
+  const findOpenMatchingSplitGroup = (): string | null => {
+    const key = buildCurrentExpenseMatchKey()
+    if (!key || key === "|||") return null
+
+    const byGroup = new Map<string, Expense[]>()
+    for (const exp of expenses) {
+      if (!exp.split_group_id) continue
+      const list = byGroup.get(exp.split_group_id) ?? []
+      list.push(exp)
+      byGroup.set(exp.split_group_id, list)
+    }
+
+    for (const [groupId, splits] of byGroup) {
+      const sample = splits[0]
+      if (!sample) continue
+      const sampleKey = buildExpenseGroupMatchKey({
+        category: sample.category,
+        description: sample.description,
+        vendorName: sample.vendor_name,
+        labourTeamId: sample.labour_team_id ?? null,
+        subcategoryName: null,
+      })
+      if (sampleKey !== key) continue
+      const total =
+        sample.split_total_amount ??
+        splits.reduce((sum, s) => sum + Number(s.amount), 0)
+      const paymentStatus = getSplitPaymentStatus(total, splits)
+      if (paymentStatus !== "Fully paid") return groupId
+    }
+    return null
+  }
+
+  const refreshExpenses = async () => {
+    if (!projectId) return
+    const supabase = createClient()
+    const { data } = await supabase
+      .from("expenses")
+      .select("*, milestones(name), expense_split_groups(total_amount)")
+      .eq("project_id", projectId)
+      .order("expense_date", { ascending: false })
+    setExpenses((data ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>)))
+    onProjectChange?.()
+  }
+
   const openSubcategoryManage = () => {
     if (categoryUsesLabourTeams(newExpense.category, expenseCategories)) {
       setManageMode("labour-teams")
@@ -305,6 +451,22 @@ export function ExpensesTab({
       setManageMode("subcategories")
     }
     setSubcategoryManageOpen(true)
+  }
+
+  const resetNewExpenseForm = () => {
+    setNewExpense({
+      date: format(new Date(), "yyyy-MM-dd"),
+      category: "",
+      subcategory: "",
+      labourTeamId: "",
+      description: "",
+      vendor: "",
+      amount: "",
+      billNumber: "",
+      milestoneId: "",
+    })
+    setSplitMode(false)
+    setSplitLines([])
   }
 
   const resolveLabourTeamId = (
@@ -319,14 +481,24 @@ export function ExpensesTab({
     return match?.id ?? ""
   }
 
-  const handleAddExpense = async () => {
+  const handleAddExpense = async (skipContinueCheck = false) => {
     if (!projectId) {
       toast.error("Project ID not found")
       return
     }
     
-    if (!newExpense.category || !newExpense.description || !newExpense.amount) {
+    if (!newExpense.category || !newExpense.description) {
       toast.error("Please fill in all required fields")
+      return
+    }
+
+    if (!splitMode && !newExpense.amount) {
+      toast.error("Please enter an amount")
+      return
+    }
+
+    if (splitMode && !newExpense.amount) {
+      toast.error("Enter the total amount to split")
       return
     }
 
@@ -337,6 +509,15 @@ export function ExpensesTab({
       toast.error("Select which labour team received this payment")
       return
     }
+
+    if (!skipContinueCheck && !splitMode) {
+      const openGroupId = findOpenMatchingSplitGroup()
+      if (openGroupId) {
+        setContinueSplitGroupId(openGroupId)
+        setContinueSplitOpen(true)
+        return
+      }
+    }
     
     setIsSubmitting(true)
 
@@ -345,11 +526,47 @@ export function ExpensesTab({
     const description = usesLabour
       ? newExpense.description
       : toExpenseDescription(newExpense.subcategory, newExpense.description)
+    const fullDescription = teamName ? `${teamName} - ${description}` : description
+    const totalAmount = parseFloat(newExpense.amount)
+
+    if (splitMode) {
+      const validation = validateSplitLines(totalAmount, splitLines)
+      if (!validation.ok) {
+        toast.error(validation.error)
+        setIsSubmitting(false)
+        return
+      }
+
+      const result = await createExpenseSplitGroupAction({
+        projectId,
+        totalAmount,
+        category: newExpense.category,
+        description: fullDescription,
+        vendorName: newExpense.vendor || null,
+        billNumber: newExpense.billNumber || null,
+        milestoneId: newExpense.milestoneId || null,
+        labourTeamId: usesLabour ? newExpense.labourTeamId : null,
+        subcategoryName: usesLabour ? null : newExpense.subcategory || null,
+        splits: splitLines,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+      } else {
+        toast.success(`Split expense created (${splitLines.length} payments).`)
+        await refreshExpenses()
+        resetNewExpenseForm()
+        setIsAddDialogOpen(false)
+      }
+      setIsSubmitting(false)
+      return
+    }
+
     const result = await createExpenseAction({
       projectId,
       milestoneId: newExpense.milestoneId || null,
       category: newExpense.category,
-      description: teamName ? `${teamName} - ${description}` : description,
+      description: fullDescription,
       amount: parseFloat(newExpense.amount),
       vendorName: newExpense.vendor || null,
       billNumber: newExpense.billNumber || null,
@@ -383,17 +600,7 @@ export function ExpensesTab({
         ...prev,
       ])
       onProjectChange?.()
-      setNewExpense({
-        date: format(new Date(), 'yyyy-MM-dd'),
-        category: "",
-        subcategory: "",
-        labourTeamId: "",
-        description: "",
-        vendor: "",
-        amount: "",
-        billNumber: "",
-        milestoneId: "",
-      })
+      resetNewExpenseForm()
       setIsAddDialogOpen(false)
     }
 
@@ -401,6 +608,10 @@ export function ExpensesTab({
   }
 
   const openEditExpense = (expense: Expense) => {
+    if (expense.split_group_id) {
+      setSplitGroupEditId(expense.split_group_id)
+      return
+    }
     const { subcategory, description } = splitExpenseDescription(expense.description)
     const labourTeamId = resolveLabourTeamId(expense.labour_team_id, expense.description)
     setEditingExpenseId(expense.id)
@@ -455,7 +666,7 @@ export function ExpensesTab({
       expenseId: editingExpenseId,
       milestoneId: editExpense.milestoneId || null,
       category: editExpense.category,
-      description: teamName ? `${teamName} - ${description}` : description,
+      description: fullDescription,
       amount: parseFloat(editExpense.amount),
       vendorName: editExpense.vendor || null,
       billNumber: editExpense.billNumber || null,
@@ -725,7 +936,9 @@ export function ExpensesTab({
           .select("*, milestones(name)")
           .eq("project_id", projectId)
           .order("expense_date", { ascending: false })
-        setExpenses((refreshed ?? []) as Expense[])
+        setExpenses(
+          (refreshed ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>)),
+        )
       }
 
       if (failedCount > 0) {
@@ -797,25 +1010,60 @@ export function ExpensesTab({
     }
   }
 
-  const filteredExpenses = expenses.filter((expense) => {
-    if (filterCategory !== "all" && expense.category !== filterCategory) return false
-    if (filterStatus !== "all" && expense.status !== filterStatus) return false
-    return true
-  })
+  const filteredExpenses = useMemo(() => {
+    return expenses
+      .filter((expense) => {
+        if (filterCategory !== "all" && expense.category !== filterCategory) return false
+        if (filterStatus !== "all" && expense.status !== filterStatus) return false
+        return true
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime(),
+      )
+  }, [expenses, filterCategory, filterStatus])
 
   const totalExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0)
 
-  const getStatusBadge = (status: string) => {
+  const getApprovalBadge = (status: string) => {
     switch (status) {
       case "approved":
-        return <Badge className="bg-green-500/20 text-green-500 border-green-500/30">Approved</Badge>
+        return <Badge className="bg-green-500/20 text-green-500 border-green-500/30 text-[10px]">Approved</Badge>
       case "pending":
-        return <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">Pending</Badge>
+        return <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 text-[10px]">Awaiting approval</Badge>
       case "rejected":
-        return <Badge className="bg-destructive/20 text-destructive border-destructive/30">Rejected</Badge>
+        return <Badge className="bg-destructive/20 text-destructive border-destructive/30 text-[10px]">Rejected</Badge>
       default:
-        return <Badge variant="outline">{status}</Badge>
+        return <Badge variant="outline" className="text-[10px]">{status}</Badge>
     }
+  }
+
+  const getSplitPaymentBadge = (status: SplitPaymentDisplayStatus) => {
+    switch (status) {
+      case "Fully paid":
+        return <Badge className="bg-green-500/20 text-green-500 border-green-500/30">Fully paid</Badge>
+      case "Partially paid":
+        return <Badge className="bg-amber-500/20 text-amber-600 border-amber-500/30">Partially paid</Badge>
+      default:
+        return <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">Pending payment</Badge>
+    }
+  }
+
+  const handleApproveSplit = async (expenseId: string) => {
+    if (!projectId) return
+    setIsSubmitting(true)
+    const result = await updateExpenseStatusAction({
+      projectId,
+      expenseId,
+      status: "approved",
+    })
+    setIsSubmitting(false)
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+    toast.success("Split approved.")
+    await refreshExpenses()
   }
 
   if (isLoading) {
@@ -1161,16 +1409,68 @@ export function ExpensesTab({
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Amount *</Label>
+                        <div className="flex items-center justify-between gap-2">
+                          <Label>{splitMode ? "Total amount *" : "Amount *"}</Label>
+                          {!splitMode && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-primary underline-offset-2 hover:underline"
+                                    onClick={() => {
+                                      setSplitMode(true)
+                                      if (splitLines.length === 0 && newExpense.amount) {
+                                        setSplitLines([
+                                          {
+                                            amount: newExpense.amount,
+                                            date: newExpense.date,
+                                          },
+                                        ])
+                                      }
+                                    }}
+                                  >
+                                    Want to split the payment?
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  This option allows you to split the amount, and
+                                  part payment you can pay later.
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
                         <Input 
                           type="number"
                           value={newExpense.amount}
                           onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
                           placeholder="0.00"
                           className="bg-muted border-border"
+                          disabled={splitMode && splitLines.some((l) => l.locked)}
                         />
+                        {splitMode && (
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground underline"
+                            onClick={() => {
+                              setSplitMode(false)
+                              setSplitLines([])
+                            }}
+                          >
+                            Cancel split (single payment)
+                          </button>
+                        )}
                       </div>
                     </div>
+                    {splitMode && (
+                      <ExpenseSplitLinesEditor
+                        totalAmount={newExpense.amount}
+                        lines={splitLines}
+                        onChange={setSplitLines}
+                        disabled={isSubmitting}
+                      />
+                    )}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Bill Number</Label>
@@ -1427,10 +1727,35 @@ export function ExpensesTab({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredExpenses.map((expense) => (
+                  filteredExpenses.map((expense) => {
+                    const isSplit = Boolean(expense.split_group_id && expense.split_number)
+                    const groupPaymentStatus = expense.split_group_id
+                      ? splitPaymentByGroupId.get(expense.split_group_id)
+                      : null
+
+                    return (
                     <TableRow key={expense.id} className="border-border hover:bg-muted/50">
                       <TableCell className="font-medium">
-                        {format(new Date(expense.expense_date), "MMM dd, yyyy")}
+                        <div className="flex items-center gap-2">
+                          {isSplit && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex items-center gap-0.5 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                                    <Split className="h-3 w-3" />
+                                    {expense.split_number}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Split {expense.split_number}
+                                  {expense.split_total_amount != null &&
+                                    ` of ${expense.split_total_amount.toLocaleString()} total`}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                          {format(new Date(expense.expense_date), "MMM dd, yyyy")}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <p className="font-medium">{expense.category}</p>
@@ -1449,7 +1774,30 @@ export function ExpensesTab({
                       <TableCell className="text-right font-medium">
                         Rs {Number(expense.amount).toLocaleString()}
                       </TableCell>
-                      <TableCell>{getStatusBadge(expense.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1 items-start">
+                          {isSplit && groupPaymentStatus
+                            ? getSplitPaymentBadge(groupPaymentStatus)
+                            : getApprovalBadge(expense.status)}
+                          {isSplit && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {getApprovalBadge(expense.status)}
+                            </span>
+                          )}
+                          {canManageProjects && expense.status === "pending" && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-[10px]"
+                              disabled={isSubmitting}
+                              onClick={() => void handleApproveSplit(expense.id)}
+                            >
+                              Approve
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
                       {canEnterData && (
                         <TableCell>
                           <Button
@@ -1463,7 +1811,8 @@ export function ExpensesTab({
                         </TableCell>
                       )}
                     </TableRow>
-                  ))
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
@@ -1486,6 +1835,53 @@ export function ExpensesTab({
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={continueSplitOpen} onOpenChange={setContinueSplitOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Continue split payment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              An unpaid or partially paid split already exists for this category,
+              team, vendor, and description. Add another split to the same group, or
+              create a new expense.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setContinueSplitOpen(false)
+                if (continueSplitGroupId) {
+                  setSplitGroupEditId(continueSplitGroupId)
+                }
+              }}
+            >
+              Add to existing split
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => {
+                setContinueSplitOpen(false)
+                void handleAddExpense(true)
+              }}
+            >
+              Create new anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {projectId && splitGroupEditId && (
+        <ExpenseSplitGroupDialog
+          open={Boolean(splitGroupEditId)}
+          onOpenChange={(open) => {
+            if (!open) setSplitGroupEditId(null)
+          }}
+          projectId={projectId}
+          groupId={splitGroupEditId}
+          canApprove={Boolean(canManageProjects)}
+          onSaved={() => void refreshExpenses()}
+        />
+      )}
 
       {projectId && canManageProjects && (
         <>

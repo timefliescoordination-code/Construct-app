@@ -57,7 +57,7 @@ function canManageProjectData(role: UserRole) {
 }
 
 /** Persist approved expense totals and derived completion % per milestone. */
-async function syncProjectMilestoneMetrics(
+export async function syncProjectMilestoneMetrics(
   supabase: SupabaseClient,
   projectId: string,
 ): Promise<void> {

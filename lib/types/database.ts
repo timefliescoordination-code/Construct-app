@@ -62,9 +62,26 @@ export interface Expense {
   bill_number: string | null
   expense_date: string
   labour_team_id: string | null
+  split_group_id: string | null
+  split_number: number | null
   status: ExpenseStatus
   submitted_by: string | null
   approved_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ExpenseSplitGroup {
+  id: string
+  project_id: string
+  total_amount: number
+  category: string
+  description: string
+  vendor_name: string | null
+  bill_number: string | null
+  milestone_id: string | null
+  labour_team_id: string | null
+  subcategory_name: string | null
   created_at: string
   updated_at: string
 }
