@@ -28,6 +28,19 @@ export interface AdminProjectSummary {
   expected_profit: number
   pm_label: string
   expected_margin_percent: number
+  has_stage_loss: boolean
+}
+
+function projectHasStageLoss(
+  projectId: string,
+  milestones: MilestoneRow[],
+): boolean {
+  return milestones.some((row) => {
+    if (row.project_id !== projectId) return false
+    const actual = Number(row.actual_expenses)
+    const target = Number(row.target_budget)
+    return actual > 0 && actual > target
+  })
 }
 
 export interface AdminCompanyMetrics {
@@ -200,6 +213,7 @@ export function buildAdminDashboardData(input: {
       expected_profit: expectedProfit,
       pm_label: getProjectPmLabel(project),
       expected_margin_percent: marginPercent,
+      has_stage_loss: projectHasStageLoss(project.id, input.milestones),
     }
   })
 

@@ -223,7 +223,10 @@ export function AdminDashboard() {
                       <TableRow key={project.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2.5 min-w-[12rem]">
-                            <ProjectMilestoneLink projectId={project.id} />
+                            <ProjectMilestoneLink
+                              projectId={project.id}
+                              hasStageLoss={project.has_stage_loss}
+                            />
                             <Link
                               href={`/projects/${project.id}`}
                               className="truncate text-foreground hover:text-primary hover:underline underline-offset-4"

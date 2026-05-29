@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
+import { useState, useEffect, useMemo } from "react"
+import { useParams, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -73,6 +73,11 @@ import {
   updateMilestoneAction,
   updateMilestonesAction,
 } from "@/lib/projects/tab-actions"
+import {
+  MILESTONE_SECTION_IDS,
+  MILESTONE_SECTION_LOSS,
+  MILESTONE_SECTION_STAGES,
+} from "@/lib/milestone-navigation"
 
 // Helper function to round to nearest 0.25%
 function roundToQuarter(value: number): number {
@@ -132,7 +137,9 @@ export function MilestonesTab({
   const { role, canManageProjects } = useAuth()
   const showFinancials = canViewProjectFinancials(role)
   const params = useParams()
+  const searchParams = useSearchParams()
   const projectId = propProjectId || projectDetails?.id || (params?.id as string)
+  const [scrollHighlightId, setScrollHighlightId] = useState<string | null>(null)
   
   const [project, setProject] = useState<Project | null>(() =>
     projectDetails ? projectHeaderFromDetails(projectDetails) : null,
@@ -492,6 +499,55 @@ export function MilestonesTab({
   }, 0)
   const currentProfit = totalContractValue - totalActualExpense
 
+  const hasAnyStageLoss = useMemo(() => {
+    if (!showFinancials) return false
+    return displayMilestones.some((milestone) => {
+      const { profitLoss, actualExpense } = calculateStageFinancials(milestone)
+      return actualExpense > 0 && profitLoss < 0
+    })
+  }, [displayMilestones, showFinancials, totalStageBudget])
+
+  useEffect(() => {
+    if (loading) return
+
+    const section = searchParams.get("section")
+    if (section !== MILESTONE_SECTION_STAGES && section !== MILESTONE_SECTION_LOSS) {
+      return
+    }
+
+    const scrollTimer = window.setTimeout(() => {
+      let target: HTMLElement | null = null
+
+      if (section === MILESTONE_SECTION_STAGES) {
+        target = document.getElementById(MILESTONE_SECTION_IDS.stages)
+      } else {
+        target = document.getElementById(MILESTONE_SECTION_IDS.loss)
+        if (!target) {
+          target =
+            document.getElementById("milestone-first-stage-loss") ??
+            document.querySelector<HTMLElement>('[data-milestone-loss="true"]')
+        }
+      }
+
+      if (!target) {
+        target = document.getElementById(MILESTONE_SECTION_IDS.stages)
+      }
+
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" })
+        const highlightId =
+          target.id ||
+          (section === MILESTONE_SECTION_LOSS
+            ? MILESTONE_SECTION_IDS.loss
+            : MILESTONE_SECTION_IDS.stages)
+        setScrollHighlightId(highlightId)
+        window.setTimeout(() => setScrollHighlightId(null), 2600)
+      }
+    }, 200)
+
+    return () => window.clearTimeout(scrollTimer)
+  }, [loading, searchParams, displayMilestones.length, showFinancials, hasAnyStageLoss])
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "completed":
@@ -610,7 +666,14 @@ export function MilestonesTab({
       </div>
 
       {/* Milestones List */}
-      <Card className="bg-card border-border">
+      <Card
+        id={MILESTONE_SECTION_IDS.stages}
+        className={cn(
+          "bg-card border-border scroll-mt-24 transition-shadow duration-500",
+          scrollHighlightId === MILESTONE_SECTION_IDS.stages &&
+            "ring-2 ring-primary/50 shadow-md",
+        )}
+      >
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -737,12 +800,26 @@ export function MilestonesTab({
                 const { targetAmount, profitLoss, profitLossPercent, actualExpense, completionPercent } = calculateStageFinancials(milestone)
                 const isOverBudget = profitLoss < 0
                 const hasExpense = actualExpense > 0
-                
+                const isStageLoss = hasExpense && isOverBudget
+                const isFirstStageLoss =
+                  isStageLoss &&
+                  !displayMilestones
+                    .slice(0, index)
+                    .some((m) => {
+                      const fin = calculateStageFinancials(m)
+                      return fin.actualExpense > 0 && fin.profitLoss < 0
+                    })
+
                 return (
                   <div 
                     key={milestone.id}
+                    id={isFirstStageLoss ? "milestone-first-stage-loss" : undefined}
+                    data-milestone-loss={isStageLoss ? "true" : undefined}
                     className={cn(
-                      "p-4 rounded-lg border transition-all",
+                      "p-4 rounded-lg border transition-all scroll-mt-24",
+                      scrollHighlightId === "milestone-first-stage-loss" &&
+                        isFirstStageLoss &&
+                        "ring-2 ring-destructive/50 shadow-md",
                       milestone.status === "completed" && (showFinancials ? !isOverBudget : true) && "border-green-500/30 bg-green-500/5",
                       milestone.status === "completed" && showFinancials && isOverBudget && "border-red-500/30 bg-red-500/5",
                       milestone.status === "in-progress" && "border-yellow-500/30 bg-yellow-500/5",
@@ -1007,11 +1084,30 @@ export function MilestonesTab({
 
       {/* Stage-wise Summary Table */}
       {showFinancials && displayMilestones.length > 0 && (
-        <Card className="bg-card border-border">
+        <Card
+          id={MILESTONE_SECTION_IDS.loss}
+          className={cn(
+            "bg-card border-border scroll-mt-24 transition-shadow duration-500",
+            hasAnyStageLoss && "border-destructive/25",
+            scrollHighlightId === MILESTONE_SECTION_IDS.loss &&
+              "ring-2 ring-destructive/50 shadow-md",
+          )}
+        >
           <CardHeader>
-            <CardTitle>Stage-wise Financial Summary</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              {hasAnyStageLoss ? (
+                <>
+                  <TrendingDown className="h-5 w-5 text-destructive" />
+                  Loss overview
+                </>
+              ) : (
+                "Stage-wise Financial Summary"
+              )}
+            </CardTitle>
             <CardDescription>
-              Overview of all stages with target vs actual comparison
+              {hasAnyStageLoss
+                ? "Stages where actual spend exceeded the target budget"
+                : "Overview of all stages with target vs actual comparison"}
             </CardDescription>
           </CardHeader>
           <CardContent>
