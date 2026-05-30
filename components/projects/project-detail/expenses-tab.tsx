@@ -1,6 +1,13 @@
 "use client"
 
-import { useRef, useState, useEffect, useMemo, type ChangeEvent } from "react"
+import {
+  Fragment,
+  useRef,
+  useState,
+  useEffect,
+  useMemo,
+  type ChangeEvent,
+} from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,7 +55,12 @@ import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useParams, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/hooks/use-auth"
-import type { ProjectWithDetails } from "@/lib/types/database"
+import type {
+  ExpenseInvoiceWithItems,
+  InvoiceItem,
+  ProjectWithDetails,
+} from "@/lib/types/database"
+import { formatINR } from "@/lib/currency"
 import { milestoneNameById } from "@/lib/project-tab-hydration"
 import {
   createExpenseAction,
@@ -84,6 +96,42 @@ function categoryUsesLabourTeams(
   return categoryName.trim().toLowerCase() === "labour"
 }
 const statuses = ["pending", "approved", "rejected"]
+
+type ExpenseInvoiceDetailsState = {
+  loading: boolean
+  data?: ExpenseInvoiceWithItems
+  error?: string
+}
+
+function formatInvoiceLineQuantity(item: InvoiceItem): string {
+  const quantity =
+    item.quantity == null ? null : Number(item.quantity).toLocaleString("en-IN")
+  const unit = item.unit?.trim()
+
+  if (quantity && unit) return `${quantity} ${unit}`
+  if (quantity) return quantity
+  if (unit) return unit
+  return "—"
+}
+
+async function fetchExpenseIdsWithInvoices(
+  supabase: ReturnType<typeof createClient>,
+  expenseIds: string[],
+): Promise<Set<string>> {
+  if (expenseIds.length === 0) return new Set()
+
+  const { data, error } = await supabase
+    .from("expense_invoices")
+    .select("expense_id")
+    .in("expense_id", expenseIds)
+
+  if (error) {
+    console.error("[expenses-tab] fetch invoice flags:", error)
+    return new Set()
+  }
+
+  return new Set((data ?? []).map((row) => row.expense_id as string))
+}
 
 interface Expense {
   id: string
@@ -240,6 +288,15 @@ export function ExpensesTab({
   const [splitFirstAmount, setSplitFirstAmount] = useState("")
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
   const invoiceFileInputRef = useRef<HTMLInputElement>(null)
+  const [expenseIdsWithInvoice, setExpenseIdsWithInvoice] = useState<Set<string>>(
+    () => new Set(),
+  )
+  const [expandedInvoiceExpenseIds, setExpandedInvoiceExpenseIds] = useState<
+    Set<string>
+  >(() => new Set())
+  const [invoiceDetailsByExpenseId, setInvoiceDetailsByExpenseId] = useState<
+    Record<string, ExpenseInvoiceDetailsState>
+  >({})
   const [splitGroupEditId, setSplitGroupEditId] = useState<string | null>(null)
   const [openSplitGroups, setOpenSplitGroups] = useState<OpenSplitGroupSummary[]>([])
   const [loadingOpenSplits, setLoadingOpenSplits] = useState(false)
@@ -301,7 +358,15 @@ export function ExpensesTab({
           console.error("[expenses-tab] fetch expenses:", expensesError)
           toast.error("Failed to load expenses")
         } else {
-          setExpenses((expensesData ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>)))
+          const mapped = (expensesData ?? []).map((row) =>
+            mapExpenseRow(row as Record<string, unknown>),
+          )
+          setExpenses(mapped)
+          const invoiceIds = await fetchExpenseIdsWithInvoices(
+            supabase,
+            mapped.map((expense) => expense.id),
+          )
+          setExpenseIdsWithInvoice(invoiceIds)
         }
 
         const { data: milestonesData, error: milestonesError } = await supabase
@@ -468,7 +533,13 @@ export function ExpensesTab({
       return
     }
 
-    setExpenses((data ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>)))
+    const mapped = (data ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>))
+    setExpenses(mapped)
+    const invoiceIds = await fetchExpenseIdsWithInvoices(
+      supabase,
+      mapped.map((expense) => expense.id),
+    )
+    setExpenseIdsWithInvoice(invoiceIds)
     await loadOpenSplitGroups()
     onProjectChange?.()
   }
@@ -556,6 +627,84 @@ export function ExpensesTab({
     }
 
     return { ok: true as const }
+  }
+
+  const loadInvoiceDetails = async (expenseId: string) => {
+    setInvoiceDetailsByExpenseId((prev) => ({
+      ...prev,
+      [expenseId]: { loading: true },
+    }))
+
+    const supabase = createClient()
+    const { data: invoice, error: invoiceError } = await supabase
+      .from("expense_invoices")
+      .select("*")
+      .eq("expense_id", expenseId)
+      .maybeSingle()
+
+    if (invoiceError) {
+      setInvoiceDetailsByExpenseId((prev) => ({
+        ...prev,
+        [expenseId]: { loading: false, error: invoiceError.message },
+      }))
+      return
+    }
+
+    if (!invoice) {
+      setExpenseIdsWithInvoice((prev) => {
+        const next = new Set(prev)
+        next.delete(expenseId)
+        return next
+      })
+      setInvoiceDetailsByExpenseId((prev) => ({
+        ...prev,
+        [expenseId]: { loading: false, error: "Invoice not found." },
+      }))
+      return
+    }
+
+    const { data: items, error: itemsError } = await supabase
+      .from("invoice_items")
+      .select("*")
+      .eq("expense_id", expenseId)
+      .order("created_at", { ascending: true })
+
+    if (itemsError) {
+      setInvoiceDetailsByExpenseId((prev) => ({
+        ...prev,
+        [expenseId]: { loading: false, error: itemsError.message },
+      }))
+      return
+    }
+
+    setInvoiceDetailsByExpenseId((prev) => ({
+      ...prev,
+      [expenseId]: {
+        loading: false,
+        data: {
+          ...(invoice as ExpenseInvoiceWithItems),
+          items: (items ?? []) as InvoiceItem[],
+        },
+      },
+    }))
+  }
+
+  const toggleInvoiceDetails = async (expenseId: string) => {
+    if (expandedInvoiceExpenseIds.has(expenseId)) {
+      setExpandedInvoiceExpenseIds((prev) => {
+        const next = new Set(prev)
+        next.delete(expenseId)
+        return next
+      })
+      return
+    }
+
+    setExpandedInvoiceExpenseIds((prev) => new Set(prev).add(expenseId))
+
+    const cached = invoiceDetailsByExpenseId[expenseId]
+    if (!cached?.data && !cached?.loading) {
+      await loadInvoiceDetails(expenseId)
+    }
   }
 
   const resolveLabourTeamId = (
@@ -682,6 +831,8 @@ export function ExpensesTab({
           toast.warning(
             `Expense saved, but invoice upload failed: ${invoiceResult.error}`,
           )
+        } else {
+          setExpenseIdsWithInvoice((prev) => new Set(prev).add(row.id as string))
         }
       }
 
@@ -1907,9 +2058,14 @@ export function ExpensesTab({
                     const groupPaymentStatus = expense.split_group_id
                       ? splitPaymentByGroupId.get(expense.split_group_id)
                       : null
+                    const hasInvoice = expenseIdsWithInvoice.has(expense.id)
+                    const isInvoiceExpanded = expandedInvoiceExpenseIds.has(expense.id)
+                    const invoiceDetails = invoiceDetailsByExpenseId[expense.id]
+                    const tableColSpan = canEnterData ? 8 : 7
 
                     return (
-                    <TableRow key={expense.id} className="border-border hover:bg-muted/50">
+                    <Fragment key={expense.id}>
+                    <TableRow className="border-border hover:bg-muted/50">
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           {isSplit && (
@@ -1935,8 +2091,19 @@ export function ExpensesTab({
                       <TableCell>
                         <p className="font-medium">{expense.category}</p>
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {expense.description}
+                      <TableCell className="max-w-[200px]">
+                        <p className="truncate">{expense.description}</p>
+                        {hasInvoice ? (
+                          <button
+                            type="button"
+                            className="mt-1 text-xs text-primary underline-offset-2 hover:underline"
+                            onClick={() => void toggleInvoiceDetails(expense.id)}
+                          >
+                            {isInvoiceExpanded
+                              ? "Hide Invoice Details"
+                              : "See Invoice Details"}
+                          </button>
+                        ) : null}
                       </TableCell>
                       <TableCell>{expense.vendor_name || '-'}</TableCell>
                       <TableCell>
@@ -1986,6 +2153,37 @@ export function ExpensesTab({
                         </TableCell>
                       )}
                     </TableRow>
+                    {hasInvoice && isInvoiceExpanded ? (
+                      <TableRow className="border-border bg-muted/20 hover:bg-muted/20">
+                        <TableCell colSpan={tableColSpan} className="py-3">
+                          {invoiceDetails?.loading ? (
+                            <p className="text-sm text-muted-foreground">Loading invoice details…</p>
+                          ) : invoiceDetails?.error ? (
+                            <p className="text-sm text-destructive">{invoiceDetails.error}</p>
+                          ) : invoiceDetails?.data?.items.length ? (
+                            <div className="space-y-3 border-l-2 border-primary/30 pl-3">
+                              {invoiceDetails.data.items.map((item) => (
+                                <div key={item.id} className="text-sm">
+                                  <p className="font-medium">
+                                    {item.material_description_standardized ||
+                                      item.material_description_original}
+                                  </p>
+                                  <p className="text-muted-foreground">
+                                    {formatInvoiceLineQuantity(item)}
+                                  </p>
+                                  <p>{formatINR(Number(item.total_amount))}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">
+                              No line items extracted yet.
+                            </p>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                    </Fragment>
                     )
                   })
                 )}
