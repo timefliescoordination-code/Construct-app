@@ -41,6 +41,7 @@ import {
 import { useAdminDashboard } from "@/lib/hooks/use-admin-dashboard"
 import { PM_NOT_CREATED } from "@/lib/staff-labels"
 import { DashboardHeader } from "@/components/dashboard/header"
+import { CashFlowLedgerSection } from "@/components/admin/cash-flow-ledger"
 import { ProjectMilestoneLink } from "@/components/admin/project-milestone-link"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useAuth } from "@/lib/hooks/use-auth"
@@ -724,6 +725,8 @@ export function AdminDashboard() {
             </CardContent>
           </Card>
         </section>
+
+        <CashFlowLedgerSection />
       </main>
     </div>
   )
