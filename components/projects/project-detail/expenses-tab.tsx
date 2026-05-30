@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState, useEffect, useMemo } from "react"
+import { useRef, useState, useEffect, useMemo, type ChangeEvent } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -55,6 +55,9 @@ import {
   updateExpenseAction,
   updateExpenseStatusAction,
 } from "@/lib/projects/tab-actions"
+import { attachExpenseInvoiceAction } from "@/lib/projects/invoice-actions"
+import { validateInvoiceFile } from "@/lib/invoices/validate"
+import { formatFileSize } from "@/lib/file-upload"
 import {
   createExpenseSplitGroupAction,
   listOpenSplitGroupsAction,
@@ -235,6 +238,8 @@ export function ExpensesTab({
   const searchParams = useSearchParams()
   const [splitMode, setSplitMode] = useState(false)
   const [splitFirstAmount, setSplitFirstAmount] = useState("")
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
+  const invoiceFileInputRef = useRef<HTMLInputElement>(null)
   const [splitGroupEditId, setSplitGroupEditId] = useState<string | null>(null)
   const [openSplitGroups, setOpenSplitGroups] = useState<OpenSplitGroupSummary[]>([])
   const [loadingOpenSplits, setLoadingOpenSplits] = useState(false)
@@ -513,6 +518,44 @@ export function ExpensesTab({
     })
     setSplitMode(false)
     setSplitFirstAmount("")
+    setInvoiceFile(null)
+    if (invoiceFileInputRef.current) {
+      invoiceFileInputRef.current.value = ""
+    }
+  }
+
+  const handleInvoiceFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      setInvoiceFile(null)
+      return
+    }
+
+    const validation = validateInvoiceFile(file)
+    if (!validation.valid) {
+      toast.error(validation.error ?? "Invalid invoice file.")
+      event.target.value = ""
+      setInvoiceFile(null)
+      return
+    }
+
+    setInvoiceFile(file)
+  }
+
+  const attachInvoiceToExpense = async (expenseId: string) => {
+    if (!projectId || !invoiceFile) return { ok: true as const }
+
+    const formData = new FormData()
+    formData.append("projectId", projectId)
+    formData.append("expenseId", expenseId)
+    formData.append("file", invoiceFile)
+
+    const result = await attachExpenseInvoiceAction(formData)
+    if (!result.ok) {
+      return { ok: false as const, error: result.error }
+    }
+
+    return { ok: true as const }
   }
 
   const resolveLabourTeamId = (
@@ -632,6 +675,16 @@ export function ExpensesTab({
       const row = result.data
       const names = project ? milestoneNameById(project) : new Map<string, string>()
       const milestoneId = (row.milestone_id as string | null) ?? null
+
+      if (invoiceFile && !splitMode) {
+        const invoiceResult = await attachInvoiceToExpense(row.id as string)
+        if (!invoiceResult.ok) {
+          toast.warning(
+            `Expense saved, but invoice upload failed: ${invoiceResult.error}`,
+          )
+        }
+      }
+
       toast.success("Expense added successfully!")
       setExpenses((prev) => [
         {
@@ -1567,11 +1620,39 @@ export function ExpensesTab({
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Bill Upload</Label>
-                        <Button variant="outline" className="w-full gap-2 bg-muted border-border">
+                        <Label>Upload Invoice</Label>
+                        <input
+                          ref={invoiceFileInputRef}
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                          className="hidden"
+                          onChange={handleInvoiceFileChange}
+                          disabled={isSubmitting || splitMode}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full gap-2 bg-muted border-border"
+                          onClick={() => invoiceFileInputRef.current?.click()}
+                          disabled={isSubmitting || splitMode}
+                        >
                           <Upload className="h-4 w-4" />
-                          Upload Bill
+                          {invoiceFile ? "Change Invoice" : "Upload Invoice"}
                         </Button>
+                        {invoiceFile ? (
+                          <p className="text-xs text-muted-foreground">
+                            {invoiceFile.name} ({formatFileSize(invoiceFile.size)})
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            PDF, JPG, JPEG, or PNG up to 10MB. Optional — expense saves normally without a file.
+                          </p>
+                        )}
+                        {splitMode ? (
+                          <p className="text-xs text-muted-foreground">
+                            Invoice upload is available for single expenses only.
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   </div>

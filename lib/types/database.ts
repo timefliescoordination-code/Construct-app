@@ -6,6 +6,7 @@ export type ExpenseStatus = 'pending' | 'approved' | 'rejected'
 export type PaymentStatus = 'pending' | 'received' | 'overdue'
 export type VendorPaymentStatus = 'pending' | 'partial' | 'paid' | 'overdue'
 export type AdditionalWorkStatus = 'pending' | 'approved' | 'rejected'
+export type InvoiceProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
 export interface Profile {
   id: string
@@ -203,6 +204,37 @@ export interface MaterialAlias {
 
 export interface MaterialMasterWithAliases extends MaterialMaster {
   aliases: MaterialAlias[]
+}
+
+export interface ExpenseInvoice {
+  id: string
+  expense_id: string
+  file_path: string
+  file_name: string
+  file_mime_type: string
+  vendor_name: string | null
+  invoice_number: string | null
+  invoice_date: string | null
+  invoice_total: number | null
+  processing_status: InvoiceProcessingStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface InvoiceItem {
+  id: string
+  expense_id: string
+  material_description_original: string
+  material_description_standardized: string | null
+  quantity: number | null
+  unit: string | null
+  unit_rate: number | null
+  total_amount: number
+  created_at: string
+}
+
+export interface ExpenseInvoiceWithItems extends ExpenseInvoice {
+  items: InvoiceItem[]
 }
 
 export interface ProjectEngineerAssignment {
