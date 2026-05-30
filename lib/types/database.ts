@@ -206,6 +206,21 @@ export interface MaterialMasterWithAliases extends MaterialMaster {
   aliases: MaterialAlias[]
 }
 
+export interface MaterialPurchase {
+  id: string
+  material_id: string
+  project_id: string | null
+  vendor_name: string | null
+  purchase_date: string
+  rate: number
+  expense_id: string | null
+  created_at: string
+}
+
+export interface MaterialPurchaseWithProject extends MaterialPurchase {
+  project_name: string | null
+}
+
 export interface ExpenseInvoice {
   id: string
   expense_id: string

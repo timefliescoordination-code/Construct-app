@@ -1,9 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
+import {
+  calculateRateChangePercent,
+  isRateIncreasedWarning,
+  MATERIAL_INTELLIGENCE_PAGE_SIZE,
+  normalizeMaterialCategory,
+} from '@/lib/materials/constants'
 import type {
   MaterialAlias,
   MaterialMaster,
   MaterialMasterWithAliases,
+  MaterialPurchaseWithProject,
 } from '@/lib/types/database'
 
 export type MaterialMasterInput = {
@@ -24,6 +31,53 @@ export type MaterialMasterUpdateInput = {
 export type MaterialAliasInput = {
   materialId: string
   aliasName: string
+}
+
+export type MaterialIntelligenceRow = {
+  id: string
+  materialName: string
+  category: string
+  averageRate: number
+  previousRate: number
+  latestRate: number
+  rateChangePercent: number | null
+  purchaseCount: number
+  isRateIncreased: boolean
+}
+
+export type PaginatedMaterialIntelligenceResult = {
+  materials: MaterialIntelligenceRow[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+export type RecordMaterialPurchaseInput = {
+  materialId: string
+  purchaseRate: number
+  projectId?: string | null
+  vendorName?: string | null
+  purchaseDate?: string
+  expenseId?: string | null
+}
+
+function mapMaterialIntelligenceRow(material: MaterialMaster): MaterialIntelligenceRow {
+  const averageRate = Number(material.average_rate)
+  const previousRate = Number(material.previous_rate)
+  const latestRate = Number(material.latest_rate)
+
+  return {
+    id: material.id,
+    materialName: material.material_name,
+    category: normalizeMaterialCategory(material.category),
+    averageRate,
+    previousRate,
+    latestRate,
+    rateChangePercent: calculateRateChangePercent(latestRate, previousRate),
+    purchaseCount: Number(material.purchase_count),
+    isRateIncreased: isRateIncreasedWarning(latestRate, averageRate),
+  }
 }
 
 function normalizeMaterialName(name: string): string {
@@ -106,6 +160,94 @@ export async function listMaterialMaster(options?: { category?: string }) {
   }
 
   return { data: attachAliases(materialRows, aliases), error: null }
+}
+
+export async function listMaterialMasterPaginated(options?: {
+  page?: number
+  pageSize?: number
+}): Promise<{ data: PaginatedMaterialIntelligenceResult | null; error: string | null }> {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { data: null, error: 'You must be signed in to view materials.' }
+  }
+
+  const page = Math.max(1, options?.page ?? 1)
+  const pageSize = Math.min(
+    MATERIAL_INTELLIGENCE_PAGE_SIZE,
+    Math.max(1, options?.pageSize ?? MATERIAL_INTELLIGENCE_PAGE_SIZE),
+  )
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  const { data: materials, error: materialsError, count } = await supabase
+    .from('material_master')
+    .select('*', { count: 'exact' })
+    .order('category', { ascending: true, nullsFirst: false })
+    .order('material_name', { ascending: true })
+    .range(from, to)
+
+  if (materialsError) {
+    return { data: null, error: getSupabaseErrorMessage(materialsError) }
+  }
+
+  const total = count ?? 0
+  const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0
+
+  return {
+    data: {
+      materials: ((materials ?? []) as MaterialMaster[]).map(mapMaterialIntelligenceRow),
+      total,
+      page,
+      pageSize,
+      totalPages,
+    },
+    error: null,
+  }
+}
+
+export async function listMaterialPurchases(materialId: string) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { data: null, error: 'You must be signed in to view material purchases.' }
+  }
+
+  const { data, error } = await supabase
+    .from('material_purchases')
+    .select('*, projects(name)')
+    .eq('material_id', materialId)
+    .order('purchase_date', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    return { data: null, error: getSupabaseErrorMessage(error) }
+  }
+
+  const purchases: MaterialPurchaseWithProject[] = (data ?? []).map((row) => {
+    const projectRaw = row.projects as { name?: string } | null
+    return {
+      id: row.id as string,
+      material_id: row.material_id as string,
+      project_id: (row.project_id as string | null) ?? null,
+      vendor_name: (row.vendor_name as string | null) ?? null,
+      purchase_date: row.purchase_date as string,
+      rate: Number(row.rate),
+      expense_id: (row.expense_id as string | null) ?? null,
+      created_at: row.created_at as string,
+      project_name: projectRaw?.name ?? null,
+    }
+  })
+
+  return { data: purchases, error: null }
 }
 
 export async function getMaterialMasterById(materialId: string) {
@@ -376,10 +518,7 @@ export async function deleteMaterialAlias(aliasId: string) {
   return { data: true, error: null }
 }
 
-export async function recordMaterialPurchase(
-  materialId: string,
-  purchaseRate: number,
-) {
+export async function recordMaterialPurchase(input: RecordMaterialPurchaseInput) {
   const supabase = await createClient()
 
   const {
@@ -393,7 +532,7 @@ export async function recordMaterialPurchase(
   const { data: existing, error: fetchError } = await supabase
     .from('material_master')
     .select('average_rate, latest_rate, purchase_count')
-    .eq('id', materialId)
+    .eq('id', input.materialId)
     .maybeSingle()
 
   if (fetchError) {
@@ -405,13 +544,27 @@ export async function recordMaterialPurchase(
   }
 
   const purchaseCount = Number(existing.purchase_count) + 1
+  const purchaseRate = input.purchaseRate
   const averageRate =
     purchaseCount === 1
       ? purchaseRate
       : (Number(existing.average_rate) * Number(existing.purchase_count) + purchaseRate) /
         purchaseCount
 
-  return updateMaterialMaster(materialId, {
+  const { error: purchaseError } = await supabase.from('material_purchases').insert({
+    material_id: input.materialId,
+    project_id: input.projectId ?? null,
+    vendor_name: input.vendorName?.trim() || null,
+    purchase_date: input.purchaseDate ?? new Date().toISOString().slice(0, 10),
+    rate: purchaseRate,
+    expense_id: input.expenseId ?? null,
+  })
+
+  if (purchaseError) {
+    return { data: null, error: getSupabaseErrorMessage(purchaseError) }
+  }
+
+  return updateMaterialMaster(input.materialId, {
     averageRate,
     latestRate: purchaseRate,
     purchaseCount,
