@@ -3,6 +3,7 @@ import {
   filterMoneyTimeline,
   paginateMoneyTimeline,
 } from "@/lib/money-timeline/build-timeline"
+import { normalizeDateValue, unwrapProject } from "@/lib/money-timeline/dates"
 import type { MoneyTimelineFilters } from "@/lib/money-timeline/types"
 import { createClient } from "@/lib/supabase/server"
 import { getSupabaseErrorMessage } from "@/lib/supabase/db-errors"
@@ -92,27 +93,39 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const payments = (paymentsResult.data ?? []).map((row) => {
-      const project = row.projects as { id: string; name: string } | null
-      return {
-        id: row.id,
-        projectId: row.project_id,
-        projectName: project?.name ?? "Unknown project",
-        amount: Number(row.amount),
-        date: row.received_date ?? row.created_at.slice(0, 10),
-      }
+    const payments = (paymentsResult.data ?? []).flatMap((row) => {
+      const project = unwrapProject(row.projects)
+      const date =
+        normalizeDateValue(row.received_date) ??
+        normalizeDateValue(row.created_at)
+      if (!date) return []
+
+      return [
+        {
+          id: row.id,
+          projectId: row.project_id,
+          projectName: project?.name ?? "Unknown project",
+          amount: Number(row.amount),
+          date,
+        },
+      ]
     })
 
-    const expenses = (expensesResult.data ?? []).map((row) => {
-      const project = row.projects as { id: string; name: string } | null
-      return {
-        id: row.id,
-        projectId: row.project_id,
-        projectName: project?.name ?? "Unknown project",
-        description: row.description?.trim() || row.category,
-        amount: Number(row.amount),
-        date: row.expense_date,
-      }
+    const expenses = (expensesResult.data ?? []).flatMap((row) => {
+      const project = unwrapProject(row.projects)
+      const date = normalizeDateValue(row.expense_date)
+      if (!date) return []
+
+      return [
+        {
+          id: row.id,
+          projectId: row.project_id,
+          projectName: project?.name ?? "Unknown project",
+          description: row.description?.trim() || row.category || "Expense",
+          amount: Number(row.amount),
+          date,
+        },
+      ]
     })
 
     const timeline = buildMoneyTimeline(payments, expenses)

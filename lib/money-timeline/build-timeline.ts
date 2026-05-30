@@ -4,7 +4,10 @@ import type {
   RawExpenseRow,
   RawReceivedRow,
 } from "@/lib/money-timeline/types"
-import { format, parseISO } from "date-fns"
+import {
+  formatExpenseDateRange,
+  rangeHasOtherProject,
+} from "@/lib/money-timeline/dates"
 
 export function buildExpenseSummary(descriptions: string[]): string {
   if (descriptions.length === 0) return ""
@@ -14,27 +17,6 @@ export function buildExpenseSummary(descriptions: string[]): string {
     return `${first.join(", ")} +${remaining} more`
   }
   return first.join(", ")
-}
-
-export function formatExpenseDateRange(start: string, end: string): string {
-  if (start === end) {
-    return format(parseISO(start), "dd-MMM-yyyy")
-  }
-
-  const startDate = parseISO(start)
-  const endDate = parseISO(end)
-  const sameMonth =
-    startDate.getFullYear() === endDate.getFullYear() &&
-    startDate.getMonth() === endDate.getMonth()
-  const sameYear = startDate.getFullYear() === endDate.getFullYear()
-
-  if (sameMonth) {
-    return `${format(startDate, "d")} to ${format(endDate, "d MMM")}`
-  }
-  if (sameYear) {
-    return `${format(startDate, "d MMM")} to ${format(endDate, "d MMM")}`
-  }
-  return `${format(startDate, "d MMM yyyy")} to ${format(endDate, "d MMM yyyy")}`
 }
 
 function buildDateProjectMap(
@@ -47,27 +29,6 @@ function buildDateProjectMap(
     map.set(expense.date, projects)
   }
   return map
-}
-
-function rangeHasOtherProject(
-  start: string,
-  end: string,
-  projectId: string,
-  dateProjects: Map<string, Set<string>>,
-): boolean {
-  const startMs = parseISO(start).getTime()
-  const endMs = parseISO(end).getTime()
-  const step = 24 * 60 * 60 * 1000
-
-  for (let ms = startMs; ms <= endMs; ms += step) {
-    const day = format(new Date(ms), "yyyy-MM-dd")
-    const projects = dateProjects.get(day)
-    if (!projects) continue
-    for (const id of projects) {
-      if (id !== projectId) return true
-    }
-  }
-  return false
 }
 
 function groupExpenses(expenses: RawExpenseRow[]): MoneyTimelineEntry[] {
