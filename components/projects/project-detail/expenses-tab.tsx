@@ -348,14 +348,9 @@ export function ExpensesTab({
   const [invoiceReplacingExpenseId, setInvoiceReplacingExpenseId] = useState<string | null>(
     null,
   )
-  const [invoiceAttachExpenseId, setInvoiceAttachExpenseId] = useState<string | null>(null)
   const [uploadingInvoiceExpenseIds, setUploadingInvoiceExpenseIds] = useState<
     Set<string>
   >(() => new Set())
-  const [invoiceAttachingExpenseId, setInvoiceAttachingExpenseId] = useState<string | null>(
-    null,
-  )
-  const attachExistingInvoiceInputRef = useRef<HTMLInputElement>(null)
   const invoiceReplaceInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [splitGroupEditId, setSplitGroupEditId] = useState<string | null>(null)
   const [openSplitGroups, setOpenSplitGroups] = useState<OpenSplitGroupSummary[]>([])
@@ -784,40 +779,6 @@ export function ExpensesTab({
         [expenseId]: { loading: false, error: message },
       }))
     }
-  }
-
-  const handleAttachExistingInvoiceFile = async (
-    expenseId: string,
-    event: ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0]
-    event.target.value = ""
-    if (!file) return
-
-    const validation = validateInvoiceFile(file)
-    if (!validation.valid) {
-      toast.error(validation.error ?? "Invalid invoice file.")
-      return
-    }
-
-    setInvoiceAttachingExpenseId(expenseId)
-    const result = await attachInvoiceToExpense(expenseId, file)
-    setInvoiceAttachingExpenseId(null)
-
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-
-    toast.success("Invoice uploaded. Extracting line items…")
-    setExpenseIdsWithInvoice((prev) => new Set(prev).add(expenseId))
-    setExpandedInvoiceExpenseIds((prev) => new Set(prev).add(expenseId))
-    await loadInvoiceDetails(expenseId)
-  }
-
-  const promptAttachExistingInvoice = (expenseId: string) => {
-    setInvoiceAttachExpenseId(expenseId)
-    attachExistingInvoiceInputRef.current?.click()
   }
 
   const collapseInvoiceDetails = (expenseId: string) => {
@@ -2602,17 +2563,6 @@ export function ExpensesTab({
                               ? "Hide Invoice Details"
                               : "See Invoice Details"}
                           </button>
-                        ) : canEnterData && !isSplit ? (
-                          <button
-                            type="button"
-                            className="mt-1 text-xs text-primary underline-offset-2 hover:underline disabled:opacity-50"
-                            disabled={invoiceAttachingExpenseId === expense.id}
-                            onClick={() => promptAttachExistingInvoice(expense.id)}
-                          >
-                            {invoiceAttachingExpenseId === expense.id
-                              ? "Uploading invoice…"
-                              : "Upload invoice"}
-                          </button>
                         ) : null}
                       </TableCell>
                       <TableCell>{expense.vendor_name || '-'}</TableCell>
@@ -2748,19 +2698,6 @@ export function ExpensesTab({
           />
         </>
       )}
-
-      <input
-        ref={attachExistingInvoiceInputRef}
-        type="file"
-        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-        className="hidden"
-        onChange={(event) => {
-          if (invoiceAttachExpenseId) {
-            void handleAttachExistingInvoiceFile(invoiceAttachExpenseId, event)
-            setInvoiceAttachExpenseId(null)
-          }
-        }}
-      />
 
       <AlertDialog
         open={invoiceDeleteConfirmExpenseId != null}
