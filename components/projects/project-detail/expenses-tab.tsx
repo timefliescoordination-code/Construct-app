@@ -349,6 +349,9 @@ export function ExpensesTab({
     null,
   )
   const [invoiceAttachExpenseId, setInvoiceAttachExpenseId] = useState<string | null>(null)
+  const [uploadingInvoiceExpenseIds, setUploadingInvoiceExpenseIds] = useState<
+    Set<string>
+  >(() => new Set())
   const [invoiceAttachingExpenseId, setInvoiceAttachingExpenseId] = useState<string | null>(
     null,
   )
@@ -680,15 +683,29 @@ export function ExpensesTab({
       return { ok: false as const, error: error ?? "Failed to store invoice." }
     }
 
-    const trigger = await triggerExpenseInvoiceProcessingAction(data.id)
-    if (!trigger.ok) {
-      return {
-        ok: false as const,
-        error: trigger.error ?? "Invoice saved but processing could not start.",
-      }
-    }
+    void triggerExpenseInvoiceProcessingAction(data.id)
 
     return { ok: true as const, data }
+  }
+
+  const uploadInvoiceInBackground = async (expenseId: string, file: File) => {
+    setUploadingInvoiceExpenseIds((prev) => new Set(prev).add(expenseId))
+    try {
+      const result = await attachInvoiceToExpense(expenseId, file)
+      if (!result.ok) {
+        toast.warning(`Invoice upload failed: ${result.error}`)
+        return
+      }
+
+      setExpenseIdsWithInvoice((prev) => new Set(prev).add(expenseId))
+      toast.success("Invoice uploaded. Extracting line items…")
+    } finally {
+      setUploadingInvoiceExpenseIds((prev) => {
+        const next = new Set(prev)
+        next.delete(expenseId)
+        return next
+      })
+    }
   }
 
   const loadInvoiceDetails = async (expenseId: string) => {
@@ -1288,47 +1305,48 @@ export function ExpensesTab({
 
     if (!result.ok) {
       toast.error(result.error)
-    } else {
-      const row = result.data
-      const names = project ? milestoneNameById(project) : new Map<string, string>()
-      const milestoneId = (row.milestone_id as string | null) ?? null
-
-      if (invoiceFile && !splitMode) {
-        const invoiceResult = await attachInvoiceToExpense(row.id as string, invoiceFile)
-        if (!invoiceResult.ok) {
-          toast.warning(
-            `Expense saved, but invoice upload failed: ${invoiceResult.error}`,
-          )
-        } else {
-          setExpenseIdsWithInvoice((prev) => new Set(prev).add(row.id as string))
-        }
-      }
-
-      toast.success("Expense added successfully!")
-      setExpenses((prev) => [
-        {
-          id: row.id as string,
-          expense_date: row.expense_date as string,
-          category: row.category as string,
-          description: row.description as string,
-          vendor_name: (row.vendor_name as string | null) ?? null,
-          amount: Number(row.amount),
-          bill_number: (row.bill_number as string | null) ?? null,
-          status: row.status as string,
-          milestone_id: milestoneId,
-          milestones:
-            milestoneId && names.has(milestoneId)
-              ? { name: names.get(milestoneId)! }
-              : null,
-        },
-        ...prev,
-      ])
-      onProjectChange?.()
-      resetNewExpenseForm()
-      setIsAddDialogOpen(false)
+      setIsSubmitting(false)
+      return
     }
 
+    const row = result.data
+    const names = project ? milestoneNameById(project) : new Map<string, string>()
+    const milestoneId = (row.milestone_id as string | null) ?? null
+    const expenseId = row.id as string
+    const pendingInvoiceFile = invoiceFile && !splitMode ? invoiceFile : null
+
+    setExpenses((prev) => [
+      {
+        id: expenseId,
+        expense_date: row.expense_date as string,
+        category: row.category as string,
+        description: row.description as string,
+        vendor_name: (row.vendor_name as string | null) ?? null,
+        amount: Number(row.amount),
+        bill_number: (row.bill_number as string | null) ?? null,
+        status: row.status as string,
+        milestone_id: milestoneId,
+        milestones:
+          milestoneId && names.has(milestoneId)
+            ? { name: names.get(milestoneId)! }
+            : null,
+      },
+      ...prev,
+    ])
+
+    toast.success(
+      pendingInvoiceFile
+        ? "Expense saved. Uploading invoice in the background…"
+        : "Expense added successfully!",
+    )
+    onProjectChange?.()
+    resetNewExpenseForm()
+    setIsAddDialogOpen(false)
     setIsSubmitting(false)
+
+    if (pendingInvoiceFile) {
+      void uploadInvoiceInBackground(expenseId, pendingInvoiceFile)
+    }
   }
 
   const openEditExpense = (expense: Expense) => {
@@ -2292,7 +2310,7 @@ export function ExpensesTab({
                         {isSubmitting ? (
                           <>
                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Adding...
+                            {invoiceFile && !splitMode ? "Saving expense…" : "Adding..."}
                           </>
                         ) : (
                           "Add Expense"
@@ -2569,7 +2587,12 @@ export function ExpensesTab({
                             ⚠ Increased
                           </Badge>
                         ) : null}
-                        {hasInvoice ? (
+                        {uploadingInvoiceExpenseIds.has(expense.id) ? (
+                          <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Uploading invoice…
+                          </span>
+                        ) : hasInvoice ? (
                           <button
                             type="button"
                             className="mt-1 text-xs text-primary underline-offset-2 hover:underline"
