@@ -58,6 +58,7 @@ import { useAuth } from "@/lib/hooks/use-auth"
 import type {
   ExpenseInvoiceWithItems,
   InvoiceItem,
+  MaterialMappingReview,
   ProjectWithDetails,
 } from "@/lib/types/database"
 import { formatINR } from "@/lib/currency"
@@ -68,6 +69,10 @@ import {
   updateExpenseStatusAction,
 } from "@/lib/projects/tab-actions"
 import { attachExpenseInvoiceAction } from "@/lib/projects/invoice-actions"
+import {
+  listMaterialsForMappingAction,
+  mapMaterialReviewAction,
+} from "@/lib/projects/material-mapping-actions"
 import { validateInvoiceFile } from "@/lib/invoices/validate"
 import { formatFileSize } from "@/lib/file-upload"
 import {
@@ -100,6 +105,8 @@ const statuses = ["pending", "approved", "rejected"]
 type ExpenseInvoiceDetailsState = {
   loading: boolean
   data?: ExpenseInvoiceWithItems
+  pendingReviews?: MaterialMappingReview[]
+  materialsForMapping?: Array<{ id: string; materialName: string }>
   error?: string
 }
 
@@ -149,6 +156,7 @@ interface Expense {
   split_total_amount?: number | null
   split_group_subcategory_name?: string | null
   split_group_labour_team_id?: string | null
+  material_rate_warning?: boolean
   milestones?: { name: string } | null
 }
 
@@ -179,6 +187,7 @@ function mapExpenseRow(row: Record<string, unknown>): Expense {
     split_total_amount: group ? Number(group.total_amount) : null,
     split_group_subcategory_name: group?.subcategory_name ?? null,
     split_group_labour_team_id: group?.labour_team_id ?? null,
+    material_rate_warning: Boolean(row.material_rate_warning),
     milestones: row.milestones as { name: string } | null,
   }
 }
@@ -297,6 +306,10 @@ export function ExpensesTab({
   const [invoiceDetailsByExpenseId, setInvoiceDetailsByExpenseId] = useState<
     Record<string, ExpenseInvoiceDetailsState>
   >({})
+  const [mappingMaterialByReviewId, setMappingMaterialByReviewId] = useState<
+    Record<string, string>
+  >({})
+  const [mappingReviewId, setMappingReviewId] = useState<string | null>(null)
   const [splitGroupEditId, setSplitGroupEditId] = useState<string | null>(null)
   const [openSplitGroups, setOpenSplitGroups] = useState<OpenSplitGroupSummary[]>([])
   const [loadingOpenSplits, setLoadingOpenSplits] = useState(false)
@@ -677,6 +690,21 @@ export function ExpensesTab({
       return
     }
 
+    const { data: reviews } = await supabase
+      .from("material_mapping_reviews")
+      .select("*")
+      .eq("expense_id", expenseId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: true })
+
+    let materialsForMapping: Array<{ id: string; materialName: string }> | undefined
+    if (canManageProjects && (reviews?.length ?? 0) > 0) {
+      const materialsResult = await listMaterialsForMappingAction()
+      if (materialsResult.ok) {
+        materialsForMapping = materialsResult.data
+      }
+    }
+
     setInvoiceDetailsByExpenseId((prev) => ({
       ...prev,
       [expenseId]: {
@@ -685,8 +713,36 @@ export function ExpensesTab({
           ...(invoice as ExpenseInvoiceWithItems),
           items: (items ?? []) as InvoiceItem[],
         },
+        pendingReviews: (reviews ?? []) as MaterialMappingReview[],
+        materialsForMapping,
       },
     }))
+  }
+
+  const handleMapMaterialReview = async (expenseId: string, reviewId: string) => {
+    if (!projectId) return
+    const materialId = mappingMaterialByReviewId[reviewId]
+    if (!materialId) {
+      toast.error("Select a material to map.")
+      return
+    }
+
+    setMappingReviewId(reviewId)
+    const result = await mapMaterialReviewAction({
+      projectId,
+      reviewId,
+      materialId,
+    })
+    setMappingReviewId(null)
+
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+
+    toast.success("Material mapping saved.")
+    await loadInvoiceDetails(expenseId)
+    void refreshExpensesWithJoin()
   }
 
   const toggleInvoiceDetails = async (expenseId: string) => {
@@ -833,6 +889,7 @@ export function ExpensesTab({
           )
         } else {
           setExpenseIdsWithInvoice((prev) => new Set(prev).add(row.id as string))
+          void refreshExpensesWithJoin()
         }
       }
 
@@ -2093,6 +2150,14 @@ export function ExpensesTab({
                       </TableCell>
                       <TableCell className="max-w-[200px]">
                         <p className="truncate">{expense.description}</p>
+                        {expense.material_rate_warning ? (
+                          <Badge
+                            variant="outline"
+                            className="mt-1 w-fit border-amber-500/40 bg-amber-500/10 text-amber-600"
+                          >
+                            ⚠ Increased
+                          </Badge>
+                        ) : null}
                         {hasInvoice ? (
                           <button
                             type="button"
@@ -2161,19 +2226,92 @@ export function ExpensesTab({
                           ) : invoiceDetails?.error ? (
                             <p className="text-sm text-destructive">{invoiceDetails.error}</p>
                           ) : invoiceDetails?.data?.items.length ? (
-                            <div className="space-y-3 border-l-2 border-primary/30 pl-3">
-                              {invoiceDetails.data.items.map((item) => (
-                                <div key={item.id} className="text-sm">
-                                  <p className="font-medium">
-                                    {item.material_description_standardized ||
-                                      item.material_description_original}
+                            <div className="space-y-4 border-l-2 border-primary/30 pl-3">
+                              {invoiceDetails.pendingReviews?.length ? (
+                                <div className="space-y-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+                                  <p className="text-sm font-medium">
+                                    Materials need mapping
                                   </p>
-                                  <p className="text-muted-foreground">
-                                    {formatInvoiceLineQuantity(item)}
-                                  </p>
-                                  <p>{formatINR(Number(item.total_amount))}</p>
+                                  {invoiceDetails.pendingReviews.map((review) => (
+                                    <div
+                                      key={review.id}
+                                      className="flex flex-col gap-2 sm:flex-row sm:items-center"
+                                    >
+                                      <span className="text-sm flex-1">{review.alias_name}</span>
+                                      {canManageProjects &&
+                                      invoiceDetails.materialsForMapping?.length ? (
+                                        <>
+                                          <Select
+                                            value={mappingMaterialByReviewId[review.id] ?? ""}
+                                            onValueChange={(value) =>
+                                              setMappingMaterialByReviewId((prev) => ({
+                                                ...prev,
+                                                [review.id]: value,
+                                              }))
+                                            }
+                                          >
+                                            <SelectTrigger className="w-full sm:w-[220px] bg-muted border-border">
+                                              <SelectValue placeholder="Map to material" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {invoiceDetails.materialsForMapping.map(
+                                                (material) => (
+                                                  <SelectItem
+                                                    key={material.id}
+                                                    value={material.id}
+                                                  >
+                                                    {material.materialName}
+                                                  </SelectItem>
+                                                ),
+                                              )}
+                                            </SelectContent>
+                                          </Select>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            disabled={mappingReviewId === review.id}
+                                            onClick={() =>
+                                              void handleMapMaterialReview(
+                                                expense.id,
+                                                review.id,
+                                              )
+                                            }
+                                          >
+                                            {mappingReviewId === review.id ? (
+                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                              "Save mapping"
+                                            )}
+                                          </Button>
+                                        </>
+                                      ) : (
+                                        <span className="text-xs text-muted-foreground">
+                                          Pending admin/PM review
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              ) : null}
+                              <div className="space-y-3">
+                                {invoiceDetails.data.items.map((item) => (
+                                  <div key={item.id} className="text-sm">
+                                    <p className="font-medium">
+                                      {item.material_description_standardized ||
+                                        item.material_description_original}
+                                    </p>
+                                    {!item.material_description_standardized ? (
+                                      <p className="text-xs text-muted-foreground">
+                                        OCR: {item.material_description_original}
+                                      </p>
+                                    ) : null}
+                                    <p className="text-muted-foreground">
+                                      {formatInvoiceLineQuantity(item)}
+                                    </p>
+                                    <p>{formatINR(Number(item.total_amount))}</p>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           ) : (
                             <p className="text-sm text-muted-foreground">

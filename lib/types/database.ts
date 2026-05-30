@@ -7,6 +7,7 @@ export type PaymentStatus = 'pending' | 'received' | 'overdue'
 export type VendorPaymentStatus = 'pending' | 'partial' | 'paid' | 'overdue'
 export type AdditionalWorkStatus = 'pending' | 'approved' | 'rejected'
 export type InvoiceProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed'
+export type MaterialMappingReviewStatus = 'pending' | 'mapped' | 'dismissed'
 
 export interface Profile {
   id: string
@@ -66,6 +67,7 @@ export interface Expense {
   split_group_id: string | null
   split_number: number | null
   status: ExpenseStatus
+  material_rate_warning: boolean
   submitted_by: string | null
   approved_by: string | null
   created_at: string
@@ -239,6 +241,7 @@ export interface ExpenseInvoice {
 export interface InvoiceItem {
   id: string
   expense_id: string
+  material_id: string | null
   material_description_original: string
   material_description_standardized: string | null
   quantity: number | null
@@ -246,6 +249,18 @@ export interface InvoiceItem {
   unit_rate: number | null
   total_amount: number
   created_at: string
+}
+
+export interface MaterialMappingReview {
+  id: string
+  alias_name: string
+  expense_id: string
+  invoice_item_id: string | null
+  status: MaterialMappingReviewStatus
+  mapped_material_id: string | null
+  mapped_by: string | null
+  created_at: string
+  resolved_at: string | null
 }
 
 export interface ExpenseInvoiceWithItems extends ExpenseInvoice {

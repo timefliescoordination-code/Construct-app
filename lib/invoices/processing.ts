@@ -1,4 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  applyInvoiceExtraction,
+  extractAndPrepareInvoice,
+} from '@/lib/invoices/apply-extraction'
+import { isInvoiceOcrConfigured } from '@/lib/invoices/ocr/env'
 
 export type InvoiceProcessingResult = {
   vendorName: string | null
@@ -15,26 +20,6 @@ export type InvoiceProcessingResult = {
   }>
 }
 
-/**
- * Placeholder OCR pipeline. Returns empty extraction results until OCR is implemented.
- */
-export async function extractInvoiceData(
-  _filePath: string,
-  _mimeType: string,
-): Promise<InvoiceProcessingResult> {
-  return {
-    vendorName: null,
-    invoiceNumber: null,
-    invoiceDate: null,
-    invoiceTotal: null,
-    items: [],
-  }
-}
-
-/**
- * Runs the invoice processing pipeline for a stored expense invoice.
- * Currently a no-op stub that leaves status as pending for future OCR integration.
- */
 export async function processExpenseInvoice(
   supabase: SupabaseClient,
   invoiceId: string,
@@ -63,54 +48,29 @@ export async function processExpenseInvoice(
   }
 
   try {
-    const extracted = await extractInvoiceData(
+    if (!isInvoiceOcrConfigured()) {
+      await supabase
+        .from('expense_invoices')
+        .update({ processing_status: 'pending' })
+        .eq('id', invoiceId)
+      return { ok: true }
+    }
+
+    const extracted = await extractAndPrepareInvoice(
+      supabase,
       invoice.file_path as string,
       invoice.file_mime_type as string,
     )
 
-    // OCR not implemented yet — keep invoice pending with no extracted fields.
-    if (extracted.items.length > 0) {
-      const { error: itemsError } = await supabase.from('invoice_items').insert(
-        extracted.items.map((item) => ({
-          expense_id: invoice.expense_id,
-          material_description_original: item.materialDescriptionOriginal,
-          material_description_standardized: item.materialDescriptionStandardized,
-          quantity: item.quantity,
-          unit: item.unit,
-          unit_rate: item.unitRate,
-          total_amount: item.totalAmount,
-        })),
-      )
-
-      if (itemsError) {
-        throw new Error(itemsError.message)
-      }
-
-      const { error: updateError } = await supabase
+    if (extracted.items.length === 0 && !extracted.vendorName && !extracted.invoiceNumber) {
+      await supabase
         .from('expense_invoices')
-        .update({
-          vendor_name: extracted.vendorName,
-          invoice_number: extracted.invoiceNumber,
-          invoice_date: extracted.invoiceDate,
-          invoice_total: extracted.invoiceTotal,
-          processing_status: 'completed',
-        })
+        .update({ processing_status: 'failed' })
         .eq('id', invoiceId)
-
-      if (updateError) {
-        throw new Error(updateError.message)
-      }
-    } else {
-      const { error: resetError } = await supabase
-        .from('expense_invoices')
-        .update({ processing_status: 'pending' })
-        .eq('id', invoiceId)
-
-      if (resetError) {
-        throw new Error(resetError.message)
-      }
+      return { ok: false, error: 'No invoice data could be extracted.' }
     }
 
+    await applyInvoiceExtraction(supabase, invoiceId, extracted)
     return { ok: true }
   } catch (error) {
     await supabase

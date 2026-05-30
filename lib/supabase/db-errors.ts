@@ -35,6 +35,10 @@ export function getSupabaseErrorMessage(error: unknown): string {
       return 'Material purchase history tables are missing. In Supabase SQL Editor, run supabase/material-purchases-module.sql, then refresh this page.'
     }
 
+    if (/material_mapping_reviews/i.test(msg)) {
+      return 'Invoice OCR mapping tables are missing. In Supabase SQL Editor, run supabase/invoice-ocr-module.sql, then refresh this page.'
+    }
+
     if (/expense_invoices|invoice_items/i.test(msg)) {
       return 'Expense invoice tables are missing. In Supabase SQL Editor, run supabase/expense-invoices-module.sql, then refresh this page.'
     }
