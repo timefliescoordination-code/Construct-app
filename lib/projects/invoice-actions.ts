@@ -8,6 +8,7 @@ import {
   replaceExpenseInvoiceRecord,
 } from '@/lib/data/invoices'
 import { validateInvoiceFile } from '@/lib/invoices/validate'
+import { scheduleExpenseInvoiceProcessing } from '@/lib/invoices/processing'
 import type { TabActionResult } from '@/lib/projects/tab-actions'
 import type { ExpenseInvoice } from '@/lib/types/database'
 
@@ -142,4 +143,15 @@ export async function getExpenseInvoiceViewUrlAction(input: {
   }
 
   return { ok: true, data: { url } }
+}
+
+export async function triggerExpenseInvoiceProcessingAction(
+  invoiceId: string,
+): Promise<TabActionResult> {
+  if (!invoiceId) {
+    return { ok: false, error: 'Invoice ID is required.' }
+  }
+
+  scheduleExpenseInvoiceProcessing(invoiceId)
+  return { ok: true }
 }

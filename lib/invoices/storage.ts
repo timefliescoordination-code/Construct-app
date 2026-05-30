@@ -11,6 +11,34 @@ export type UploadExpenseInvoiceFileInput = {
   fileBuffer: ArrayBuffer
 }
 
+export type UploadExpenseInvoiceBlobInput = {
+  projectId: string
+  expenseId: string
+  fileName: string
+  mimeType: string
+  file: Blob
+}
+
+async function uploadToExpenseInvoiceBucket(
+  supabase: SupabaseClient,
+  filePath: string,
+  body: ArrayBuffer | Blob,
+  mimeType: string,
+): Promise<{ filePath: string } | { error: string }> {
+  const { error } = await supabase.storage
+    .from(EXPENSE_INVOICE_BUCKET)
+    .upload(filePath, body, {
+      contentType: mimeType,
+      upsert: false,
+    })
+
+  if (error) {
+    return { error: getSupabaseErrorMessage(error) }
+  }
+
+  return { filePath }
+}
+
 export async function uploadExpenseInvoiceFile(
   supabase: SupabaseClient,
   input: UploadExpenseInvoiceFileInput,
@@ -21,18 +49,25 @@ export async function uploadExpenseInvoiceFile(
     input.fileName,
   )
 
-  const { error } = await supabase.storage
-    .from(EXPENSE_INVOICE_BUCKET)
-    .upload(filePath, input.fileBuffer, {
-      contentType: input.mimeType,
-      upsert: false,
-    })
+  return uploadToExpenseInvoiceBucket(
+    supabase,
+    filePath,
+    input.fileBuffer,
+    input.mimeType,
+  )
+}
 
-  if (error) {
-    return { error: getSupabaseErrorMessage(error) }
-  }
+export async function uploadExpenseInvoiceBlob(
+  supabase: SupabaseClient,
+  input: UploadExpenseInvoiceBlobInput,
+): Promise<{ filePath: string } | { error: string }> {
+  const filePath = buildExpenseInvoiceStoragePath(
+    input.projectId,
+    input.expenseId,
+    input.fileName,
+  )
 
-  return { filePath }
+  return uploadToExpenseInvoiceBucket(supabase, filePath, input.file, input.mimeType)
 }
 
 export async function deleteExpenseInvoiceFile(

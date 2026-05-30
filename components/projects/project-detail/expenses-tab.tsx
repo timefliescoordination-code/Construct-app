@@ -77,10 +77,12 @@ import {
   updateExpenseStatusAction,
 } from "@/lib/projects/tab-actions"
 import {
-  attachExpenseInvoiceAction,
+  attachExpenseInvoiceFromBrowser,
+  replaceExpenseInvoiceFromBrowser,
+} from "@/lib/invoices/client-attach"
+import {
   deleteExpenseInvoiceAction,
-  getExpenseInvoiceViewUrlAction,
-  replaceExpenseInvoiceAction,
+  triggerExpenseInvoiceProcessingAction,
 } from "@/lib/projects/invoice-actions"
 import {
   listMaterialsForMappingAction,
@@ -139,23 +141,29 @@ function formatInvoiceLineQuantity(item: InvoiceItem): string {
   return "—"
 }
 
-async function fetchExpenseIdsWithInvoices(
-  supabase: ReturnType<typeof createClient>,
-  expenseIds: string[],
-): Promise<Set<string>> {
-  if (expenseIds.length === 0) return new Set()
+async function fetchExpenseIdsWithInvoices(projectId: string): Promise<Set<string>> {
+  try {
+    const response = await fetch(`/api/projects/${projectId}/expense-invoices`, {
+      credentials: "include",
+      cache: "no-store",
+    })
+    const json = (await response.json().catch(() => ({}))) as {
+      data?: { expenseIds?: string[] }
+      error?: string
+    }
 
-  const { data, error } = await supabase
-    .from("expense_invoices")
-    .select("expense_id")
-    .in("expense_id", expenseIds)
+    if (!response.ok) {
+      if (json.error) {
+        console.error("[expenses-tab] fetch invoice flags:", json.error)
+      }
+      return new Set()
+    }
 
-  if (error) {
+    return new Set(json.data?.expenseIds ?? [])
+  } catch (error) {
     console.error("[expenses-tab] fetch invoice flags:", error)
     return new Set()
   }
-
-  return new Set((data ?? []).map((row) => row.expense_id as string))
 }
 
 interface Expense {
@@ -340,6 +348,11 @@ export function ExpensesTab({
   const [invoiceReplacingExpenseId, setInvoiceReplacingExpenseId] = useState<string | null>(
     null,
   )
+  const [invoiceAttachExpenseId, setInvoiceAttachExpenseId] = useState<string | null>(null)
+  const [invoiceAttachingExpenseId, setInvoiceAttachingExpenseId] = useState<string | null>(
+    null,
+  )
+  const attachExistingInvoiceInputRef = useRef<HTMLInputElement>(null)
   const invoiceReplaceInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [splitGroupEditId, setSplitGroupEditId] = useState<string | null>(null)
   const [openSplitGroups, setOpenSplitGroups] = useState<OpenSplitGroupSummary[]>([])
@@ -406,10 +419,7 @@ export function ExpensesTab({
             mapExpenseRow(row as Record<string, unknown>),
           )
           setExpenses(mapped)
-          const invoiceIds = await fetchExpenseIdsWithInvoices(
-            supabase,
-            mapped.map((expense) => expense.id),
-          )
+          const invoiceIds = await fetchExpenseIdsWithInvoices(projectId)
           setExpenseIdsWithInvoice(invoiceIds)
         }
 
@@ -579,11 +589,8 @@ export function ExpensesTab({
 
     const mapped = (data ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>))
     setExpenses(mapped)
-    const invoiceIds = await fetchExpenseIdsWithInvoices(
-      supabase,
-      mapped.map((expense) => expense.id),
-    )
-    setExpenseIdsWithInvoice(invoiceIds)
+    const invoiceIds = await fetchExpenseIdsWithInvoices(projectId)
+    setExpenseIdsWithInvoice((prev) => new Set([...prev, ...invoiceIds]))
     await loadOpenSplitGroups()
     onProjectChange?.()
   }
@@ -657,114 +664,143 @@ export function ExpensesTab({
     setInvoiceFile(file)
   }
 
-  const attachInvoiceToExpense = async (expenseId: string) => {
+  const attachInvoiceToExpense = async (expenseId: string, file: File) => {
     if (!projectId) {
       return { ok: false as const, error: "Project ID is required." }
     }
-    if (!invoiceFile) {
-      return { ok: false as const, error: "Invoice file was not attached." }
+
+    const supabase = createClient()
+    const { data, error } = await attachExpenseInvoiceFromBrowser(supabase, {
+      projectId,
+      expenseId,
+      file,
+    })
+
+    if (error || !data) {
+      return { ok: false as const, error: error ?? "Failed to store invoice." }
     }
 
-    const formData = new FormData()
-    formData.append("projectId", projectId)
-    formData.append("expenseId", expenseId)
-    formData.append("file", invoiceFile)
-
-    const result = await attachExpenseInvoiceAction(formData)
-    if (!result.ok) {
-      return { ok: false as const, error: result.error }
+    const trigger = await triggerExpenseInvoiceProcessingAction(data.id)
+    if (!trigger.ok) {
+      return {
+        ok: false as const,
+        error: trigger.error ?? "Invoice saved but processing could not start.",
+      }
     }
 
-    return { ok: true as const }
+    return { ok: true as const, data }
   }
 
   const loadInvoiceDetails = async (expenseId: string) => {
+    if (!projectId) return
+
     setInvoiceDetailsByExpenseId((prev) => ({
       ...prev,
-      [expenseId]: { loading: true },
+      [expenseId]: { ...prev[expenseId], loading: true, error: undefined },
     }))
 
-    const supabase = createClient()
-    const { data: invoice, error: invoiceError } = await supabase
-      .from("expense_invoices")
-      .select("*")
-      .eq("expense_id", expenseId)
-      .maybeSingle()
+    try {
+      const controller = new AbortController()
+      const timeout = window.setTimeout(() => controller.abort(), 20000)
 
-    if (invoiceError) {
-      setInvoiceDetailsByExpenseId((prev) => ({
-        ...prev,
-        [expenseId]: { loading: false, error: invoiceError.message },
-      }))
-      return
-    }
-
-    if (!invoice) {
-      setExpenseIdsWithInvoice((prev) => {
-        const next = new Set(prev)
-        next.delete(expenseId)
-        return next
-      })
-      setInvoiceDetailsByExpenseId((prev) => ({
-        ...prev,
-        [expenseId]: { loading: false, error: "Invoice not found." },
-      }))
-      return
-    }
-
-    const { data: items, error: itemsError } = await supabase
-      .from("invoice_items")
-      .select("*")
-      .eq("expense_id", expenseId)
-      .order("created_at", { ascending: true })
-
-    if (itemsError) {
-      setInvoiceDetailsByExpenseId((prev) => ({
-        ...prev,
-        [expenseId]: { loading: false, error: itemsError.message },
-      }))
-      return
-    }
-
-    const { data: reviews } = await supabase
-      .from("material_mapping_reviews")
-      .select("*")
-      .eq("expense_id", expenseId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: true })
-
-    let materialsForMapping: Array<{ id: string; materialName: string }> | undefined
-    if (canManageProjects && (reviews?.length ?? 0) > 0) {
-      const materialsResult = await listMaterialsForMappingAction()
-      if (materialsResult.ok) {
-        materialsForMapping = materialsResult.data
-      }
-    }
-
-    let viewUrl: string | null = null
-    if (projectId) {
-      const viewResult = await getExpenseInvoiceViewUrlAction({
-        projectId,
-        expenseId,
-      })
-      if (viewResult.ok) {
-        viewUrl = viewResult.data.url
-      }
-    }
-
-    setInvoiceDetailsByExpenseId((prev) => ({
-      ...prev,
-      [expenseId]: {
-        loading: false,
-        viewUrl,
-        data: {
-          ...(invoice as ExpenseInvoiceWithItems),
-          items: (items ?? []) as InvoiceItem[],
+      const response = await fetch(
+        `/api/projects/${projectId}/expenses/${expenseId}/invoice`,
+        {
+          credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
         },
-        pendingReviews: (reviews ?? []) as MaterialMappingReview[],
-        materialsForMapping,
-      },
-    }))
+      )
+      window.clearTimeout(timeout)
+
+      const json = (await response.json().catch(() => ({}))) as {
+        data?: {
+          invoice: ExpenseInvoiceWithItems
+          viewUrl: string | null
+          pendingReviews: MaterialMappingReview[]
+        }
+        error?: string
+      }
+
+      if (!response.ok || !json.data) {
+        const message = json.error ?? "Failed to load invoice details."
+        if (message.includes("No invoice found")) {
+          setExpenseIdsWithInvoice((prev) => {
+            const next = new Set(prev)
+            next.delete(expenseId)
+            return next
+          })
+        }
+        setInvoiceDetailsByExpenseId((prev) => ({
+          ...prev,
+          [expenseId]: { loading: false, error: message },
+        }))
+        return
+      }
+
+      let materialsForMapping: Array<{ id: string; materialName: string }> | undefined
+      if (canManageProjects && (json.data.pendingReviews?.length ?? 0) > 0) {
+        const materialsResult = await listMaterialsForMappingAction()
+        if (materialsResult.ok) {
+          materialsForMapping = materialsResult.data
+        }
+      }
+
+      setExpenseIdsWithInvoice((prev) => new Set(prev).add(expenseId))
+      setInvoiceDetailsByExpenseId((prev) => ({
+        ...prev,
+        [expenseId]: {
+          loading: false,
+          viewUrl: json.data?.viewUrl ?? null,
+          data: json.data?.invoice,
+          pendingReviews: json.data?.pendingReviews ?? [],
+          materialsForMapping,
+        },
+      }))
+    } catch (error) {
+      const message =
+        error instanceof Error && error.name === "AbortError"
+          ? "Loading invoice details timed out. Try again."
+          : "Failed to load invoice details."
+      setInvoiceDetailsByExpenseId((prev) => ({
+        ...prev,
+        [expenseId]: { loading: false, error: message },
+      }))
+    }
+  }
+
+  const handleAttachExistingInvoiceFile = async (
+    expenseId: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) return
+
+    const validation = validateInvoiceFile(file)
+    if (!validation.valid) {
+      toast.error(validation.error ?? "Invalid invoice file.")
+      return
+    }
+
+    setInvoiceAttachingExpenseId(expenseId)
+    const result = await attachInvoiceToExpense(expenseId, file)
+    setInvoiceAttachingExpenseId(null)
+
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+
+    toast.success("Invoice uploaded. Extracting line items…")
+    setExpenseIdsWithInvoice((prev) => new Set(prev).add(expenseId))
+    setExpandedInvoiceExpenseIds((prev) => new Set(prev).add(expenseId))
+    await loadInvoiceDetails(expenseId)
+  }
+
+  const promptAttachExistingInvoice = (expenseId: string) => {
+    setInvoiceAttachExpenseId(expenseId)
+    attachExistingInvoiceInputRef.current?.click()
   }
 
   const collapseInvoiceDetails = (expenseId: string) => {
@@ -806,16 +842,24 @@ export function ExpensesTab({
     }
 
     setInvoiceReplacingExpenseId(expenseId)
-    const formData = new FormData()
-    formData.append("projectId", projectId)
-    formData.append("expenseId", expenseId)
-    formData.append("file", file)
+    const supabase = createClient()
+    const { data, error } = await replaceExpenseInvoiceFromBrowser(supabase, {
+      projectId,
+      expenseId,
+      file,
+    })
 
-    const result = await replaceExpenseInvoiceAction(formData)
+    if (error || !data) {
+      setInvoiceReplacingExpenseId(null)
+      toast.error(error ?? "Failed to replace invoice.")
+      return
+    }
+
+    const trigger = await triggerExpenseInvoiceProcessingAction(data.id)
     setInvoiceReplacingExpenseId(null)
 
-    if (!result.ok) {
-      toast.error(result.error)
+    if (!trigger.ok) {
+      toast.error(trigger.error ?? "Invoice replaced but processing could not start.")
       return
     }
 
@@ -825,6 +869,7 @@ export function ExpensesTab({
     if (replaceInput) {
       replaceInput.value = ""
     }
+    setExpenseIdsWithInvoice((prev) => new Set(prev).add(expenseId))
     await loadInvoiceDetails(expenseId)
     void refreshExpensesWithJoin()
   }
@@ -1125,7 +1170,7 @@ export function ExpensesTab({
     setExpandedInvoiceExpenseIds((prev) => new Set(prev).add(expenseId))
 
     const cached = invoiceDetailsByExpenseId[expenseId]
-    if (!cached?.data && !cached?.loading) {
+    if (!cached?.data || cached.error) {
       await loadInvoiceDetails(expenseId)
     }
   }
@@ -1249,14 +1294,13 @@ export function ExpensesTab({
       const milestoneId = (row.milestone_id as string | null) ?? null
 
       if (invoiceFile && !splitMode) {
-        const invoiceResult = await attachInvoiceToExpense(row.id as string)
+        const invoiceResult = await attachInvoiceToExpense(row.id as string, invoiceFile)
         if (!invoiceResult.ok) {
           toast.warning(
             `Expense saved, but invoice upload failed: ${invoiceResult.error}`,
           )
         } else {
           setExpenseIdsWithInvoice((prev) => new Set(prev).add(row.id as string))
-          void refreshExpensesWithJoin()
         }
       }
 
@@ -2535,6 +2579,17 @@ export function ExpensesTab({
                               ? "Hide Invoice Details"
                               : "See Invoice Details"}
                           </button>
+                        ) : canEnterData && !isSplit ? (
+                          <button
+                            type="button"
+                            className="mt-1 text-xs text-primary underline-offset-2 hover:underline disabled:opacity-50"
+                            disabled={invoiceAttachingExpenseId === expense.id}
+                            onClick={() => promptAttachExistingInvoice(expense.id)}
+                          >
+                            {invoiceAttachingExpenseId === expense.id
+                              ? "Uploading invoice…"
+                              : "Upload invoice"}
+                          </button>
                         ) : null}
                       </TableCell>
                       <TableCell>{expense.vendor_name || '-'}</TableCell>
@@ -2589,7 +2644,12 @@ export function ExpensesTab({
                       <TableRow className="border-border bg-muted/20 hover:bg-muted/20">
                         <TableCell colSpan={tableColSpan} className="py-3">
                           {invoiceDetails?.loading ? (
-                            <p className="text-sm text-muted-foreground">Loading invoice details…</p>
+                            <div className="space-y-2">
+                              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Loading invoice preview…
+                              </p>
+                            </div>
                           ) : invoiceDetails?.error ? (
                             <p className="text-sm text-destructive">{invoiceDetails.error}</p>
                           ) : invoiceDetails?.data ? (
@@ -2665,6 +2725,19 @@ export function ExpensesTab({
           />
         </>
       )}
+
+      <input
+        ref={attachExistingInvoiceInputRef}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+        className="hidden"
+        onChange={(event) => {
+          if (invoiceAttachExpenseId) {
+            void handleAttachExistingInvoiceFile(invoiceAttachExpenseId, event)
+            setInvoiceAttachExpenseId(null)
+          }
+        }}
+      />
 
       <AlertDialog
         open={invoiceDeleteConfirmExpenseId != null}

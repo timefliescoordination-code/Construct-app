@@ -10,6 +10,7 @@ import type {
   ExpenseInvoice,
   ExpenseInvoiceWithItems,
   InvoiceItem,
+  MaterialMappingReview,
 } from '@/lib/types/database'
 
 export type CreateExpenseInvoiceInput = {
@@ -303,6 +304,127 @@ export async function getExpenseInvoiceViewUrl(input: {
   }
 
   return { url: signed.url, error: null }
+}
+
+export async function listExpenseIdsWithInvoicesForProject(projectId: string) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { expenseIds: [] as string[], error: 'You must be signed in to view invoices.' }
+  }
+
+  const { data: expenses, error: expensesError } = await supabase
+    .from('expenses')
+    .select('id')
+    .eq('project_id', projectId)
+
+  if (expensesError) {
+    return { expenseIds: [] as string[], error: getSupabaseErrorMessage(expensesError) }
+  }
+
+  const expenseIds = (expenses ?? []).map((row) => row.id as string)
+  if (expenseIds.length === 0) {
+    return { expenseIds: [] as string[], error: null }
+  }
+
+  const { data, error } = await supabase
+    .from('expense_invoices')
+    .select('expense_id')
+    .in('expense_id', expenseIds)
+
+  if (error) {
+    return { expenseIds: [] as string[], error: getSupabaseErrorMessage(error) }
+  }
+
+  return {
+    expenseIds: (data ?? []).map((row) => row.expense_id as string),
+    error: null,
+  }
+}
+
+export type ExpenseInvoiceDetailsPayload = {
+  invoice: ExpenseInvoiceWithItems
+  viewUrl: string | null
+  pendingReviews: MaterialMappingReview[]
+}
+
+export async function getExpenseInvoiceDetails(input: {
+  projectId: string
+  expenseId: string
+}): Promise<{ data: ExpenseInvoiceDetailsPayload | null; error: string | null }> {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { data: null, error: 'You must be signed in to view invoices.' }
+  }
+
+  const { error: expenseError } = await verifyExpenseInProject(
+    supabase,
+    input.expenseId,
+    input.projectId,
+  )
+
+  if (expenseError) {
+    return { data: null, error: expenseError }
+  }
+
+  const { data: invoice, error: invoiceError } = await supabase
+    .from('expense_invoices')
+    .select('*')
+    .eq('expense_id', input.expenseId)
+    .maybeSingle()
+
+  if (invoiceError) {
+    return { data: null, error: getSupabaseErrorMessage(invoiceError) }
+  }
+
+  if (!invoice) {
+    return { data: null, error: 'No invoice found for this expense.' }
+  }
+
+  const { data: items, error: itemsError } = await supabase
+    .from('invoice_items')
+    .select('*')
+    .eq('expense_id', input.expenseId)
+    .order('created_at', { ascending: true })
+
+  if (itemsError) {
+    return { data: null, error: getSupabaseErrorMessage(itemsError) }
+  }
+
+  const { data: reviews, error: reviewsError } = await supabase
+    .from('material_mapping_reviews')
+    .select('*')
+    .eq('expense_id', input.expenseId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+
+  if (reviewsError && reviewsError.code !== 'PGRST205') {
+    return { data: null, error: getSupabaseErrorMessage(reviewsError) }
+  }
+
+  const signed = await createSignedExpenseInvoiceUrl(supabase, invoice.file_path as string)
+  const viewUrl = 'error' in signed ? null : signed.url
+
+  return {
+    data: {
+      invoice: {
+        ...(invoice as ExpenseInvoice),
+        items: (items ?? []) as InvoiceItem[],
+      },
+      viewUrl,
+      pendingReviews: (reviews ?? []) as MaterialMappingReview[],
+    },
+    error: null,
+  }
 }
 
 export async function getExpenseInvoiceByExpenseId(expenseId: string) {
