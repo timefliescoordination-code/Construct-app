@@ -1,4 +1,6 @@
+import { after } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
 import {
   applyInvoiceExtraction,
   extractAndPrepareInvoice,
@@ -88,4 +90,15 @@ export async function enqueueExpenseInvoiceProcessing(
   invoiceId: string,
 ): Promise<void> {
   await processExpenseInvoice(supabase, invoiceId)
+}
+
+export function scheduleExpenseInvoiceProcessing(invoiceId: string): void {
+  after(async () => {
+    try {
+      const processingClient = await createClient()
+      await processExpenseInvoice(processingClient, invoiceId)
+    } catch (error) {
+      console.error('[scheduleExpenseInvoiceProcessing] background OCR failed:', error)
+    }
+  })
 }

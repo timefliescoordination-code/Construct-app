@@ -30,13 +30,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   Tooltip,
   TooltipContent,
@@ -49,7 +51,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Plus, Upload, Filter, Loader2, Pencil, Split } from "lucide-react"
+import { Plus, Upload, Filter, Loader2, Pencil, Split, FileText, ExternalLink, Trash2 } from "lucide-react"
 import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
@@ -68,7 +70,12 @@ import {
   updateExpenseAction,
   updateExpenseStatusAction,
 } from "@/lib/projects/tab-actions"
-import { attachExpenseInvoiceAction } from "@/lib/projects/invoice-actions"
+import {
+  attachExpenseInvoiceAction,
+  deleteExpenseInvoiceAction,
+  getExpenseInvoiceViewUrlAction,
+  replaceExpenseInvoiceAction,
+} from "@/lib/projects/invoice-actions"
 import {
   listMaterialsForMappingAction,
   mapMaterialReviewAction,
@@ -105,9 +112,14 @@ const statuses = ["pending", "approved", "rejected"]
 type ExpenseInvoiceDetailsState = {
   loading: boolean
   data?: ExpenseInvoiceWithItems
+  viewUrl?: string | null
   pendingReviews?: MaterialMappingReview[]
   materialsForMapping?: Array<{ id: string; materialName: string }>
   error?: string
+}
+
+function isInvoiceImageMimeType(mimeType: string): boolean {
+  return mimeType.startsWith("image/")
 }
 
 function formatInvoiceLineQuantity(item: InvoiceItem): string {
@@ -310,6 +322,19 @@ export function ExpensesTab({
     Record<string, string>
   >({})
   const [mappingReviewId, setMappingReviewId] = useState<string | null>(null)
+  const [invoiceReplaceFileByExpenseId, setInvoiceReplaceFileByExpenseId] = useState<
+    Record<string, File | null>
+  >({})
+  const [invoiceDeleteConfirmExpenseId, setInvoiceDeleteConfirmExpenseId] = useState<
+    string | null
+  >(null)
+  const [invoiceDeletingExpenseId, setInvoiceDeletingExpenseId] = useState<string | null>(
+    null,
+  )
+  const [invoiceReplacingExpenseId, setInvoiceReplacingExpenseId] = useState<string | null>(
+    null,
+  )
+  const invoiceReplaceInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [splitGroupEditId, setSplitGroupEditId] = useState<string | null>(null)
   const [openSplitGroups, setOpenSplitGroups] = useState<OpenSplitGroupSummary[]>([])
   const [loadingOpenSplits, setLoadingOpenSplits] = useState(false)
@@ -710,10 +735,22 @@ export function ExpensesTab({
       }
     }
 
+    let viewUrl: string | null = null
+    if (projectId) {
+      const viewResult = await getExpenseInvoiceViewUrlAction({
+        projectId,
+        expenseId,
+      })
+      if (viewResult.ok) {
+        viewUrl = viewResult.data.url
+      }
+    }
+
     setInvoiceDetailsByExpenseId((prev) => ({
       ...prev,
       [expenseId]: {
         loading: false,
+        viewUrl,
         data: {
           ...(invoice as ExpenseInvoiceWithItems),
           items: (items ?? []) as InvoiceItem[],
@@ -722,6 +759,325 @@ export function ExpensesTab({
         materialsForMapping,
       },
     }))
+  }
+
+  const collapseInvoiceDetails = (expenseId: string) => {
+    setExpandedInvoiceExpenseIds((prev) => {
+      const next = new Set(prev)
+      next.delete(expenseId)
+      return next
+    })
+  }
+
+  const handleInvoiceReplaceFileChange = (
+    expenseId: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      setInvoiceReplaceFileByExpenseId((prev) => ({ ...prev, [expenseId]: null }))
+      return
+    }
+
+    const validation = validateInvoiceFile(file)
+    if (!validation.valid) {
+      toast.error(validation.error ?? "Invalid invoice file.")
+      event.target.value = ""
+      setInvoiceReplaceFileByExpenseId((prev) => ({ ...prev, [expenseId]: null }))
+      return
+    }
+
+    setInvoiceReplaceFileByExpenseId((prev) => ({ ...prev, [expenseId]: file }))
+  }
+
+  const handleReplaceInvoice = async (expenseId: string) => {
+    if (!projectId) return
+
+    const file = invoiceReplaceFileByExpenseId[expenseId]
+    if (!file) {
+      toast.error("Choose a replacement invoice file first.")
+      return
+    }
+
+    setInvoiceReplacingExpenseId(expenseId)
+    const formData = new FormData()
+    formData.append("projectId", projectId)
+    formData.append("expenseId", expenseId)
+    formData.append("file", file)
+
+    const result = await replaceExpenseInvoiceAction(formData)
+    setInvoiceReplacingExpenseId(null)
+
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+
+    toast.success("Invoice replaced. Extracting line items…")
+    setInvoiceReplaceFileByExpenseId((prev) => ({ ...prev, [expenseId]: null }))
+    const replaceInput = invoiceReplaceInputRefs.current[expenseId]
+    if (replaceInput) {
+      replaceInput.value = ""
+    }
+    await loadInvoiceDetails(expenseId)
+    void refreshExpensesWithJoin()
+  }
+
+  const handleDeleteInvoice = async (expenseId: string) => {
+    if (!projectId) return
+
+    setInvoiceDeletingExpenseId(expenseId)
+    const result = await deleteExpenseInvoiceAction({ projectId, expenseId })
+    setInvoiceDeletingExpenseId(null)
+    setInvoiceDeleteConfirmExpenseId(null)
+
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+
+    toast.success("Invoice removed.")
+    setExpenseIdsWithInvoice((prev) => {
+      const next = new Set(prev)
+      next.delete(expenseId)
+      return next
+    })
+    setExpandedInvoiceExpenseIds((prev) => {
+      const next = new Set(prev)
+      next.delete(expenseId)
+      return next
+    })
+    setInvoiceDetailsByExpenseId((prev) => {
+      const next = { ...prev }
+      delete next[expenseId]
+      return next
+    })
+    setInvoiceReplaceFileByExpenseId((prev) => {
+      const next = { ...prev }
+      delete next[expenseId]
+      return next
+    })
+    void refreshExpensesWithJoin()
+  }
+
+  const renderInvoiceFilePanel = (expenseId: string, invoice: ExpenseInvoiceWithItems) => {
+    const details = invoiceDetailsByExpenseId[expenseId]
+    const replaceFile = invoiceReplaceFileByExpenseId[expenseId]
+    const isReplacing = invoiceReplacingExpenseId === expenseId
+    const isDeleting = invoiceDeletingExpenseId === expenseId
+    const viewUrl = details?.viewUrl ?? null
+    const isImage = isInvoiceImageMimeType(invoice.file_mime_type)
+
+    return (
+      <div className="space-y-3 rounded-md border border-border bg-background/80 p-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-2">
+            <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{invoice.file_name}</p>
+              <p className="text-xs text-muted-foreground">
+                {invoice.file_mime_type}
+                {replaceFile ? ` · Replace with ${replaceFile.name}` : ""}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {viewUrl ? (
+              <Button type="button" variant="outline" size="sm" asChild>
+                <a href={viewUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="mr-1 h-3.5 w-3.5" />
+                  Open
+                </a>
+              </Button>
+            ) : null}
+            {canEnterData ? (
+              <>
+                <input
+                  ref={(node) => {
+                    invoiceReplaceInputRefs.current[expenseId] = node
+                  }}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                  className="hidden"
+                  onChange={(event) => handleInvoiceReplaceFileChange(expenseId, event)}
+                  disabled={isReplacing || isDeleting}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isReplacing || isDeleting}
+                  onClick={() => invoiceReplaceInputRefs.current[expenseId]?.click()}
+                >
+                  <Upload className="mr-1 h-3.5 w-3.5" />
+                  {replaceFile ? "Change file" : "Re-upload"}
+                </Button>
+                {replaceFile ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isReplacing || isDeleting}
+                    onClick={() => void handleReplaceInvoice(expenseId)}
+                  >
+                    {isReplacing ? (
+                      <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="mr-1 h-3.5 w-3.5" />
+                    )}
+                    Replace invoice
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isReplacing || isDeleting}
+                  onClick={() => setInvoiceDeleteConfirmExpenseId(expenseId)}
+                >
+                  <Trash2 className="mr-1 h-3.5 w-3.5" />
+                  Delete
+                </Button>
+              </>
+            ) : null}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={isReplacing || isDeleting}
+              onClick={() => collapseInvoiceDetails(expenseId)}
+            >
+              Continue
+            </Button>
+          </div>
+        </div>
+        {viewUrl ? (
+          isImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={viewUrl}
+              alt={invoice.file_name}
+              className="max-h-80 w-full rounded-md border border-border object-contain bg-muted/30"
+            />
+          ) : (
+            <iframe
+              src={viewUrl}
+              title={invoice.file_name}
+              className="h-80 w-full rounded-md border border-border bg-muted/30"
+            />
+          )
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Preview unavailable. Use Open to view the file in a new tab if you have access.
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  const renderInvoiceLineItems = (expenseId: string) => {
+    const invoiceDetails = invoiceDetailsByExpenseId[expenseId]
+
+    if (invoiceDetails?.data?.items.length) {
+      return (
+        <div className="space-y-4 border-l-2 border-primary/30 pl-3">
+          {invoiceDetails.pendingReviews?.length ? (
+            <div className="space-y-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+              <p className="text-sm font-medium">Materials need mapping</p>
+              {invoiceDetails.pendingReviews.map((review) => (
+                <div
+                  key={review.id}
+                  className="flex flex-col gap-2 sm:flex-row sm:items-center"
+                >
+                  <span className="text-sm flex-1">{review.alias_name}</span>
+                  {canManageProjects && invoiceDetails.materialsForMapping?.length ? (
+                    <>
+                      <Select
+                        value={mappingMaterialByReviewId[review.id] ?? ""}
+                        onValueChange={(value) =>
+                          setMappingMaterialByReviewId((prev) => ({
+                            ...prev,
+                            [review.id]: value,
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="w-full sm:w-[220px] bg-muted border-border">
+                          <SelectValue placeholder="Map to material" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {invoiceDetails.materialsForMapping.map((material) => (
+                            <SelectItem key={material.id} value={material.id}>
+                              {material.materialName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={mappingReviewId === review.id}
+                        onClick={() => void handleMapMaterialReview(expenseId, review.id)}
+                      >
+                        {mappingReviewId === review.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "Save mapping"
+                        )}
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      Pending admin/PM review
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="space-y-3">
+            {invoiceDetails.data.items.map((item) => (
+              <div key={item.id} className="text-sm">
+                <p className="font-medium">
+                  {item.material_description_standardized ||
+                    item.material_description_original}
+                </p>
+                {!item.material_description_standardized ? (
+                  <p className="text-xs text-muted-foreground">
+                    OCR: {item.material_description_original}
+                  </p>
+                ) : null}
+                <p className="text-muted-foreground">{formatInvoiceLineQuantity(item)}</p>
+                <p>{formatINR(Number(item.total_amount))}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    if (
+      invoiceDetails?.data?.processing_status === "processing" ||
+      invoiceDetails?.data?.processing_status === "pending"
+    ) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          Extracting line items… This usually takes 5–30 seconds. Expand again in a moment
+          or click Continue and come back later.
+        </p>
+      )
+    }
+
+    if (invoiceDetails?.data?.processing_status === "failed") {
+      return (
+        <p className="text-sm text-destructive">
+          Line item extraction failed. You can re-upload the invoice or continue with the
+          expense as entered.
+        </p>
+      )
+    }
+
+    return (
+      <p className="text-sm text-muted-foreground">No line items extracted yet.</p>
+    )
   }
 
   const handleMapMaterialReview = async (expenseId: string, reviewId: string) => {
@@ -2230,109 +2586,13 @@ export function ExpensesTab({
                             <p className="text-sm text-muted-foreground">Loading invoice details…</p>
                           ) : invoiceDetails?.error ? (
                             <p className="text-sm text-destructive">{invoiceDetails.error}</p>
-                          ) : invoiceDetails?.data?.items.length ? (
-                            <div className="space-y-4 border-l-2 border-primary/30 pl-3">
-                              {invoiceDetails.pendingReviews?.length ? (
-                                <div className="space-y-3 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
-                                  <p className="text-sm font-medium">
-                                    Materials need mapping
-                                  </p>
-                                  {invoiceDetails.pendingReviews.map((review) => (
-                                    <div
-                                      key={review.id}
-                                      className="flex flex-col gap-2 sm:flex-row sm:items-center"
-                                    >
-                                      <span className="text-sm flex-1">{review.alias_name}</span>
-                                      {canManageProjects &&
-                                      invoiceDetails.materialsForMapping?.length ? (
-                                        <>
-                                          <Select
-                                            value={mappingMaterialByReviewId[review.id] ?? ""}
-                                            onValueChange={(value) =>
-                                              setMappingMaterialByReviewId((prev) => ({
-                                                ...prev,
-                                                [review.id]: value,
-                                              }))
-                                            }
-                                          >
-                                            <SelectTrigger className="w-full sm:w-[220px] bg-muted border-border">
-                                              <SelectValue placeholder="Map to material" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {invoiceDetails.materialsForMapping.map(
-                                                (material) => (
-                                                  <SelectItem
-                                                    key={material.id}
-                                                    value={material.id}
-                                                  >
-                                                    {material.materialName}
-                                                  </SelectItem>
-                                                ),
-                                              )}
-                                            </SelectContent>
-                                          </Select>
-                                          <Button
-                                            type="button"
-                                            size="sm"
-                                            disabled={mappingReviewId === review.id}
-                                            onClick={() =>
-                                              void handleMapMaterialReview(
-                                                expense.id,
-                                                review.id,
-                                              )
-                                            }
-                                          >
-                                            {mappingReviewId === review.id ? (
-                                              <Loader2 className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                              "Save mapping"
-                                            )}
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <span className="text-xs text-muted-foreground">
-                                          Pending admin/PM review
-                                        </span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : null}
-                              <div className="space-y-3">
-                                {invoiceDetails.data.items.map((item) => (
-                                  <div key={item.id} className="text-sm">
-                                    <p className="font-medium">
-                                      {item.material_description_standardized ||
-                                        item.material_description_original}
-                                    </p>
-                                    {!item.material_description_standardized ? (
-                                      <p className="text-xs text-muted-foreground">
-                                        OCR: {item.material_description_original}
-                                      </p>
-                                    ) : null}
-                                    <p className="text-muted-foreground">
-                                      {formatInvoiceLineQuantity(item)}
-                                    </p>
-                                    <p>{formatINR(Number(item.total_amount))}</p>
-                                  </div>
-                                ))}
-                              </div>
+                          ) : invoiceDetails?.data ? (
+                            <div className="space-y-4">
+                              {renderInvoiceFilePanel(expense.id, invoiceDetails.data)}
+                              {renderInvoiceLineItems(expense.id)}
                             </div>
-                          ) : invoiceDetails?.data?.processing_status === "processing" ||
-                            invoiceDetails?.data?.processing_status === "pending" ? (
-                            <p className="text-sm text-muted-foreground">
-                              Invoice uploaded — extracting line items… This usually takes 5–30
-                              seconds. Refresh or expand again in a moment.
-                            </p>
-                          ) : invoiceDetails?.data?.processing_status === "failed" ? (
-                            <p className="text-sm text-destructive">
-                              Invoice processing failed. Check that OPENAI_API_KEY is set in Vercel,
-                              then upload the invoice again.
-                            </p>
                           ) : (
-                            <p className="text-sm text-muted-foreground">
-                              No line items extracted yet.
-                            </p>
+                            <p className="text-sm text-muted-foreground">Invoice not found.</p>
                           )}
                         </TableCell>
                       </TableRow>
@@ -2399,6 +2659,43 @@ export function ExpensesTab({
           />
         </>
       )}
+
+      <AlertDialog
+        open={invoiceDeleteConfirmExpenseId != null}
+        onOpenChange={(open) => {
+          if (!open) setInvoiceDeleteConfirmExpenseId(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete invoice file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the uploaded invoice and any extracted line items for this expense.
+              The expense entry itself will stay.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={invoiceDeletingExpenseId != null}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={invoiceDeletingExpenseId != null || !invoiceDeleteConfirmExpenseId}
+              onClick={(event) => {
+                event.preventDefault()
+                if (invoiceDeleteConfirmExpenseId) {
+                  void handleDeleteInvoice(invoiceDeleteConfirmExpenseId)
+                }
+              }}
+            >
+              {invoiceDeletingExpenseId ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Delete invoice"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
