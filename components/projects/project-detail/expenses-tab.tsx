@@ -126,6 +126,11 @@ type ExpenseInvoiceDetailsState = {
   error?: string
 }
 
+type ExpenseInvoiceAttachmentHint = {
+  fileName: string
+  viewUrl: string
+}
+
 function isInvoiceImageMimeType(mimeType: string): boolean {
   return mimeType.startsWith("image/")
 }
@@ -351,6 +356,10 @@ export function ExpensesTab({
   const [uploadingInvoiceExpenseIds, setUploadingInvoiceExpenseIds] = useState<
     Set<string>
   >(() => new Set())
+  const [invoiceAttachmentByExpenseId, setInvoiceAttachmentByExpenseId] = useState<
+    Record<string, ExpenseInvoiceAttachmentHint>
+  >({})
+  const invoiceAttachmentBlobUrlsRef = useRef<Set<string>>(new Set())
   const invoiceReplaceInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [splitGroupEditId, setSplitGroupEditId] = useState<string | null>(null)
   const [openSplitGroups, setOpenSplitGroups] = useState<OpenSplitGroupSummary[]>([])
@@ -378,6 +387,49 @@ export function ExpensesTab({
     milestoneId: "",
     status: "pending",
   })
+
+  useEffect(() => {
+    const blobUrls = invoiceAttachmentBlobUrlsRef.current
+    return () => {
+      for (const url of blobUrls) {
+        URL.revokeObjectURL(url)
+      }
+      blobUrls.clear()
+    }
+  }, [])
+
+  const setImmediateInvoiceAttachment = (expenseIds: string[], file: File) => {
+    const viewUrl = URL.createObjectURL(file)
+    invoiceAttachmentBlobUrlsRef.current.add(viewUrl)
+
+    setInvoiceAttachmentByExpenseId((prev) => {
+      const next = { ...prev }
+      for (const id of expenseIds) {
+        const existing = prev[id]
+        if (existing?.viewUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(existing.viewUrl)
+          invoiceAttachmentBlobUrlsRef.current.delete(existing.viewUrl)
+        }
+        next[id] = { fileName: file.name, viewUrl }
+      }
+      return next
+    })
+  }
+
+  const clearImmediateInvoiceAttachment = (expenseIds: string[]) => {
+    setInvoiceAttachmentByExpenseId((prev) => {
+      const next = { ...prev }
+      for (const id of expenseIds) {
+        const existing = next[id]
+        if (existing?.viewUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(existing.viewUrl)
+          invoiceAttachmentBlobUrlsRef.current.delete(existing.viewUrl)
+        }
+        delete next[id]
+      }
+      return next
+    })
+  }
 
   useEffect(() => {
     if (project) {
@@ -706,6 +758,7 @@ export function ExpensesTab({
         for (const id of idsToMark) next.add(id)
         return next
       })
+      setImmediateInvoiceAttachment(idsToMark, file)
       toast.success("Invoice uploaded. Extracting line items…")
     } finally {
       setUploadingInvoiceExpenseIds((prev) => {
@@ -855,6 +908,7 @@ export function ExpensesTab({
     }
 
     toast.success("Invoice replaced. Extracting line items…")
+    setImmediateInvoiceAttachment([expenseId], file)
     setInvoiceReplaceFileByExpenseId((prev) => ({ ...prev, [expenseId]: null }))
     const replaceInput = invoiceReplaceInputRefs.current[expenseId]
     if (replaceInput) {
@@ -879,6 +933,7 @@ export function ExpensesTab({
     }
 
     toast.success("Invoice removed.")
+    clearImmediateInvoiceAttachment([expenseId])
     setExpenseIdsWithInvoice((prev) => {
       const next = new Set(prev)
       next.delete(expenseId)
@@ -2528,6 +2583,7 @@ export function ExpensesTab({
                       ? splitPaymentByGroupId.get(expense.split_group_id)
                       : null
                     const hasInvoice = expenseIdsWithInvoice.has(expense.id)
+                    const invoiceAttachment = invoiceAttachmentByExpenseId[expense.id]
                     const isInvoiceExpanded = expandedInvoiceExpenseIds.has(expense.id)
                     const invoiceDetails = invoiceDetailsByExpenseId[expense.id]
                     const tableColSpan = canEnterData ? 8 : 7
@@ -2575,7 +2631,23 @@ export function ExpensesTab({
                             <Loader2 className="h-3 w-3 animate-spin" />
                             Uploading invoice…
                           </span>
-                        ) : hasInvoice ? (
+                        ) : null}
+                        {invoiceAttachment ? (
+                          <div className="mt-1 flex flex-col items-start gap-0.5">
+                            <span className="max-w-full truncate text-xs text-muted-foreground">
+                              📄 {invoiceAttachment.fileName}
+                            </span>
+                            <a
+                              href={invoiceAttachment.viewUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                            >
+                              View PDF
+                            </a>
+                          </div>
+                        ) : null}
+                        {hasInvoice ? (
                           <button
                             type="button"
                             className="mt-1 text-xs text-primary underline-offset-2 hover:underline"
