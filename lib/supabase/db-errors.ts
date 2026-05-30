@@ -27,6 +27,10 @@ export function getSupabaseErrorMessage(error: unknown): string {
       return 'Expense split tables are missing. In Supabase SQL Editor, run supabase/expense-splits-module.sql, then refresh this page.'
     }
 
+    if (/material_master|material_aliases/i.test(msg)) {
+      return 'Material Intelligence tables are missing. In Supabase SQL Editor, run supabase/material-intelligence-module.sql, then refresh this page.'
+    }
+
     return 'Database tables are missing. Run supabase/schema.sql in Supabase SQL Editor (copy the file contents, not the filename), then refresh this page.'
   }
 

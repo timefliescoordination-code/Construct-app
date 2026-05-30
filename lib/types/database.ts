@@ -182,6 +182,29 @@ export interface LabourEntry {
   updated_at: string
 }
 
+export interface MaterialMaster {
+  id: string
+  material_name: string
+  category: string | null
+  average_rate: number
+  latest_rate: number
+  previous_rate: number
+  purchase_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface MaterialAlias {
+  id: string
+  material_id: string
+  alias_name: string
+  created_at: string
+}
+
+export interface MaterialMasterWithAliases extends MaterialMaster {
+  aliases: MaterialAlias[]
+}
+
 export interface ProjectEngineerAssignment {
   engineer_id: string
   engineer?: Profile | null
