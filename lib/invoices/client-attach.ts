@@ -4,7 +4,7 @@ import {
   deleteExpenseInvoiceFile,
   uploadExpenseInvoiceBlob,
 } from '@/lib/invoices/storage'
-import { validateInvoiceFile } from '@/lib/invoices/validate'
+import { validateInvoiceFile, resolveInvoiceMimeType } from '@/lib/invoices/validate'
 import type { ExpenseInvoice } from '@/lib/types/database'
 
 type AttachInput = {
@@ -60,7 +60,7 @@ export async function attachExpenseInvoiceFromBrowser(
     return { data: null, error: 'This expense already has an invoice. Replace it instead.' }
   }
 
-  const mimeType = input.file.type || 'application/octet-stream'
+  const mimeType = resolveInvoiceMimeType(input.file)
   const upload = await uploadExpenseInvoiceBlob(supabase, {
     projectId: input.projectId,
     expenseId: input.expenseId,
@@ -121,7 +121,7 @@ export async function replaceExpenseInvoiceFromBrowser(
     return { data: null, error: 'No invoice found for this expense.' }
   }
 
-  const mimeType = input.file.type || 'application/octet-stream'
+  const mimeType = resolveInvoiceMimeType(input.file)
   const upload = await uploadExpenseInvoiceBlob(supabase, {
     projectId: input.projectId,
     expenseId: input.expenseId,

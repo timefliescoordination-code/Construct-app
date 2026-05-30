@@ -11,13 +11,6 @@ function extensionFromName(fileName: string): string {
   return fileName.slice(dot).toLowerCase()
 }
 
-function isAllowedExtension(fileName: string): boolean {
-  const ext = extensionFromName(fileName)
-  return INVOICE_UPLOAD_CONFIG.allowedExtensions.includes(
-    ext as (typeof INVOICE_UPLOAD_CONFIG.allowedExtensions)[number],
-  )
-}
-
 export function validateInvoiceFile(file: File): FileValidationResult {
   if (file.size > INVOICE_UPLOAD_CONFIG.maxFileSizeBytes) {
     return {
@@ -39,6 +32,30 @@ export function validateInvoiceFile(file: File): FileValidationResult {
   }
 
   return { valid: true }
+}
+
+function isAllowedExtension(fileName: string): boolean {
+  const ext = extensionFromName(fileName)
+  return INVOICE_UPLOAD_CONFIG.allowedExtensions.includes(
+    ext as (typeof INVOICE_UPLOAD_CONFIG.allowedExtensions)[number],
+  )
+}
+
+/** Supabase bucket rejects application/octet-stream; infer type from extension when needed. */
+export function resolveInvoiceMimeType(file: File): string {
+  if (
+    file.type &&
+    INVOICE_UPLOAD_CONFIG.allowedMimeTypes.includes(file.type as InvoiceAllowedMimeType)
+  ) {
+    return file.type
+  }
+
+  const ext = extensionFromName(file.name)
+  if (ext === '.pdf') return 'application/pdf'
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg'
+  if (ext === '.png') return 'image/png'
+
+  return file.type || 'application/pdf'
 }
 
 export function sanitizeInvoiceFileName(fileName: string): string {

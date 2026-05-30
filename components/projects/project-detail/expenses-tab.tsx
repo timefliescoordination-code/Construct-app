@@ -683,8 +683,17 @@ export function ExpensesTab({
     return { ok: true as const, data }
   }
 
-  const uploadInvoiceInBackground = async (expenseId: string, file: File) => {
-    setUploadingInvoiceExpenseIds((prev) => new Set(prev).add(expenseId))
+  const uploadInvoiceInBackground = async (
+    expenseId: string,
+    file: File,
+    linkedExpenseIds?: string[],
+  ) => {
+    const idsToMark = linkedExpenseIds?.length ? linkedExpenseIds : [expenseId]
+    setUploadingInvoiceExpenseIds((prev) => {
+      const next = new Set(prev)
+      for (const id of idsToMark) next.add(id)
+      return next
+    })
     try {
       const result = await attachInvoiceToExpense(expenseId, file)
       if (!result.ok) {
@@ -692,12 +701,16 @@ export function ExpensesTab({
         return
       }
 
-      setExpenseIdsWithInvoice((prev) => new Set(prev).add(expenseId))
+      setExpenseIdsWithInvoice((prev) => {
+        const next = new Set(prev)
+        for (const id of idsToMark) next.add(id)
+        return next
+      })
       toast.success("Invoice uploaded. Extracting line items…")
     } finally {
       setUploadingInvoiceExpenseIds((prev) => {
         const next = new Set(prev)
-        next.delete(expenseId)
+        for (const id of idsToMark) next.delete(id)
         return next
       })
     }
@@ -1242,13 +1255,26 @@ export function ExpensesTab({
 
       if (!result.ok) {
         toast.error(result.error)
-      } else {
-        toast.success("Split expense started — add more payments when they happen.")
-        setIsAddDialogOpen(false)
-        resetNewExpenseForm()
-        void refreshExpenses()
+        setIsSubmitting(false)
+        return
       }
+
+      const pendingInvoiceFile = invoiceFile
+      const firstExpenseId = result.data.expenseIds[0]
+
+      toast.success(
+        pendingInvoiceFile
+          ? "Split expense saved. Uploading invoice in the background…"
+          : "Split expense started — add more payments when they happen.",
+      )
+      setIsAddDialogOpen(false)
+      resetNewExpenseForm()
       setIsSubmitting(false)
+      void refreshExpenses()
+
+      if (pendingInvoiceFile && firstExpenseId) {
+        void uploadInvoiceInBackground(firstExpenseId, pendingInvoiceFile, result.data.expenseIds)
+      }
       return
     }
 
@@ -1274,7 +1300,7 @@ export function ExpensesTab({
     const names = project ? milestoneNameById(project) : new Map<string, string>()
     const milestoneId = (row.milestone_id as string | null) ?? null
     const expenseId = row.id as string
-    const pendingInvoiceFile = invoiceFile && !splitMode ? invoiceFile : null
+    const pendingInvoiceFile = invoiceFile ?? null
 
     setExpenses((prev) => [
       {
@@ -2225,14 +2251,14 @@ export function ExpensesTab({
                           accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                           className="hidden"
                           onChange={handleInvoiceFileChange}
-                          disabled={isSubmitting || splitMode}
+                          disabled={isSubmitting}
                         />
                         <Button
                           type="button"
                           variant="outline"
                           className="w-full gap-2 bg-muted border-border"
                           onClick={() => invoiceFileInputRef.current?.click()}
-                          disabled={isSubmitting || splitMode}
+                          disabled={isSubmitting}
                         >
                           <Upload className="h-4 w-4" />
                           {invoiceFile ? "Change Invoice" : "Upload Invoice"}
@@ -2243,14 +2269,10 @@ export function ExpensesTab({
                           </p>
                         ) : (
                           <p className="text-xs text-muted-foreground">
-                            PDF, JPG, JPEG, or PNG up to 10MB. Optional — expense saves normally without a file.
+                            PDF, JPG, JPEG, or PNG up to 10MB. Optional — works with split
+                            payments too (invoice links to the split group).
                           </p>
                         )}
-                        {splitMode ? (
-                          <p className="text-xs text-muted-foreground">
-                            Invoice upload is available for single expenses only.
-                          </p>
-                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -2271,7 +2293,7 @@ export function ExpensesTab({
                         {isSubmitting ? (
                           <>
                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            {invoiceFile && !splitMode ? "Saving expense…" : "Adding..."}
+                            {invoiceFile ? "Saving expense…" : "Adding..."}
                           </>
                         ) : (
                           "Add Expense"

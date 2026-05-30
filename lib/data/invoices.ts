@@ -283,10 +283,16 @@ export async function getExpenseInvoiceViewUrl(input: {
     return { url: null, error: expenseError }
   }
 
+  const invoiceExpenseId = await resolveInvoiceExpenseId(supabase, input.expenseId)
+
+  if (!invoiceExpenseId) {
+    return { url: null, error: 'No invoice found for this expense.' }
+  }
+
   const { data: invoice, error: invoiceError } = await supabase
     .from('expense_invoices')
     .select('file_path')
-    .eq('expense_id', input.expenseId)
+    .eq('expense_id', invoiceExpenseId)
     .maybeSingle()
 
   if (invoiceError) {
@@ -304,6 +310,91 @@ export async function getExpenseInvoiceViewUrl(input: {
   }
 
   return { url: signed.url, error: null }
+}
+
+async function resolveInvoiceExpenseId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  expenseId: string,
+): Promise<string | null> {
+  const { data: direct } = await supabase
+    .from('expense_invoices')
+    .select('expense_id')
+    .eq('expense_id', expenseId)
+    .maybeSingle()
+
+  if (direct?.expense_id) {
+    return direct.expense_id as string
+  }
+
+  const { data: expense } = await supabase
+    .from('expenses')
+    .select('split_group_id')
+    .eq('id', expenseId)
+    .maybeSingle()
+
+  const splitGroupId = expense?.split_group_id as string | null | undefined
+  if (!splitGroupId) {
+    return null
+  }
+
+  const { data: siblings } = await supabase
+    .from('expenses')
+    .select('id')
+    .eq('split_group_id', splitGroupId)
+
+  const siblingIds = (siblings ?? []).map((row) => row.id as string)
+  if (siblingIds.length === 0) {
+    return null
+  }
+
+  const { data: groupInvoice } = await supabase
+    .from('expense_invoices')
+    .select('expense_id')
+    .in('expense_id', siblingIds)
+    .limit(1)
+    .maybeSingle()
+
+  return (groupInvoice?.expense_id as string | undefined) ?? null
+}
+
+async function expandExpenseIdsWithSplitGroupInvoices(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  invoiceExpenseIds: string[],
+): Promise<string[]> {
+  if (invoiceExpenseIds.length === 0) {
+    return []
+  }
+
+  const { data: invoicedExpenses } = await supabase
+    .from('expenses')
+    .select('id, split_group_id')
+    .eq('project_id', projectId)
+    .in('id', invoiceExpenseIds)
+
+  const splitGroupIds = [
+    ...new Set(
+      (invoicedExpenses ?? [])
+        .map((row) => row.split_group_id as string | null)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ]
+
+  const result = new Set(invoiceExpenseIds)
+
+  if (splitGroupIds.length > 0) {
+    const { data: groupExpenses } = await supabase
+      .from('expenses')
+      .select('id')
+      .eq('project_id', projectId)
+      .in('split_group_id', splitGroupIds)
+
+    for (const row of groupExpenses ?? []) {
+      result.add(row.id as string)
+    }
+  }
+
+  return [...result]
 }
 
 export async function listExpenseIdsWithInvoicesForProject(projectId: string) {
@@ -340,8 +431,15 @@ export async function listExpenseIdsWithInvoicesForProject(projectId: string) {
     return { expenseIds: [] as string[], error: getSupabaseErrorMessage(error) }
   }
 
+  const directIds = (data ?? []).map((row) => row.expense_id as string)
+  const expandedExpenseIds = await expandExpenseIdsWithSplitGroupInvoices(
+    supabase,
+    projectId,
+    directIds,
+  )
+
   return {
-    expenseIds: (data ?? []).map((row) => row.expense_id as string),
+    expenseIds: expandedExpenseIds,
     error: null,
   }
 }
@@ -376,10 +474,16 @@ export async function getExpenseInvoiceDetails(input: {
     return { data: null, error: expenseError }
   }
 
+  const invoiceExpenseId = await resolveInvoiceExpenseId(supabase, input.expenseId)
+
+  if (!invoiceExpenseId) {
+    return { data: null, error: 'No invoice found for this expense.' }
+  }
+
   const { data: invoice, error: invoiceError } = await supabase
     .from('expense_invoices')
     .select('*')
-    .eq('expense_id', input.expenseId)
+    .eq('expense_id', invoiceExpenseId)
     .maybeSingle()
 
   if (invoiceError) {
@@ -393,7 +497,7 @@ export async function getExpenseInvoiceDetails(input: {
   const { data: items, error: itemsError } = await supabase
     .from('invoice_items')
     .select('*')
-    .eq('expense_id', input.expenseId)
+    .eq('expense_id', invoiceExpenseId)
     .order('created_at', { ascending: true })
 
   if (itemsError) {
