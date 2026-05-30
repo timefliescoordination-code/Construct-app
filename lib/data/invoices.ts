@@ -1,7 +1,8 @@
+import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import { uploadExpenseInvoiceFile, deleteExpenseInvoiceFile } from '@/lib/invoices/storage'
-import { enqueueExpenseInvoiceProcessing } from '@/lib/invoices/processing'
+import { processExpenseInvoice } from '@/lib/invoices/processing'
 import type {
   ExpenseInvoice,
   ExpenseInvoiceWithItems,
@@ -74,7 +75,16 @@ export async function createExpenseInvoiceRecord(
   }
 
   const invoice = data as ExpenseInvoice
-  await enqueueExpenseInvoiceProcessing(supabase, invoice.id)
+  const invoiceId = invoice.id
+
+  after(async () => {
+    try {
+      const processingClient = await createClient()
+      await processExpenseInvoice(processingClient, invoiceId)
+    } catch (error) {
+      console.error('[createExpenseInvoiceRecord] background OCR failed:', error)
+    }
+  })
 
   return { data: invoice, error: null }
 }

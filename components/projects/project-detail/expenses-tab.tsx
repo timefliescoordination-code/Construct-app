@@ -627,7 +627,12 @@ export function ExpensesTab({
   }
 
   const attachInvoiceToExpense = async (expenseId: string) => {
-    if (!projectId || !invoiceFile) return { ok: true as const }
+    if (!projectId) {
+      return { ok: false as const, error: "Project ID is required." }
+    }
+    if (!invoiceFile) {
+      return { ok: false as const, error: "Invoice file was not attached." }
+    }
 
     const formData = new FormData()
     formData.append("projectId", projectId)
@@ -2313,6 +2318,17 @@ export function ExpensesTab({
                                 ))}
                               </div>
                             </div>
+                          ) : invoiceDetails?.data?.processing_status === "processing" ||
+                            invoiceDetails?.data?.processing_status === "pending" ? (
+                            <p className="text-sm text-muted-foreground">
+                              Invoice uploaded — extracting line items… This usually takes 5–30
+                              seconds. Refresh or expand again in a moment.
+                            </p>
+                          ) : invoiceDetails?.data?.processing_status === "failed" ? (
+                            <p className="text-sm text-destructive">
+                              Invoice processing failed. Check that OPENAI_API_KEY is set in Vercel,
+                              then upload the invoice again.
+                            </p>
                           ) : (
                             <p className="text-sm text-muted-foreground">
                               No line items extracted yet.
