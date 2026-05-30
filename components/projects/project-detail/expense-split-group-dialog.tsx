@@ -148,6 +148,27 @@ export function ExpenseSplitGroupDialog({
     onOpenChange(false)
   }
 
+  const recordedSplitAmount = sumRecordedSplitAmounts(
+    lockedLines.map((l) => ({ amount: Number(l.amount) })),
+  )
+
+  const remainingBalance = getRemainingRecordedBalance(
+    totalAmount,
+    lockedLines.map((l) => ({ amount: Number(l.amount) })),
+  )
+
+  const handleAddAnotherSplit = () => {
+    setNewLines([
+      {
+        amount:
+          remainingBalance > 0
+            ? String(Math.round(remainingBalance * 100) / 100)
+            : "",
+        date: format(new Date(), "yyyy-MM-dd"),
+      },
+    ])
+  }
+
   const handleApproveSplit = async (expenseId: string) => {
     setSaving(true)
     const result = await updateExpenseStatusAction({
@@ -207,20 +228,11 @@ export function ExpenseSplitGroupDialog({
               </p>
               <p>
                 <span className="text-muted-foreground">Recorded: </span>
-                {formatINR(
-                  sumRecordedSplitAmounts(
-                    lockedLines.map((l) => ({ amount: Number(l.amount) })),
-                  ),
-                )}
+                {formatINR(recordedSplitAmount)}
                 {" · "}
                 <span className="text-muted-foreground">Remaining: </span>
                 <span className="font-medium text-amber-600">
-                  {formatINR(
-                    getRemainingRecordedBalance(
-                      totalAmount,
-                      lockedLines.map((l) => ({ amount: Number(l.amount) })),
-                    ),
-                  )}
+                  {formatINR(remainingBalance)}
                 </span>
               </p>
               <p>
@@ -293,6 +305,7 @@ export function ExpenseSplitGroupDialog({
 
             <ExpenseSplitLinesEditor
               totalAmount={String(totalAmount)}
+              recordedAmount={recordedSplitAmount}
               lines={newLines}
               onChange={setNewLines}
               disabled={saving}
@@ -303,14 +316,7 @@ export function ExpenseSplitGroupDialog({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() =>
-                  setNewLines([
-                    {
-                      amount: "",
-                      date: format(new Date(), "yyyy-MM-dd"),
-                    },
-                  ])
-                }
+                onClick={handleAddAnotherSplit}
               >
                 Add another split
               </Button>

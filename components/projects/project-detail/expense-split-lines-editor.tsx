@@ -13,6 +13,8 @@ import { format } from "date-fns"
 
 interface ExpenseSplitLinesEditorProps {
   totalAmount: string
+  /** Amount already recorded in previous splits (locked rows). */
+  recordedAmount?: number
   lines: SplitLineInput[]
   onChange: (lines: SplitLineInput[]) => void
   disabled?: boolean
@@ -20,14 +22,15 @@ interface ExpenseSplitLinesEditorProps {
 
 export function ExpenseSplitLinesEditor({
   totalAmount,
+  recordedAmount = 0,
   lines,
   onChange,
   disabled = false,
 }: ExpenseSplitLinesEditorProps) {
   const total = parseFloat(totalAmount) || 0
   const allocated = sumSplitAmounts(lines)
-  const remaining = total - allocated
-  const overAllocated = total > 0 && allocated > total + 0.01
+  const remaining = total - recordedAmount - allocated
+  const overAllocated = total > 0 && recordedAmount + allocated > total + 0.01
 
   const addLine = () => {
     if (lines.length >= MAX_EXPENSE_SPLITS) return
