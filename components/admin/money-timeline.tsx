@@ -89,8 +89,11 @@ function TimelineRow({
   onToggle: () => void
 }) {
   const isReceived = row.type === "received"
-  const isExpenseGroup = row.type === "expense" && (row.items?.length ?? 0) > 0
+  const itemCount = row.items?.length ?? 0
+  const isGroupedExpense = row.type === "expense" && itemCount > 1
   const summaryText = row.summary ?? row.description
+  const singleExpenseDescription =
+    row.items?.[0]?.description ?? row.description
 
   return (
     <>
@@ -114,7 +117,7 @@ function TimelineRow({
           </div>
         </TableCell>
         <TableCell className="text-sm">
-          {isExpenseGroup ? (
+          {isGroupedExpense ? (
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
               <span className="min-w-0">{summaryText}</span>
               <button
@@ -132,7 +135,9 @@ function TimelineRow({
               </button>
             </div>
           ) : (
-            <span className="truncate">{row.description}</span>
+            <span className="truncate">
+              {row.type === "expense" ? singleExpenseDescription : row.description}
+            </span>
           )}
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">
@@ -148,7 +153,7 @@ function TimelineRow({
         </TableCell>
       </TableRow>
 
-      {isExpenseGroup &&
+      {isGroupedExpense &&
         expanded &&
         row.items?.map((item) => (
           <TableRow
