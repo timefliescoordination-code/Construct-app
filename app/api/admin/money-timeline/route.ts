@@ -1,7 +1,9 @@
-import type {
-  MoneyTimelineEntry,
-  MoneyTimelineFilters,
-} from "@/lib/money-timeline/types"
+import {
+  buildMoneyTimeline,
+  filterMoneyTimeline,
+  paginateMoneyTimeline,
+} from "@/lib/money-timeline/build-timeline"
+import type { MoneyTimelineFilters } from "@/lib/money-timeline/types"
 import { createClient } from "@/lib/supabase/server"
 import { getSupabaseErrorMessage } from "@/lib/supabase/db-errors"
 import { NextRequest, NextResponse } from "next/server"
@@ -47,19 +49,6 @@ function parseFilters(searchParams: URLSearchParams): MoneyTimelineFilters {
   }
 }
 
-function matchesFilters(
-  entry: MoneyTimelineEntry,
-  filters: MoneyTimelineFilters,
-): boolean {
-  if (filters.dateFrom && entry.date < filters.dateFrom) return false
-  if (filters.dateTo && entry.date > filters.dateTo) return false
-  if (filters.projectId && entry.projectId !== filters.projectId) return false
-  if (filters.type && filters.type !== "all" && entry.type !== filters.type) {
-    return false
-  }
-  return true
-}
-
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdmin()
@@ -80,7 +69,7 @@ export async function GET(request: NextRequest) {
       supabase
         .from("client_payments")
         .select(
-          "id, project_id, amount, received_date, created_at, stage_name, projects(id, name)",
+          "id, project_id, amount, received_date, created_at, projects(id, name)",
         )
         .eq("status", "received"),
       supabase
@@ -103,52 +92,39 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const entries: MoneyTimelineEntry[] = []
-
-    for (const row of paymentsResult.data ?? []) {
+    const payments = (paymentsResult.data ?? []).map((row) => {
       const project = row.projects as { id: string; name: string } | null
-      const projectName = project?.name ?? "Unknown project"
-      entries.push({
-        id: `payment-${row.id}`,
+      return {
+        id: row.id,
+        projectId: row.project_id,
+        projectName: project?.name ?? "Unknown project",
+        amount: Number(row.amount),
         date: row.received_date ?? row.created_at.slice(0, 10),
-        type: "received",
-        description: `${projectName} Payment Received`,
-        projectId: row.project_id,
-        projectName,
-        amount: Number(row.amount),
-      })
-    }
-
-    for (const row of expensesResult.data ?? []) {
-      const project = row.projects as { id: string; name: string } | null
-      const projectName = project?.name ?? "Unknown project"
-      entries.push({
-        id: `expense-${row.id}`,
-        date: row.expense_date,
-        type: "expense",
-        description: row.description?.trim() || row.category,
-        projectId: row.project_id,
-        projectName,
-        amount: Number(row.amount),
-      })
-    }
-
-    entries.sort((a, b) => {
-      const dateCompare = a.date.localeCompare(b.date)
-      if (dateCompare !== 0) return dateCompare
-      if (a.type !== b.type) return a.type === "received" ? -1 : 1
-      return a.id.localeCompare(b.id)
+      }
     })
 
-    const filtered = entries.filter((entry) => matchesFilters(entry, filters))
-    const page = filtered.slice(offset, offset + limit)
+    const expenses = (expensesResult.data ?? []).map((row) => {
+      const project = row.projects as { id: string; name: string } | null
+      return {
+        id: row.id,
+        projectId: row.project_id,
+        projectName: project?.name ?? "Unknown project",
+        description: row.description?.trim() || row.category,
+        amount: Number(row.amount),
+        date: row.expense_date,
+      }
+    })
+
+    const timeline = buildMoneyTimeline(payments, expenses)
+    const filtered = filterMoneyTimeline(timeline, filters)
+    const { rows, total, hasMore } = paginateMoneyTimeline(filtered, offset, limit)
 
     return NextResponse.json({
-      rows: page,
-      total: filtered.length,
+      rows,
+      total,
       offset,
       limit,
-      hasMore: offset + limit < filtered.length,
+      hasMore,
       filterOptions: {
         projects: (projectsResult.data ?? []).map((p) => ({
           id: p.id,

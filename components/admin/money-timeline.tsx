@@ -31,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ArrowDownLeft, ArrowUpRight, Clock, Loader2 } from "lucide-react"
+import { ArrowDownLeft, ArrowUpRight, ChevronDown, Clock, Loader2 } from "lucide-react"
 
 const PAGE_SIZE = 100
 const ALL = "all"
@@ -79,6 +79,97 @@ function TypeBadge({ type }: { type: MoneyTimelineEntry["type"] }) {
   )
 }
 
+function TimelineRow({
+  row,
+  expanded,
+  onToggle,
+}: {
+  row: MoneyTimelineEntry
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const isReceived = row.type === "received"
+  const isExpenseGroup = row.type === "expense" && (row.items?.length ?? 0) > 0
+  const summaryText = row.summary ?? row.description
+
+  return (
+    <>
+      <TableRow
+        className={cn(
+          "transition-colors",
+          isReceived && "bg-green-500/5 hover:bg-green-500/10",
+        )}
+      >
+        <TableCell className="whitespace-nowrap text-sm">
+          {formatTimelineDate(row.date)}
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center gap-2">
+            {isReceived ? (
+              <ArrowDownLeft className="h-4 w-4 text-green-500 shrink-0" />
+            ) : (
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            )}
+            <TypeBadge type={row.type} />
+          </div>
+        </TableCell>
+        <TableCell className="text-sm">
+          {isExpenseGroup ? (
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+              <span className="min-w-0">{summaryText}</span>
+              <button
+                type="button"
+                onClick={onToggle}
+                className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary underline-offset-2 hover:underline"
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform duration-200",
+                    expanded && "rotate-180",
+                  )}
+                />
+                {expanded ? "Hide details" : "See details"}
+              </button>
+            </div>
+          ) : (
+            <span className="truncate">{row.description}</span>
+          )}
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground">
+          {row.projectName}
+        </TableCell>
+        <TableCell
+          className={cn(
+            "text-right font-medium tabular-nums",
+            isReceived && "text-green-600",
+          )}
+        >
+          {formatINR(row.amount)}
+        </TableCell>
+      </TableRow>
+
+      {isExpenseGroup &&
+        expanded &&
+        row.items?.map((item) => (
+          <TableRow
+            key={item.id}
+            className="bg-muted/20 hover:bg-muted/30 border-l-2 border-l-primary/30"
+          >
+            <TableCell />
+            <TableCell />
+            <TableCell className="py-2 pl-8 text-sm text-muted-foreground">
+              {item.description}
+            </TableCell>
+            <TableCell />
+            <TableCell className="py-2 text-right text-sm tabular-nums">
+              {formatINR(item.amount)}
+            </TableCell>
+          </TableRow>
+        ))}
+    </>
+  )
+}
+
 export function MoneyTimelineSection() {
   const [filters, setFilters] = useState<MoneyTimelineFilters>({ type: "all" })
   const [draftFilters, setDraftFilters] = useState<MoneyTimelineFilters>({
@@ -87,6 +178,7 @@ export function MoneyTimelineSection() {
   const [offset, setOffset] = useState(0)
   const [rows, setRows] = useState<MoneyTimelineEntry[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   const query = useMemo(() => buildQuery(filters, offset), [filters, offset])
 
@@ -113,6 +205,7 @@ export function MoneyTimelineSection() {
   const applyFilters = () => {
     setOffset(0)
     setRows([])
+    setExpandedIds(new Set())
     setFilters({ ...draftFilters })
   }
 
@@ -122,6 +215,16 @@ export function MoneyTimelineSection() {
     setFilters(cleared)
     setOffset(0)
     setRows([])
+    setExpandedIds(new Set())
+  }
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   const loadMore = useCallback(() => {
@@ -279,42 +382,12 @@ export function MoneyTimelineSection() {
                   </TableRow>
                 ) : (
                   rows.map((row) => (
-                    <TableRow
+                    <TimelineRow
                       key={row.id}
-                      className={cn(
-                        "transition-colors",
-                        row.type === "received" &&
-                          "bg-green-500/5 hover:bg-green-500/10",
-                      )}
-                    >
-                      <TableCell className="whitespace-nowrap text-sm">
-                        {formatTimelineDate(row.date)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {row.type === "received" ? (
-                            <ArrowDownLeft className="h-4 w-4 text-green-500 shrink-0" />
-                          ) : (
-                            <ArrowUpRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                          )}
-                          <TypeBadge type={row.type} />
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-[280px] truncate text-sm">
-                        {row.description}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {row.projectName}
-                      </TableCell>
-                      <TableCell
-                        className={cn(
-                          "text-right font-medium tabular-nums",
-                          row.type === "received" && "text-green-600",
-                        )}
-                      >
-                        {formatINR(row.amount)}
-                      </TableCell>
-                    </TableRow>
+                      row={row}
+                      expanded={expandedIds.has(row.id)}
+                      onToggle={() => toggleExpanded(row.id)}
+                    />
                   ))
                 )}
               </TableBody>

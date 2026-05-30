@@ -1,5 +1,11 @@
 export type MoneyTimelineType = "received" | "expense"
 
+export type MoneyTimelineExpenseItem = {
+  id: string
+  description: string
+  amount: number
+}
+
 export type MoneyTimelineEntry = {
   id: string
   date: string
@@ -8,6 +14,9 @@ export type MoneyTimelineEntry = {
   projectId: string
   projectName: string
   amount: number
+  /** Present on grouped expense rows */
+  summary?: string
+  items?: MoneyTimelineExpenseItem[]
 }
 
 export type MoneyTimelineFilters = {
@@ -26,4 +35,21 @@ export type MoneyTimelineResponse = {
   filterOptions: {
     projects: { id: string; name: string }[]
   }
+}
+
+export type RawExpenseRow = {
+  id: string
+  projectId: string
+  projectName: string
+  description: string
+  amount: number
+  date: string
+}
+
+export type RawReceivedRow = {
+  id: string
+  projectId: string
+  projectName: string
+  amount: number
+  date: string
 }
