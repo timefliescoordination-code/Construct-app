@@ -56,11 +56,12 @@ async function fetchTimeline(query: string): Promise<MoneyTimelineResponse> {
   return response.json()
 }
 
-function formatTimelineDate(date: string) {
+function formatRowDate(row: MoneyTimelineEntry) {
+  if (row.dateLabel) return row.dateLabel
   try {
-    return format(new Date(date), "dd-MMM-yyyy")
+    return format(new Date(row.date), "dd-MMM-yyyy")
   } catch {
-    return date
+    return row.date
   }
 }
 
@@ -91,6 +92,7 @@ function TimelineRow({
   const isReceived = row.type === "received"
   const itemCount = row.items?.length ?? 0
   const isGroupedExpense = row.type === "expense" && itemCount > 1
+  const isMultiDayRange = Boolean(row.endDate && row.endDate !== row.date)
   const summaryText = row.summary ?? row.description
   const singleExpenseDescription =
     row.items?.[0]?.description ?? row.description
@@ -104,7 +106,7 @@ function TimelineRow({
         )}
       >
         <TableCell className="whitespace-nowrap text-sm">
-          {formatTimelineDate(row.date)}
+          {formatRowDate(row)}
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-2">
@@ -163,7 +165,16 @@ function TimelineRow({
             <TableCell />
             <TableCell />
             <TableCell className="py-2 pl-8 text-sm text-muted-foreground">
-              {item.description}
+              {isMultiDayRange && item.date ? (
+                <span>
+                  <span className="text-xs text-muted-foreground/80">
+                    {format(new Date(item.date), "dd-MMM")} ·{" "}
+                  </span>
+                  {item.description}
+                </span>
+              ) : (
+                item.description
+              )}
             </TableCell>
             <TableCell />
             <TableCell className="py-2 text-right text-sm tabular-nums">
