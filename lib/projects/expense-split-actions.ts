@@ -444,6 +444,79 @@ export async function deleteExpenseSplitRowAction(input: {
   return { ok: true, data: undefined }
 }
 
+export type OpenSplitGroupSummary = {
+  groupId: string
+  category: string
+  subcategory_name: string | null
+  labour_team_id: string | null
+  total: number
+  recorded: number
+  splitCount: number
+  vendor_name: string | null
+}
+
+export async function listOpenSplitGroupsAction(
+  projectId: string,
+): Promise<ExpenseSplitActionResult<OpenSplitGroupSummary[]>> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canEnterExpenses(session.role)) {
+    return { ok: false, error: 'You do not have permission to view expenses.' }
+  }
+
+  const { data: groups, error: groupsError } = await session.supabase
+    .from('expense_split_groups')
+    .select(
+      'id, category, subcategory_name, labour_team_id, total_amount, vendor_name',
+    )
+    .eq('project_id', projectId)
+
+  if (groupsError) {
+    return { ok: false, error: getSupabaseErrorMessage(groupsError) }
+  }
+
+  const { data: splitRows, error: splitsError } = await session.supabase
+    .from('expenses')
+    .select('split_group_id, amount')
+    .eq('project_id', projectId)
+    .not('split_group_id', 'is', null)
+
+  if (splitsError) {
+    return { ok: false, error: getSupabaseErrorMessage(splitsError) }
+  }
+
+  const recordedByGroup = new Map<string, { sum: number; count: number }>()
+  for (const row of splitRows ?? []) {
+    const groupId = row.split_group_id as string
+    const current = recordedByGroup.get(groupId) ?? { sum: 0, count: 0 }
+    recordedByGroup.set(groupId, {
+      sum: current.sum + Number(row.amount),
+      count: current.count + 1,
+    })
+  }
+
+  const open: OpenSplitGroupSummary[] = []
+  for (const group of groups ?? []) {
+    const stats = recordedByGroup.get(group.id) ?? { sum: 0, count: 0 }
+    const total = Number(group.total_amount)
+    const recorded = stats.sum
+    if (recorded >= total - 0.01) continue
+
+    open.push({
+      groupId: group.id,
+      category: group.category,
+      subcategory_name: group.subcategory_name,
+      labour_team_id: group.labour_team_id,
+      total,
+      recorded,
+      splitCount: stats.count,
+      vendor_name: group.vendor_name,
+    })
+  }
+
+  return { ok: true, data: open }
+}
+
 export async function getExpenseSplitGroupAction(input: {
   projectId: string
   groupId: string

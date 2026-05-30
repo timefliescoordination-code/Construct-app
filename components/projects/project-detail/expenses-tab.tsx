@@ -55,13 +55,18 @@ import {
   updateExpenseAction,
   updateExpenseStatusAction,
 } from "@/lib/projects/tab-actions"
-import { createExpenseSplitGroupAction } from "@/lib/projects/expense-split-actions"
+import {
+  createExpenseSplitGroupAction,
+  listOpenSplitGroupsAction,
+  type OpenSplitGroupSummary,
+} from "@/lib/projects/expense-split-actions"
 import type { ExpenseCategoryView } from "@/lib/data/expense-categories"
 import { ExpenseCategoryManageDialog } from "@/components/projects/project-detail/expense-category-manage-dialog"
 import { ExpenseSplitGroupDialog } from "@/components/projects/project-detail/expense-split-group-dialog"
+import { PendingSplitSuggestion } from "@/components/projects/project-detail/pending-split-suggestion"
 import {
+  findMatchingOpenSplitGroup,
   getSplitPaymentStatus,
-  normalizeMatchText,
   validateInitialSplitCreate,
   type SplitPaymentDisplayStatus,
 } from "@/lib/expense-splits/calculations"
@@ -170,17 +175,6 @@ function toExpenseDescription(subcategory: string, description: string) {
   return subcategory ? `${subcategory} - ${description}` : description
 }
 
-type OpenSplitGroupRow = {
-  groupId: string
-  category: string
-  subcategory_name: string | null
-  labour_team_id: string | null
-  total: number
-  recorded: number
-  splitCount: number
-  vendor_name: string | null
-}
-
 function mapExpensesFromProject(project: ProjectWithDetails): Expense[] {
   const names = milestoneNameById(project)
   return project.expenses.map((exp) => ({
@@ -242,7 +236,8 @@ export function ExpensesTab({
   const [splitMode, setSplitMode] = useState(false)
   const [splitFirstAmount, setSplitFirstAmount] = useState("")
   const [splitGroupEditId, setSplitGroupEditId] = useState<string | null>(null)
-  const [openSplitGroups, setOpenSplitGroups] = useState<OpenSplitGroupRow[]>([])
+  const [openSplitGroups, setOpenSplitGroups] = useState<OpenSplitGroupSummary[]>([])
+  const [loadingOpenSplits, setLoadingOpenSplits] = useState(false)
   const [newExpense, setNewExpense] = useState({
     date: format(new Date(), 'yyyy-MM-dd'),
     category: "",
@@ -404,42 +399,26 @@ export function ExpensesTab({
   }, [expenses])
 
   const suggestedSplitGroup = useMemo(() => {
-    if (!newExpense.category) return null
-    if (!newExpense.labourTeamId && !newExpense.subcategory) return null
+    const match = findMatchingOpenSplitGroup(openSplitGroups, {
+      category: newExpense.category,
+      subcategory: newExpense.subcategory,
+      labourTeamId: newExpense.labourTeamId,
+    })
+    if (!match) return null
 
-    for (const group of openSplitGroups) {
-      if (
-        normalizeMatchText(group.category) !==
-        normalizeMatchText(newExpense.category)
-      ) {
-        continue
-      }
-
-      if (newExpense.labourTeamId) {
-        if (group.labour_team_id !== newExpense.labourTeamId) continue
-      } else if (
-        normalizeMatchText(group.subcategory_name) !==
-        normalizeMatchText(newExpense.subcategory)
-      ) {
-        continue
-      }
-
-      const remaining = group.total - group.recorded
-      if (remaining <= 0.01) continue
-
-      return {
-        groupId: group.groupId,
-        total: group.total,
-        recorded: group.recorded,
-        remaining,
-        vendor: group.vendor_name,
-        splitCount: group.splitCount,
-        teamLabel: newExpense.labourTeamId
-          ? labourTeamNameById.get(newExpense.labourTeamId) ?? "Labour team"
-          : newExpense.subcategory,
-      }
+    const remaining = match.total - match.recorded
+    return {
+      groupId: match.groupId,
+      total: match.total,
+      recorded: match.recorded,
+      remaining,
+      vendor: match.vendor_name,
+      splitCount: match.splitCount,
+      category: match.category,
+      teamLabel: newExpense.labourTeamId
+        ? labourTeamNameById.get(newExpense.labourTeamId) ?? "Labour team"
+        : newExpense.subcategory,
     }
-    return null
   }, [
     newExpense.category,
     newExpense.subcategory,
@@ -457,63 +436,15 @@ export function ExpensesTab({
 
   const loadOpenSplitGroups = async () => {
     if (!projectId) return
-    const supabase = createClient()
-
-    const { data: groups, error: groupsError } = await supabase
-      .from("expense_split_groups")
-      .select(
-        "id, category, subcategory_name, labour_team_id, total_amount, vendor_name",
-      )
-      .eq("project_id", projectId)
-
-    if (groupsError) {
-      console.error("[expenses-tab] load split groups:", groupsError)
+    setLoadingOpenSplits(true)
+    const result = await listOpenSplitGroupsAction(projectId)
+    setLoadingOpenSplits(false)
+    if (!result.ok) {
+      console.error("[expenses-tab] load split groups:", result.error)
       setOpenSplitGroups([])
       return
     }
-
-    const { data: splitRows, error: splitsError } = await supabase
-      .from("expenses")
-      .select("split_group_id, amount")
-      .eq("project_id", projectId)
-      .not("split_group_id", "is", null)
-
-    if (splitsError) {
-      console.error("[expenses-tab] load split payments:", splitsError)
-      setOpenSplitGroups([])
-      return
-    }
-
-    const recordedByGroup = new Map<string, { sum: number; count: number }>()
-    for (const row of splitRows ?? []) {
-      const groupId = row.split_group_id as string
-      const current = recordedByGroup.get(groupId) ?? { sum: 0, count: 0 }
-      recordedByGroup.set(groupId, {
-        sum: current.sum + Number(row.amount),
-        count: current.count + 1,
-      })
-    }
-
-    const open: OpenSplitGroupRow[] = []
-    for (const group of groups ?? []) {
-      const stats = recordedByGroup.get(group.id) ?? { sum: 0, count: 0 }
-      const total = Number(group.total_amount)
-      const recorded = stats.sum
-      if (recorded >= total - 0.01) continue
-
-      open.push({
-        groupId: group.id,
-        category: group.category,
-        subcategory_name: group.subcategory_name,
-        labour_team_id: group.labour_team_id,
-        total,
-        recorded,
-        splitCount: stats.count,
-        vendor_name: group.vendor_name,
-      })
-    }
-
-    setOpenSplitGroups(open)
+    setOpenSplitGroups(result.data)
   }
 
   const refreshExpensesWithJoin = async () => {
@@ -545,6 +476,19 @@ export function ExpensesTab({
       void refreshExpensesWithJoin()
     }
   }, [isAddDialogOpen, projectId])
+
+  useEffect(() => {
+    if (!isAddDialogOpen || !projectId) return
+    if (!newExpense.category) return
+    if (!newExpense.labourTeamId && !newExpense.subcategory) return
+    void loadOpenSplitGroups()
+  }, [
+    isAddDialogOpen,
+    projectId,
+    newExpense.category,
+    newExpense.subcategory,
+    newExpense.labourTeamId,
+  ])
 
   const openSubcategoryManage = () => {
     if (categoryUsesLabourTeams(newExpense.category, expenseCategories)) {
@@ -1505,6 +1449,27 @@ export function ExpensesTab({
                         </Select>
                       </div>
                     </div>
+                    {suggestedSplitGroup && !splitMode && (
+                      <PendingSplitSuggestion
+                        label={suggestedSplitGroup.teamLabel}
+                        category={suggestedSplitGroup.category}
+                        recorded={suggestedSplitGroup.recorded}
+                        total={suggestedSplitGroup.total}
+                        remaining={suggestedSplitGroup.remaining}
+                        splitCount={suggestedSplitGroup.splitCount}
+                        vendor={suggestedSplitGroup.vendor}
+                        onContinue={handleUseSuggestedSplit}
+                      />
+                    )}
+                    {loadingOpenSplits &&
+                      newExpense.category &&
+                      (newExpense.labourTeamId || newExpense.subcategory) &&
+                      !suggestedSplitGroup &&
+                      !splitMode && (
+                        <p className="text-xs text-muted-foreground">
+                          Checking for pending split payments…
+                        </p>
+                      )}
                     <div className="space-y-2">
                       <Label>Description *</Label>
                       <Textarea 
@@ -1610,40 +1575,7 @@ export function ExpensesTab({
                       </div>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                    {suggestedSplitGroup ? (
-                      <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0 space-y-1 text-sm">
-                          <p className="flex items-center gap-2 font-medium">
-                            <Split className="h-4 w-4 shrink-0 text-primary" />
-                            Split payment exists for this{" "}
-                            {newExpense.labourTeamId ? "team" : "subcategory"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {suggestedSplitGroup.teamLabel}
-                            {suggestedSplitGroup.vendor
-                              ? ` · ${suggestedSplitGroup.vendor}`
-                              : ""}
-                            {" · "}₹
-                            {suggestedSplitGroup.recorded.toLocaleString()} of ₹
-                            {suggestedSplitGroup.total.toLocaleString()} paid · ₹
-                            {suggestedSplitGroup.remaining.toLocaleString()}{" "}
-                            left
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="shrink-0"
-                          onClick={handleUseSuggestedSplit}
-                        >
-                          Use this
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="hidden flex-1 sm:block" aria-hidden />
-                    )}
-                    <div className="flex shrink-0 justify-end gap-2">
+                  <div className="flex justify-end gap-2">
                       <Button
                         type="button"
                         variant="outline"
@@ -1667,7 +1599,6 @@ export function ExpensesTab({
                         )}
                       </Button>
                     </div>
-                  </div>
                 </DialogContent>
               </Dialog>
               <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>

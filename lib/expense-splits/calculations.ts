@@ -66,6 +66,52 @@ export function normalizeMatchText(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase()
 }
 
+export type OpenSplitGroupMatchCandidate = {
+  groupId: string
+  category: string
+  subcategory_name: string | null
+  labour_team_id: string | null
+  total: number
+  recorded: number
+  splitCount: number
+  vendor_name: string | null
+}
+
+/** Match open split groups by category + labour team or subcategory only. */
+export function findMatchingOpenSplitGroup(
+  groups: OpenSplitGroupMatchCandidate[],
+  input: {
+    category: string
+    subcategory: string
+    labourTeamId: string
+  },
+): OpenSplitGroupMatchCandidate | null {
+  if (!input.category) return null
+  if (!input.labourTeamId && !input.subcategory) return null
+
+  for (const group of groups) {
+    if (
+      normalizeMatchText(group.category) !== normalizeMatchText(input.category)
+    ) {
+      continue
+    }
+
+    if (input.labourTeamId) {
+      if (group.labour_team_id !== input.labourTeamId) continue
+    } else if (
+      normalizeMatchText(group.subcategory_name) !==
+      normalizeMatchText(input.subcategory)
+    ) {
+      continue
+    }
+
+    if (group.recorded >= group.total - 0.01) continue
+    return group
+  }
+
+  return null
+}
+
 export function buildExpenseGroupMatchKey(input: {
   category: string
   description: string
