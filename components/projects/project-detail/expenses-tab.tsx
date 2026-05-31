@@ -6,6 +6,7 @@ import {
   useState,
   useEffect,
   useMemo,
+  startTransition,
   type ChangeEvent,
 } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -619,31 +620,50 @@ export function ExpensesTab({
     setOpenSplitGroups(result.data)
   }
 
-  const refreshExpensesWithJoin = async () => {
-    if (!projectId) return
+  const EXPENSE_LIST_SELECT =
+    "*, milestones(name), expense_split_groups(total_amount, subcategory_name, labour_team_id)"
+
+  const refreshExpensesListOnly = async () => {
+    if (!projectId) return false
     const supabase = createClient()
     const { data, error } = await supabase
       .from("expenses")
-      .select(
-        "*, milestones(name), expense_split_groups(total_amount, subcategory_name, labour_team_id)",
-      )
+      .select(EXPENSE_LIST_SELECT)
       .eq("project_id", projectId)
       .order("expense_date", { ascending: false })
 
     if (error) {
       console.error("[expenses-tab] refresh expenses:", error)
-      return
+      return false
     }
 
-    const mapped = (data ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>))
-    setExpenses(mapped)
+    setExpenses(
+      (data ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>)),
+    )
+    return true
+  }
+
+  const refreshExpensesWithJoin = async () => {
+    if (!projectId) return
+    const ok = await refreshExpensesListOnly()
+    if (!ok) return
     const invoiceIds = await fetchExpenseIdsWithInvoices(projectId)
     setExpenseIdsWithInvoice((prev) => new Set([...prev, ...invoiceIds]))
     await loadOpenSplitGroups()
     onProjectChange?.()
   }
 
+  const refreshExpensesAfterImport = () => {
+    void (async () => {
+      await refreshExpensesListOnly()
+      void loadOpenSplitGroups()
+      onProjectChange?.()
+    })()
+  }
+
   const refreshExpenses = refreshExpensesWithJoin
+
+  const IMPORT_PREVIEW_ROW_LIMIT = 80
 
   useEffect(() => {
     if (isAddDialogOpen && projectId) {
@@ -1496,11 +1516,20 @@ export function ExpensesTab({
     return format(new Date(), "yyyy-MM-dd")
   }
 
+  const categoryByLower = useMemo(
+    () => new Map(categoryNames.map((cat) => [cat.toLowerCase(), cat])),
+    [categoryNames],
+  )
+
+  const labourTeamByLower = useMemo(
+    () => new Map(labourTeams.map((team) => [team.name.toLowerCase(), team])),
+    [labourTeams],
+  )
+
   const normalizeCategory = (value: string): string => {
     const cleaned = value.trim().toLowerCase()
     if (!cleaned) return ""
-    const match = categoryNames.find((cat) => cat.toLowerCase() === cleaned)
-    return match ?? value.trim()
+    return categoryByLower.get(cleaned) ?? value.trim()
   }
 
   const toggleDraftRowSelection = (
@@ -1592,9 +1621,7 @@ export function ExpensesTab({
         const usesLabour = categoryUsesLabourTeams(category, expenseCategories)
         const labourTeam =
           usesLabour && subcategory
-            ? labourTeams.find(
-                (t) => t.name.toLowerCase() === subcategory.toLowerCase(),
-              )
+            ? labourTeamByLower.get(subcategory.toLowerCase())
             : undefined
 
         rowsToCreate.push({
@@ -1640,7 +1667,9 @@ export function ExpensesTab({
       const created = result.data.created
       const skipped = failedReasons.length
 
-      await refreshExpensesWithJoin()
+      setIsImportDialogOpen(false)
+      setImportDraftRows([])
+      setLastSelectedIndex(null)
 
       if (skipped > 0) {
         const preview = failedReasons.slice(0, 3).join(" | ")
@@ -1651,9 +1680,7 @@ export function ExpensesTab({
         toast.success(`Imported ${created} expense(s).`)
       }
 
-      setIsImportDialogOpen(false)
-      setImportDraftRows([])
-      setLastSelectedIndex(null)
+      refreshExpensesAfterImport()
     } catch (error) {
       toast.dismiss(loadingToastId)
       console.error("[expenses-tab] commit import:", error)
@@ -1691,11 +1718,11 @@ export function ExpensesTab({
         return
       }
 
-      const draftRows: ImportDraftRow[] = []
-      for (let index = 0; index < rows.length; index += 1) {
-        const row = normalizeRow(rows[index])
-        draftRows.push({
-          id: `${Date.now()}-${index}`,
+      const parsedAt = Date.now()
+      const draftRows: ImportDraftRow[] = rows.map((raw, index) => {
+        const row = normalizeRow(raw)
+        return {
+          id: `${parsedAt}-${index}`,
           rowNumber: index + 2,
           date: parseExpenseDate(row.date),
           category: normalizeCategory(String(row.category ?? "")),
@@ -1705,12 +1732,14 @@ export function ExpensesTab({
           amount: formatDraftAmount(row.amount),
           milestone: String(row.milestone ?? "").trim(),
           selected: false,
-        })
-      }
+        }
+      })
 
-      setImportDraftRows(draftRows)
-      setLastSelectedIndex(null)
-      setIsImportDialogOpen(true)
+      startTransition(() => {
+        setImportDraftRows(draftRows)
+        setLastSelectedIndex(null)
+        setIsImportDialogOpen(true)
+      })
       toast.success(
         `Loaded ${draftRows.length} row(s). Review and click Import All Rows.`,
       )
@@ -1879,6 +1908,12 @@ export function ExpensesTab({
                   </DialogHeader>
                   <p className="text-sm text-muted-foreground">
                     Tip: select multiple rows, then change milestone in any selected row to apply to all selected rows. Dates use dd/mm/yyyy from Excel/CSV.
+                    {importDraftRows.length > IMPORT_PREVIEW_ROW_LIMIT && (
+                      <span className="mt-1 block text-amber-600 dark:text-amber-500">
+                        Large import ({importDraftRows.length} rows): showing first{" "}
+                        {IMPORT_PREVIEW_ROW_LIMIT} for speed. All rows will be imported.
+                      </span>
+                    )}
                   </p>
                   <div className="max-h-[60vh] overflow-auto rounded-md border border-border">
                     <Table className="min-w-[1280px] table-fixed">
@@ -1895,7 +1930,9 @@ export function ExpensesTab({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {importDraftRows.map((row, index) => (
+                        {importDraftRows
+                          .slice(0, IMPORT_PREVIEW_ROW_LIMIT)
+                          .map((row, index) => (
                           <TableRow key={row.id}>
                             <TableCell className="align-top">
                               <input

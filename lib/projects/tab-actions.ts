@@ -75,23 +75,35 @@ export async function syncProjectMilestoneMetrics(
 
   const byMilestone = expensesByMilestoneId((expenses ?? []) as Expense[])
 
-  for (const ms of milestones) {
-    const actualExpenses = byMilestone[ms.id] ?? 0
-    const targetBudget = Number(ms.target_budget)
-    const completion = calculateMilestoneCompletionFromExpenses(
-      actualExpenses,
-      targetBudget,
-    )
+  await Promise.all(
+    milestones.map((ms) => {
+      const actualExpenses = byMilestone[ms.id] ?? 0
+      const targetBudget = Number(ms.target_budget)
+      const completion = calculateMilestoneCompletionFromExpenses(
+        actualExpenses,
+        targetBudget,
+      )
 
-    await supabase
-      .from('milestones')
-      .update({
-        actual_expenses: actualExpenses,
-        actual_completion_percent: completion,
-      })
-      .eq('id', ms.id)
-      .eq('project_id', projectId)
+      return supabase
+        .from('milestones')
+        .update({
+          actual_expenses: actualExpenses,
+          actual_completion_percent: completion,
+        })
+        .eq('id', ms.id)
+        .eq('project_id', projectId)
+    }),
+  )
+}
+
+const BULK_EXPENSE_INSERT_CHUNK = 200
+
+function chunkExpenseRows<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
   }
+  return chunks
 }
 
 export async function createExpenseAction(input: {
@@ -183,16 +195,22 @@ export async function bulkCreateExpensesAction(input: {
     entered_by: session.userId,
   }))
 
-  const { data, error } = await session.supabase
-    .from('expenses')
-    .insert(payload)
-    .select('id')
+  let created = 0
+  for (const chunk of chunkExpenseRows(payload, BULK_EXPENSE_INSERT_CHUNK)) {
+    const { data, error } = await session.supabase
+      .from('expenses')
+      .insert(chunk)
+      .select('id')
 
-  if (error) {
-    return { ok: false, error: getSupabaseErrorMessage(error) }
+    if (error) {
+      return {
+        ok: false,
+        error: `${getSupabaseErrorMessage(error)} (${created} row(s) saved before failure)`,
+      }
+    }
+
+    created += data?.length ?? 0
   }
-
-  const created = data?.length ?? 0
   const anyApproved = input.rows.some((r) => (r.status ?? 'pending') === 'approved')
   if (anyApproved) {
     await syncProjectMilestoneMetrics(session.supabase, input.projectId)
