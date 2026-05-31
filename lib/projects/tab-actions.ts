@@ -554,6 +554,170 @@ export async function createVendorPaymentAction(input: {
   return { ok: true, data: data as Record<string, unknown> }
 }
 
+export async function updateClientPaymentAction(input: {
+  projectId: string
+  paymentId: string
+  milestoneId: string | null
+  stageName: string
+  amount: number
+  receivedDate: string | null
+  status: 'pending' | 'received' | 'overdue'
+  paymentMethod: string | null
+  notes: string | null
+}): Promise<TabActionResult<Record<string, unknown>>> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canManageProjectData(session.role)) {
+    return { ok: false, error: 'Only admins and project managers can edit client payments.' }
+  }
+
+  const { data, error } = await session.supabase
+    .from('client_payments')
+    .update({
+      milestone_id: input.milestoneId,
+      stage_name: input.stageName,
+      amount: input.amount,
+      received_date: input.receivedDate,
+      status: input.status,
+      payment_method: input.paymentMethod,
+      notes: input.notes,
+    })
+    .eq('id', input.paymentId)
+    .eq('project_id', input.projectId)
+    .select('*')
+    .single()
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  revalidateProject(input.projectId)
+  return { ok: true, data: data as Record<string, unknown> }
+}
+
+export async function deleteClientPaymentAction(input: {
+  projectId: string
+  paymentId: string
+}): Promise<TabActionResult> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canManageProjectData(session.role)) {
+    return { ok: false, error: 'Only admins and project managers can delete client payments.' }
+  }
+
+  const { error } = await session.supabase
+    .from('client_payments')
+    .delete()
+    .eq('id', input.paymentId)
+    .eq('project_id', input.projectId)
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  revalidateProject(input.projectId)
+  return { ok: true, data: undefined }
+}
+
+export async function updateVendorPaymentAction(input: {
+  projectId: string
+  paymentId: string
+  vendorName: string
+  totalAmount: number
+  amountPaid: number
+  dueDate: string | null
+  status: string
+  category: string | null
+}): Promise<TabActionResult<Record<string, unknown>>> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canManageProjectData(session.role)) {
+    return { ok: false, error: 'Only admins and project managers can edit vendor payments.' }
+  }
+
+  const { data: existing, error: fetchError } = await session.supabase
+    .from('vendor_payments')
+    .select('expense_split_group_id')
+    .eq('id', input.paymentId)
+    .eq('project_id', input.projectId)
+    .maybeSingle()
+
+  if (fetchError) {
+    return { ok: false, error: getSupabaseErrorMessage(fetchError) }
+  }
+
+  if (existing?.expense_split_group_id) {
+    return {
+      ok: false,
+      error: 'This vendor payment is linked to a split expense. Update it from the Expenses tab.',
+    }
+  }
+
+  const { data, error } = await session.supabase
+    .from('vendor_payments')
+    .update({
+      vendor_name: input.vendorName,
+      total_amount: input.totalAmount,
+      amount_paid: input.amountPaid,
+      due_date: input.dueDate,
+      status: input.status,
+      category: input.category,
+    })
+    .eq('id', input.paymentId)
+    .eq('project_id', input.projectId)
+    .select('*')
+    .single()
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  revalidateProject(input.projectId)
+  return { ok: true, data: data as Record<string, unknown> }
+}
+
+export async function deleteVendorPaymentAction(input: {
+  projectId: string
+  paymentId: string
+}): Promise<TabActionResult> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canManageProjectData(session.role)) {
+    return { ok: false, error: 'Only admins and project managers can delete vendor payments.' }
+  }
+
+  const { data: existing, error: fetchError } = await session.supabase
+    .from('vendor_payments')
+    .select('expense_split_group_id')
+    .eq('id', input.paymentId)
+    .eq('project_id', input.projectId)
+    .maybeSingle()
+
+  if (fetchError) {
+    return { ok: false, error: getSupabaseErrorMessage(fetchError) }
+  }
+
+  if (existing?.expense_split_group_id) {
+    return {
+      ok: false,
+      error: 'This vendor payment is linked to a split expense. Remove it from the Expenses tab.',
+    }
+  }
+
+  const { error } = await session.supabase
+    .from('vendor_payments')
+    .delete()
+    .eq('id', input.paymentId)
+    .eq('project_id', input.projectId)
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  revalidateProject(input.projectId)
+  return { ok: true, data: undefined }
+}
+
 export async function createAdditionalWorkAction(input: {
   projectId: string
   description: string
