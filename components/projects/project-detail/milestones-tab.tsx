@@ -508,6 +508,7 @@ export function MilestonesTab({
   const hasAnyStageLoss = useMemo(() => {
     if (!showFinancials) return false
     return displayMilestones.some((milestone) => {
+      if (milestone.status !== "completed") return false
       const { profitLoss, actualExpense } = calculateStageFinancials(milestone)
       return actualExpense > 0 && profitLoss < 0
     })
@@ -804,14 +805,16 @@ export function MilestonesTab({
             <div className="space-y-3">
               {displayMilestones.map((milestone, index) => {
                 const { targetAmount, profitLoss, profitLossPercent, actualExpense, completionPercent } = calculateStageFinancials(milestone)
+                const isCompleted = milestone.status === "completed"
                 const isOverBudget = profitLoss < 0
                 const hasExpense = actualExpense > 0
-                const isStageLoss = hasExpense && isOverBudget
+                const isStageLoss = isCompleted && hasExpense && isOverBudget
                 const isFirstStageLoss =
                   isStageLoss &&
                   !displayMilestones
                     .slice(0, index)
                     .some((m) => {
+                      if (m.status !== "completed") return false
                       const fin = calculateStageFinancials(m)
                       return fin.actualExpense > 0 && fin.profitLoss < 0
                     })
@@ -882,7 +885,7 @@ export function MilestonesTab({
                                 <span className="text-muted-foreground">Actual Expense:</span>
                                 <span className="font-medium">{formatINR(actualExpense)}</span>
                               </div>
-                              {showFinancials && (
+                              {showFinancials && isCompleted && (
                               <>
                               <Separator orientation="vertical" className="h-4" />
                               <div className={cn(
@@ -917,7 +920,7 @@ export function MilestonesTab({
                         <div>
                           <div className="text-sm text-muted-foreground">Completion</div>
                           <div className="text-xl font-bold">{completionPercent}%</div>
-                          {showFinancials && hasExpense && (
+                          {showFinancials && isCompleted && hasExpense && (
                             <div className={cn(
                               "text-xs font-medium mt-1 px-2 py-0.5 rounded",
                               isOverBudget ? "bg-red-500/20 text-red-500" : "bg-green-500/20 text-green-500"
@@ -1112,7 +1115,7 @@ export function MilestonesTab({
             </CardTitle>
             <CardDescription>
               {hasAnyStageLoss
-                ? "Stages where actual spend exceeded the target budget"
+                ? "Completed stages where actual spend exceeded the target budget"
                 : "Overview of all stages with target vs actual comparison"}
             </CardDescription>
           </CardHeader>
@@ -1143,9 +1146,9 @@ export function MilestonesTab({
                         </td>
                         <td className={cn(
                           "py-3 px-2 text-right font-medium",
-                          actualExpense > 0 && (isOverBudget ? "text-red-500" : "text-green-500")
+                          milestone.status === "completed" && actualExpense > 0 && (isOverBudget ? "text-red-500" : "text-green-500")
                         )}>
-                          {actualExpense > 0 ? (
+                          {milestone.status === "completed" && actualExpense > 0 ? (
                             <span>{isOverBudget ? "-" : "+"}{formatINR(Math.abs(profitLoss))}</span>
                           ) : "-"}
                         </td>
