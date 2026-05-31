@@ -267,6 +267,133 @@ export async function updateExpenseStatusAction(input: {
   return { ok: true, data: undefined }
 }
 
+export async function deleteExpenseAction(input: {
+  projectId: string
+  expenseId: string
+}): Promise<TabActionResult> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canManageProjectData(session.role)) {
+    return { ok: false, error: 'Only admins and project managers can delete expenses.' }
+  }
+
+  const { error } = await session.supabase
+    .from('expenses')
+    .delete()
+    .eq('id', input.expenseId)
+    .eq('project_id', input.projectId)
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  await syncProjectMilestoneMetrics(session.supabase, input.projectId)
+  revalidateProject(input.projectId)
+  return { ok: true, data: undefined }
+}
+
+export async function bulkDeleteExpensesAction(input: {
+  projectId: string
+  expenseIds: string[]
+}): Promise<TabActionResult<{ deleted: number }>> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canManageProjectData(session.role)) {
+    return { ok: false, error: 'Only admins and project managers can delete expenses.' }
+  }
+
+  const ids = [...new Set(input.expenseIds.filter(Boolean))]
+  if (ids.length === 0) {
+    return { ok: false, error: 'Select at least one expense.' }
+  }
+
+  const { data, error } = await session.supabase
+    .from('expenses')
+    .delete()
+    .eq('project_id', input.projectId)
+    .in('id', ids)
+    .select('id')
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  await syncProjectMilestoneMetrics(session.supabase, input.projectId)
+  revalidateProject(input.projectId)
+  return { ok: true, data: { deleted: data?.length ?? 0 } }
+}
+
+export type BulkExpensePatch = {
+  milestoneId?: string | null
+  category?: string
+  status?: ExpenseStatus
+}
+
+export async function bulkUpdateExpensesAction(input: {
+  projectId: string
+  expenseIds: string[]
+  patch: BulkExpensePatch
+}): Promise<TabActionResult<{ updated: number }>> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canEnterExpenses(session.role)) {
+    return { ok: false, error: 'You do not have permission to edit expenses.' }
+  }
+
+  const ids = [...new Set(input.expenseIds.filter(Boolean))]
+  if (ids.length === 0) {
+    return { ok: false, error: 'Select at least one expense.' }
+  }
+
+  const hasMilestone = Object.prototype.hasOwnProperty.call(input.patch, 'milestoneId')
+  const hasCategory = input.patch.category !== undefined
+  const hasStatus = input.patch.status !== undefined
+
+  if (!hasMilestone && !hasCategory && !hasStatus) {
+    return { ok: false, error: 'Choose at least one field to update.' }
+  }
+
+  const updates: Record<string, unknown> = {}
+
+  if (hasMilestone) {
+    updates.milestone_id = input.patch.milestoneId
+  }
+  if (hasCategory) {
+    if (!input.patch.category?.trim()) {
+      return { ok: false, error: 'Category cannot be empty.' }
+    }
+    updates.category = input.patch.category.trim()
+    if (updates.category !== 'Labour') {
+      updates.labour_team_id = null
+    }
+  }
+  if (hasStatus) {
+    if (!canManageProjectData(session.role)) {
+      return { ok: false, error: 'Only admins and project managers can change expense status.' }
+    }
+    updates.status = input.patch.status
+    updates.approved_by =
+      input.patch.status === 'approved' || input.patch.status === 'rejected'
+        ? session.userId
+        : null
+  }
+
+  const { data, error } = await session.supabase
+    .from('expenses')
+    .update(updates)
+    .eq('project_id', input.projectId)
+    .in('id', ids)
+    .select('id')
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  await syncProjectMilestoneMetrics(session.supabase, input.projectId)
+  revalidateProject(input.projectId)
+  return { ok: true, data: { updated: data?.length ?? 0 } }
+}
+
 export async function createClientPaymentAction(input: {
   projectId: string
   milestoneId: string | null

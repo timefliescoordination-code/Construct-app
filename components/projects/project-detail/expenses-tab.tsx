@@ -69,6 +69,7 @@ import type {
   ProjectWithDetails,
 } from "@/lib/types/database"
 import { formatINR } from "@/lib/currency"
+import { cn } from "@/lib/utils"
 import { milestoneNameById } from "@/lib/project-tab-hydration"
 import {
   createExpenseAction,
@@ -94,6 +95,11 @@ import type { ExpenseCategoryView } from "@/lib/data/expense-categories"
 import { ExpenseCategoryManageDialog } from "@/components/projects/project-detail/expense-category-manage-dialog"
 import { ExpenseSplitGroupDialog } from "@/components/projects/project-detail/expense-split-group-dialog"
 import { PendingSplitSuggestion } from "@/components/projects/project-detail/pending-split-suggestion"
+import {
+  ExpenseBulkToolbar,
+  ExpenseRowCheckbox,
+  ExpenseSelectAllCheckbox,
+} from "@/components/projects/project-detail/expense-bulk-toolbar"
 import {
   findMatchingOpenSplitGroup,
   getSplitPaymentStatus,
@@ -297,6 +303,9 @@ export function ExpensesTab({
   const [isLoading, setIsLoading] = useState(!project)
   const [filterCategory, setFilterCategory] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<string>("all")
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -1697,6 +1706,35 @@ export function ExpensesTab({
       )
   }, [expenses, filterCategory, filterStatus])
 
+  useEffect(() => {
+    setSelectedExpenseIds(new Set())
+  }, [filterCategory, filterStatus])
+
+  const allFilteredSelected =
+    filteredExpenses.length > 0 &&
+    filteredExpenses.every((e) => selectedExpenseIds.has(e.id))
+  const someFilteredSelected =
+    filteredExpenses.some((e) => selectedExpenseIds.has(e.id)) && !allFilteredSelected
+
+  const toggleExpenseSelection = (expenseId: string, checked: boolean) => {
+    setSelectedExpenseIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(expenseId)
+      else next.delete(expenseId)
+      return next
+    })
+  }
+
+  const toggleAllFilteredExpenses = (checked: boolean) => {
+    if (checked) {
+      setSelectedExpenseIds(new Set(filteredExpenses.map((e) => e.id)))
+    } else {
+      setSelectedExpenseIds(new Set())
+    }
+  }
+
+  const tableColSpan = canEnterData ? 9 : 7
+
   const totalExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0)
 
   const getApprovalBadge = (status: string) => {
@@ -2445,10 +2483,34 @@ export function ExpensesTab({
           </div>
         </CardHeader>
         <CardContent>
+          {canEnterData && projectId && (
+            <ExpenseBulkToolbar
+              projectId={projectId}
+              rows={filteredExpenses}
+              selectedIds={selectedExpenseIds}
+              onSelectionChange={setSelectedExpenseIds}
+              canEnterData={canEnterData}
+              canManageProjects={Boolean(canManageProjects)}
+              milestones={milestones}
+              categoryNames={categoryNames}
+              disabled={isSubmitting}
+              onCompleted={refreshExpensesWithJoin}
+            />
+          )}
           <div className="rounded-md border border-border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="border-border hover:bg-muted/50">
+                  {canEnterData && (
+                    <TableHead className="w-10 pr-0">
+                      <ExpenseSelectAllCheckbox
+                        allSelected={allFilteredSelected}
+                        someSelected={someFilteredSelected}
+                        onToggleAll={toggleAllFilteredExpenses}
+                        disabled={isSubmitting || filteredExpenses.length === 0}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Date</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Description</TableHead>
@@ -2462,7 +2524,7 @@ export function ExpensesTab({
               <TableBody>
                 {filteredExpenses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={canEnterData ? 8 : 7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={tableColSpan} className="text-center py-8 text-muted-foreground">
                       No expenses found. Click "Add Expense" to create one.
                     </TableCell>
                   </TableRow>
@@ -2476,11 +2538,28 @@ export function ExpensesTab({
                     const invoiceAttachment = invoiceAttachmentByExpenseId[expense.id]
                     const isInvoiceExpanded = expandedInvoiceExpenseIds.has(expense.id)
                     const invoiceDetails = invoiceDetailsByExpenseId[expense.id]
-                    const tableColSpan = canEnterData ? 8 : 7
+                    const isSelected = selectedExpenseIds.has(expense.id)
 
                     return (
                     <Fragment key={expense.id}>
-                    <TableRow className="border-border hover:bg-muted/50">
+                    <TableRow
+                      className={cn(
+                        "border-border hover:bg-muted/50",
+                        isSelected && "bg-primary/5",
+                      )}
+                    >
+                      {canEnterData && (
+                        <TableCell className="w-10 pr-0">
+                          <ExpenseRowCheckbox
+                            checked={isSelected}
+                            onCheckedChange={(checked) =>
+                              toggleExpenseSelection(expense.id, checked)
+                            }
+                            disabled={isSubmitting}
+                            aria-label={`Select ${expense.description}`}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           {isSplit && (
