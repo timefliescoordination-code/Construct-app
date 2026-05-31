@@ -50,8 +50,9 @@ function shouldRetryWithBasicSelect(error: { code?: string; message?: string }):
   )
 }
 
-export async function listProjectsForApi() {
+export async function listProjectsForApi(options?: { includeArchived?: boolean }) {
   const supabase = await createClient()
+  const includeArchived = options?.includeArchived ?? false
 
   const {
     data: { user },
@@ -61,16 +62,28 @@ export async function listProjectsForApi() {
     return { data: null, error: 'You must be signed in to view projects.' }
   }
 
-  let { data, error } = await supabase
+  let query = supabase
     .from('projects')
     .select(PROJECT_LIST_SELECT)
     .order('created_at', { ascending: false })
 
+  if (!includeArchived) {
+    query = query.neq('status', 'archived')
+  }
+
+  let { data, error } = await query
+
   if (error && shouldRetryWithBasicSelect(error)) {
-    const fallback = await supabase
+    let fallbackQuery = supabase
       .from('projects')
       .select(PROJECT_LIST_SELECT_BASIC)
       .order('created_at', { ascending: false })
+
+    if (!includeArchived) {
+      fallbackQuery = fallbackQuery.neq('status', 'archived')
+    }
+
+    const fallback = await fallbackQuery
     data = fallback.data
     error = fallback.error
   }
@@ -145,7 +158,12 @@ export async function getDefaultProjectForApi() {
     return { data: null, error: NO_ASSIGNED_PROJECT_MESSAGE }
   }
 
-  return getProjectByIdForApi(projectId)
+  const result = await getProjectByIdForApi(projectId)
+  if (result.data?.status === 'archived') {
+    return { data: null, error: NO_ASSIGNED_PROJECT_MESSAGE }
+  }
+
+  return result
 }
 
 export async function listLabourTypesForApi() {

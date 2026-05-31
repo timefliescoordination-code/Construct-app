@@ -4,7 +4,7 @@ import { isSupabaseConfigured } from '@/lib/supabase/env'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
       { error: 'Supabase is not configured on the server.' },
@@ -12,7 +12,10 @@ export async function GET() {
     )
   }
 
-  const { data, error } = await listProjectsForApi()
+  const includeArchived =
+    new URL(request.url).searchParams.get('includeArchived') === 'true'
+
+  const { data, error } = await listProjectsForApi({ includeArchived })
 
   if (error) {
     return NextResponse.json({ error }, { status: 400 })

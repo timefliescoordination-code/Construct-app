@@ -45,3 +45,22 @@ export function isDbProjectStatus(value: string): value is DbProjectStatus {
     value === "archived"
   )
 }
+
+export function isArchivedProjectStatus(status: string): boolean {
+  return status === "archived"
+}
+
+export function excludeArchivedProjects<T extends { status: string }>(projects: T[]): T[] {
+  return projects.filter((project) => !isArchivedProjectStatus(project.status))
+}
+
+export function activeProjectIdSet(projects: Array<{ id: string; status: string }>): Set<string> {
+  return new Set(excludeArchivedProjects(projects).map((project) => project.id))
+}
+
+export function filterRowsByActiveProjects<T extends { project_id: string }>(
+  rows: T[],
+  activeIds: Set<string>,
+): T[] {
+  return rows.filter((row) => activeIds.has(row.project_id))
+}

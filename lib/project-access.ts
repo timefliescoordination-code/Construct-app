@@ -42,6 +42,7 @@ export async function getAssignedDefaultProjectId(
     const { data } = await supabase
       .from('projects')
       .select('id')
+      .neq('status', 'archived')
       .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle()
@@ -53,6 +54,7 @@ export async function getAssignedDefaultProjectId(
       .from('projects')
       .select('id')
       .eq('customer_id', scope.userId)
+      .neq('status', 'archived')
       .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle()
@@ -64,6 +66,7 @@ export async function getAssignedDefaultProjectId(
       .from('projects')
       .select('id')
       .eq('pm_id', scope.userId)
+      .neq('status', 'archived')
       .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle()
@@ -72,8 +75,9 @@ export async function getAssignedDefaultProjectId(
 
   const { data } = await supabase
     .from('project_engineers')
-    .select('project_id')
+    .select('project_id, projects!inner(status)')
     .eq('engineer_id', scope.userId)
+    .neq('projects.status', 'archived')
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle()

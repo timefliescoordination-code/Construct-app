@@ -1,4 +1,9 @@
 import { buildAdminDashboardData } from "@/lib/admin-dashboard-data"
+import {
+  activeProjectIdSet,
+  excludeArchivedProjects,
+  filterRowsByActiveProjects,
+} from "@/lib/project-status"
 import { createClient } from "@/lib/supabase/server"
 import { getSupabaseErrorMessage } from "@/lib/supabase/db-errors"
 import { NextResponse } from "next/server"
@@ -86,13 +91,16 @@ export async function GET() {
       )
     }
 
+    const activeProjects = excludeArchivedProjects(projectsResult.data ?? [])
+    const activeIds = activeProjectIdSet(activeProjects)
+
     const data = buildAdminDashboardData({
-      projects: projectsResult.data ?? [],
-      milestones: milestonesResult.data ?? [],
-      expenses: expensesResult.data ?? [],
-      clientPayments: clientPaymentsResult.data ?? [],
-      additionalWorks: additionalWorksResult.data ?? [],
-      vendorPayments: vendorPaymentsResult.data ?? [],
+      projects: activeProjects,
+      milestones: filterRowsByActiveProjects(milestonesResult.data ?? [], activeIds),
+      expenses: filterRowsByActiveProjects(expensesResult.data ?? [], activeIds),
+      clientPayments: filterRowsByActiveProjects(clientPaymentsResult.data ?? [], activeIds),
+      additionalWorks: filterRowsByActiveProjects(additionalWorksResult.data ?? [], activeIds),
+      vendorPayments: filterRowsByActiveProjects(vendorPaymentsResult.data ?? [], activeIds),
       staffProfiles: staffResult.data ?? [],
     })
 

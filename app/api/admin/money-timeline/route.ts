@@ -79,7 +79,11 @@ export async function GET(request: NextRequest) {
           "id, project_id, description, category, amount, expense_date, projects(id, name)",
         )
         .eq("status", "approved"),
-      supabase.from("projects").select("id, name").order("name"),
+      supabase
+        .from("projects")
+        .select("id, name")
+        .neq("status", "archived")
+        .order("name"),
     ])
 
     const firstError =
@@ -93,7 +97,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    const activeProjectIds = new Set(
+      (projectsResult.data ?? []).map((project) => project.id as string),
+    )
+
     const payments = (paymentsResult.data ?? []).flatMap((row) => {
+      if (!activeProjectIds.has(row.project_id as string)) return []
       const project = unwrapProject(row.projects)
       const date =
         normalizeDateValue(row.received_date) ??
@@ -112,6 +121,7 @@ export async function GET(request: NextRequest) {
     })
 
     const expenses = (expensesResult.data ?? []).flatMap((row) => {
+      if (!activeProjectIds.has(row.project_id as string)) return []
       const project = unwrapProject(row.projects)
       const date = normalizeDateValue(row.expense_date)
       if (!date) return []

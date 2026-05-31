@@ -24,7 +24,9 @@ export function ProjectsContent() {
   const showCreateProject = canManageProjects || isAdmin
   const showFinancials = canViewProjectFinancials(role)
   
-  const { projects: dbProjects, isLoading, error, mutate } = useProjects()
+  const { projects: dbProjects, isLoading, error, mutate } = useProjects({
+    includeArchived: true,
+  })
 
   // Transform database projects to the format expected by ProjectTable
   const projects: Project[] = useMemo(() => {

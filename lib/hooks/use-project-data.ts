@@ -34,8 +34,9 @@ async function fetchFromApi<T>(path: string): Promise<T> {
   return json.data as T
 }
 
-async function fetchProjects() {
-  return fetchFromApi<ProjectWithDetails[]>("/api/projects")
+async function fetchProjects(includeArchived = false) {
+  const query = includeArchived ? "?includeArchived=true" : ""
+  return fetchFromApi<ProjectWithDetails[]>(`/api/projects${query}`)
 }
 
 async function fetchProject(projectId: string) {
@@ -74,9 +75,15 @@ const swrDefaults = {
   dedupingInterval: 30_000,
 }
 
-// Hook: Get all projects
-export function useProjects() {
-  const { data, error, isLoading, mutate } = useSWR('projects', fetchProjects, swrDefaults)
+// Hook: Get all projects (includeArchived for Projects list page only)
+export function useProjects(options?: { includeArchived?: boolean }) {
+  const includeArchived = options?.includeArchived ?? false
+  const swrKey = includeArchived ? 'projects-all' : 'projects'
+  const { data, error, isLoading, mutate } = useSWR(
+    swrKey,
+    () => fetchProjects(includeArchived),
+    swrDefaults,
+  )
   
   const projectSummaries = (data || []).map(project => {
     const totalExpenses = project.expenses
