@@ -102,6 +102,7 @@ import {
   ExpenseRowCheckbox,
   ExpenseSelectAllCheckbox,
 } from "@/components/projects/project-detail/expense-bulk-toolbar"
+import { ExpenseCategorySummary } from "@/components/projects/project-detail/expense-category-summary"
 import {
   findMatchingOpenSplitGroup,
   getSplitPaymentStatus,
@@ -1795,8 +1796,6 @@ export function ExpensesTab({
 
   const tableColSpan = canEnterData ? 9 : 7
 
-  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0)
-
   const getApprovalBadge = (status: string) => {
     switch (status) {
       case "approved":
@@ -1846,9 +1845,28 @@ export function ExpensesTab({
     )
   }
 
+  const handleCategoryCardClick = (category: string) => {
+    if (category === "all") {
+      setFilterCategory("all")
+      return
+    }
+    setFilterCategory((prev) => (prev === category ? "all" : category))
+  }
+
   return (
     <div className="space-y-6">
-      {/* Manage Expenses Table - Primary Section */}
+      <Card className="section-card border-border overflow-hidden">
+        <CardContent className="pt-6">
+          <ExpenseCategorySummary
+            expenses={expenses}
+            categoryNames={categoryNames}
+            statusFilter={filterStatus}
+            activeCategory={filterCategory}
+            onCategoryClick={handleCategoryCardClick}
+          />
+        </CardContent>
+      </Card>
+
       <Card className="bg-card border-border">
         <CardHeader>
           <div className="flex flex-col sm:flex-row gap-4 justify-between">
@@ -2779,22 +2797,6 @@ export function ExpensesTab({
                 )}
               </TableBody>
             </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Summary Card */}
-      <Card className="bg-card border-border">
-        <CardContent className="pt-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-sm text-muted-foreground">Total Expenses (Filtered)</p>
-              <p className="text-2xl font-bold">Rs {totalExpenses.toLocaleString()}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-muted-foreground">Entries</p>
-              <p className="text-2xl font-bold">{filteredExpenses.length}</p>
-            </div>
           </div>
         </CardContent>
       </Card>
