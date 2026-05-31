@@ -41,7 +41,11 @@ import { useProject, useProjectMetrics } from "@/lib/hooks/use-project-data"
 import { updateProjectAction } from "@/lib/projects/actions"
 import { StaffAssignmentFields } from "@/components/projects/staff-assignment-fields"
 import { useStaffProfiles } from "@/lib/hooks/use-staff-profiles"
-import { calculateProjectMetrics, type MilestoneData } from "@/lib/financial-calculations"
+import {
+  calculateProjectMetrics,
+  getApprovedAdditionalWorksTotal,
+  type MilestoneData,
+} from "@/lib/financial-calculations"
 import type { ProjectStatus } from "@/lib/types/database"
 import { useAuth } from "@/lib/hooks/use-auth"
 import {
@@ -118,9 +122,10 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
   const overviewMetrics = useMemo(() => {
     if (!project || !form) return null
 
-    const additionalWorksApproved = project.additional_works
-      .filter((aw) => aw.approval_status === "approved")
-      .reduce((sum, aw) => sum + Number(aw.amount), 0)
+    const additionalWorksApproved = getApprovedAdditionalWorksTotal(
+      project.additional_works,
+      form.additional_works_value,
+    )
 
     const milestonesForCalc: MilestoneData[] = project.milestones.map((ms) => ({
       name: ms.name,
@@ -431,6 +436,29 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
                   />
                   <p className="text-xs text-muted-foreground">
                     Approved additional works are added on top for total contract value.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editProjectAdditionalWorksValue">
+                    Additional Works at Setup (₹)
+                  </Label>
+                  <Input
+                    id="editProjectAdditionalWorksValue"
+                    type="number"
+                    min={0}
+                    value={form.additional_works_value}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      updateField(
+                        "additional_works_value",
+                        next === "" ? 0 : Number(next),
+                      )
+                    }}
+                    className="bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Amount entered at project creation. Also manage items on the
+                    Additional Works tab.
                   </p>
                 </div>
                 <div className="space-y-2">

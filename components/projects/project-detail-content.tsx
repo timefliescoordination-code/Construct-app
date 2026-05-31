@@ -36,6 +36,7 @@ import { ReportsTab } from "./project-detail/reports-tab"
 import { PhotosTab } from "./project-detail/photos-tab"
 import { ManpowerTab } from "./project-detail/manpower-tab"
 import { useProject, useDefaultProject, useProjectMetrics } from "@/lib/hooks/use-project-data"
+import { getApprovedAdditionalWorksTotal } from "@/lib/financial-calculations"
 import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
 import { useAuth } from "@/lib/hooks/use-auth"
 import {
@@ -130,9 +131,10 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
     if (!project) return null
     
     // Additional works approved
-    const additionalWorksApproved = project.additional_works
-      .filter(aw => aw.approval_status === "approved")
-      .reduce((sum, aw) => sum + Number(aw.amount), 0)
+    const additionalWorksApproved = getApprovedAdditionalWorksTotal(
+      project.additional_works,
+      project.additional_works_value,
+    )
     
     // Total approved expenses
     const totalExpenses = project.expenses

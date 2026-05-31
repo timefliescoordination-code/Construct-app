@@ -3,7 +3,10 @@
 import { useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { formatINR } from "@/lib/currency"
-import { summarizeProjectFinancials } from "@/lib/financial-calculations"
+import {
+  getApprovedAdditionalWorksTotal,
+  summarizeProjectFinancials,
+} from "@/lib/financial-calculations"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { cn } from "@/lib/utils"
 
@@ -20,9 +23,10 @@ export function ProjectFinancialSummary({
     const totalExpenses = project.expenses
       .filter((e) => e.status === "approved")
       .reduce((sum, e) => sum + Number(e.amount), 0)
-    const additionalWorksApproved = project.additional_works
-      .filter((aw) => aw.approval_status === "approved")
-      .reduce((sum, aw) => sum + Number(aw.amount), 0)
+    const additionalWorksApproved = getApprovedAdditionalWorksTotal(
+      project.additional_works,
+      project.additional_works_value,
+    )
 
     return summarizeProjectFinancials({
       contractValue: Number(project.contract_value),

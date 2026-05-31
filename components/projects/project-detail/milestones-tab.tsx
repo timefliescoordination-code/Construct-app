@@ -57,6 +57,7 @@ import { cn } from "@/lib/utils"
 import { formatINR } from "@/lib/currency"
 import {
   calculateTotalContractValue,
+  getApprovedAdditionalWorksTotal,
   calculateExpectedProfit,
   calculateStageBudget,
   calculateMilestoneCompletionFromExpenses,
@@ -258,10 +259,15 @@ export function MilestonesTab({
   }
 
   // Calculate financials
-  const totalContractValue = project ? calculateTotalContractValue(
-    Number(project.contract_value), 
-    Number(project.additional_works_value)
-  ) : 0
+  const totalContractValue = project
+    ? calculateTotalContractValue(
+        Number(project.contract_value),
+        getApprovedAdditionalWorksTotal(
+          project.additional_works,
+          project.additional_works_value,
+        ),
+      )
+    : 0
   const expectedProfitPercent = project ? Number(project.expected_margin_percent) : 15
   const expectedProfit = calculateExpectedProfit(totalContractValue, expectedProfitPercent)
   const totalStageBudget = calculateStageBudget(totalContractValue, expectedProfit)

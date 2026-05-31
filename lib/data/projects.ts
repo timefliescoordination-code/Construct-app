@@ -15,6 +15,7 @@ import {
   calculateTotalContractValue,
   calculateCompletionPercent,
   calculateProjectedProfit,
+  getApprovedAdditionalWorksTotal,
   summarizeProjectFinancials,
   type MilestoneData
 } from "@/lib/financial-calculations"
@@ -48,9 +49,13 @@ export async function getProjects(): Promise<ProjectSummary[]> {
       ?.filter((p: ClientPayment) => p.status === 'received')
       .reduce((sum: number, p: ClientPayment) => sum + Number(p.amount), 0) || 0
     
+    const additionalWorksApproved = getApprovedAdditionalWorksTotal(
+      project.additional_works,
+      project.additional_works_value,
+    )
     const totalContractValue = calculateTotalContractValue(
-      Number(project.contract_value), 
-      Number(project.additional_works_value)
+      Number(project.contract_value),
+      additionalWorksApproved,
     )
     
     const enrichedMilestones = milestonesWithCalculatedExpenses({
@@ -288,9 +293,10 @@ export function calculateProjectMetrics(project: ProjectWithDetails) {
   const totalVendorPaymentsDue = project.vendor_payments
     .reduce((sum, vp) => sum + Number(vp.pending_amount), 0)
   
-  const additionalWorksApproved = project.additional_works
-    .filter(aw => aw.approval_status === 'approved')
-    .reduce((sum, aw) => sum + Number(aw.amount), 0)
+  const additionalWorksApproved = getApprovedAdditionalWorksTotal(
+    project.additional_works,
+    project.additional_works_value,
+  )
   
   const totalContractValue = calculateTotalContractValue(
     Number(project.contract_value), 

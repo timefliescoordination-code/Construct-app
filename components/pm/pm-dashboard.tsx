@@ -33,6 +33,7 @@ import { updateExpenseStatusAction } from "@/lib/projects/tab-actions"
 import {
   calculateTotalContractValue,
   calculateMilestoneCompletionFromExpenses,
+  getApprovedAdditionalWorksTotal,
 } from "@/lib/financial-calculations"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { DashboardHeader } from "@/components/dashboard/header"
@@ -55,6 +56,7 @@ interface PmProjectRow {
   site_address: string
   status: string
   contract_value: number
+  additional_works_value: number
   expected_margin_percent: number
   milestones: Array<{
     id: string
@@ -93,6 +95,7 @@ function mapApiProject(project: ProjectWithDetails): PmProjectRow {
     site_address: project.site_address,
     status: project.status,
     contract_value: Number(project.contract_value),
+    additional_works_value: Number(project.additional_works_value),
     expected_margin_percent: Number(project.expected_margin_percent),
     milestones: (project.milestones ?? []).map((m) => ({
       id: m.id,
@@ -125,9 +128,10 @@ function mapApiProject(project: ProjectWithDetails): PmProjectRow {
 }
 
 function projectTotalContractValue(project: PmProjectRow): number {
-  const additionalWorksApproved = project.additional_works
-    .filter((aw) => aw.approval_status === "approved")
-    .reduce((sum, aw) => sum + aw.amount, 0)
+  const additionalWorksApproved = getApprovedAdditionalWorksTotal(
+    project.additional_works,
+    project.additional_works_value,
+  )
   return calculateTotalContractValue(project.contract_value, additionalWorksApproved)
 }
 

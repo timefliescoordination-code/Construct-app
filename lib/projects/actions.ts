@@ -116,6 +116,9 @@ const DEFAULT_MILESTONES = [
   { name: 'Finishing', expected_cost_percent: 8, sort_order: 8 },
 ] as const
 
+const PROJECT_SETUP_ADDITIONAL_WORKS_DESCRIPTION =
+  'Additional works (project setup)'
+
 export async function createProjectAction(
   input: CreateProjectInput,
 ): Promise<CreateProjectResult> {
@@ -197,6 +200,26 @@ export async function createProjectAction(
       console.error('[createProjectAction] milestones:', milestonesError)
     }
 
+    if (input.additional_works_value > 0) {
+      const today = new Date().toISOString().slice(0, 10)
+      const { error: additionalWorksError } = await supabase
+        .from('additional_works')
+        .insert({
+          project_id: project.id,
+          description: PROJECT_SETUP_ADDITIONAL_WORKS_DESCRIPTION,
+          amount: input.additional_works_value,
+          requested_date: input.start_date ?? today,
+          approval_status: 'approved',
+          approved_by: user.id,
+          approved_date: today,
+          notes: 'Entered when the project was created',
+        })
+
+      if (additionalWorksError) {
+        console.error('[createProjectAction] additional works:', additionalWorksError)
+      }
+    }
+
     if (input.assigned_engineer_ids.length > 0) {
       const engineerAssignments = input.assigned_engineer_ids.map((engineerId) => ({
         project_id: project.id,
@@ -255,6 +278,49 @@ export async function updateProjectAction(
 
     if (projectError) {
       return { ok: false, error: getSupabaseErrorMessage(projectError) }
+    }
+
+    const today = new Date().toISOString().slice(0, 10)
+    const { data: setupWork } = await supabase
+      .from('additional_works')
+      .select('id')
+      .eq('project_id', input.projectId)
+      .eq('description', PROJECT_SETUP_ADDITIONAL_WORKS_DESCRIPTION)
+      .maybeSingle()
+
+    if (input.additional_works_value > 0) {
+      if (setupWork?.id) {
+        const { error: setupUpdateError } = await supabase
+          .from('additional_works')
+          .update({
+            amount: input.additional_works_value,
+            approval_status: 'approved',
+            approved_by: auth.userId,
+            approved_date: today,
+          })
+          .eq('id', setupWork.id)
+
+        if (setupUpdateError) {
+          console.error('[updateProjectAction] setup additional work:', setupUpdateError)
+        }
+      } else {
+        const { error: setupInsertError } = await supabase.from('additional_works').insert({
+          project_id: input.projectId,
+          description: PROJECT_SETUP_ADDITIONAL_WORKS_DESCRIPTION,
+          amount: input.additional_works_value,
+          requested_date: input.start_date ?? today,
+          approval_status: 'approved',
+          approved_by: auth.userId,
+          approved_date: today,
+          notes: 'Entered when the project was created',
+        })
+
+        if (setupInsertError) {
+          console.error('[updateProjectAction] setup additional work:', setupInsertError)
+        }
+      }
+    } else if (setupWork?.id) {
+      await supabase.from('additional_works').delete().eq('id', setupWork.id)
     }
 
     const { error: deleteError } = await supabase

@@ -29,7 +29,10 @@ import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { formatINR } from "@/lib/currency"
-import { summarizeProjectFinancials } from "@/lib/financial-calculations"
+import {
+  getApprovedAdditionalWorksTotal,
+  summarizeProjectFinancials,
+} from "@/lib/financial-calculations"
 import type { ProjectWithDetails } from "@/lib/types/database"
 
 interface Milestone {
@@ -235,9 +238,10 @@ export function ReportsTab({ projectId: propProjectId, project }: ReportsTabProp
   const projectFinances = project
     ? summarizeProjectFinancials({
         contractValue: Number(project.contract_value),
-        additionalWorksApproved: project.additional_works
-          .filter((aw) => aw.approval_status === "approved")
-          .reduce((sum, aw) => sum + Number(aw.amount), 0),
+        additionalWorksApproved: getApprovedAdditionalWorksTotal(
+          project.additional_works,
+          project.additional_works_value,
+        ),
         expectedMarginPercent: Number(project.expected_margin_percent),
         totalExpenses,
       })

@@ -87,6 +87,30 @@ export interface CompletedStageAnalysis {
 // CORE CALCULATIONS
 // =============================================================================
 
+export const PROJECT_SETUP_ADDITIONAL_WORKS_DESCRIPTION =
+  'Additional works (project setup)'
+
+type AdditionalWorkAmountRow = {
+  amount: number | string
+  approval_status: string
+}
+
+/**
+ * Approved additional works total from line items, or the legacy project
+ * setup field when no approved rows exist yet (create-project flow).
+ */
+export function getApprovedAdditionalWorksTotal(
+  additionalWorks: AdditionalWorkAmountRow[] | null | undefined,
+  legacyAdditionalWorksValue?: number | string | null,
+): number {
+  const fromRows = (additionalWorks ?? [])
+    .filter((aw) => aw.approval_status === 'approved')
+    .reduce((sum, aw) => sum + Number(aw.amount), 0)
+  if (fromRows > 0) return fromRows
+  const legacy = Number(legacyAdditionalWorksValue ?? 0)
+  return legacy > 0 ? legacy : 0
+}
+
 /**
  * Calculate total contract value (original + additional works)
  * No tax calculations - direct sum
