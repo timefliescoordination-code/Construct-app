@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -107,6 +107,37 @@ function deriveVendorStatus(totalAmount: number, amountPaid: number) {
   return "pending"
 }
 
+function comparePaymentDates(
+  dateA: string | null | undefined,
+  dateB: string | null | undefined,
+) {
+  const hasA = Boolean(dateA)
+  const hasB = Boolean(dateB)
+  if (!hasA && !hasB) return 0
+  if (!hasA) return 1
+  if (!hasB) return -1
+  return new Date(dateA!).getTime() - new Date(dateB!).getTime()
+}
+
+function sortClientPayments(payments: ClientPayment[]) {
+  return [...payments].sort((a, b) => {
+    const byDate = comparePaymentDates(
+      a.received_date ?? a.due_date,
+      b.received_date ?? b.due_date,
+    )
+    if (byDate !== 0) return byDate
+    return a.stage_name.localeCompare(b.stage_name)
+  })
+}
+
+function sortVendorPayments(payments: VendorPayment[]) {
+  return [...payments].sort((a, b) => {
+    const byDate = comparePaymentDates(a.due_date, b.due_date)
+    if (byDate !== 0) return byDate
+    return a.vendor_name.localeCompare(b.vendor_name)
+  })
+}
+
 interface PaymentsTabProps {
   projectId?: string
   project?: ProjectWithDetails
@@ -170,8 +201,8 @@ export function PaymentsTab({
 
   useEffect(() => {
     if (project) {
-      setClientPayments(project.client_payments as ClientPayment[])
-      setVendorPayments(project.vendor_payments as VendorPayment[])
+      setClientPayments(sortClientPayments(project.client_payments as ClientPayment[]))
+      setVendorPayments(sortVendorPayments(project.vendor_payments as VendorPayment[]))
       setMilestones(project.milestones.map((m) => ({ id: m.id, name: m.name })))
       setIsLoading(false)
       return
@@ -194,20 +225,18 @@ export function PaymentsTab({
         .from('client_payments')
         .select('*')
         .eq('project_id', projectId)
-        .order('due_date', { ascending: true })
       
       if (clientError) throw clientError
-      setClientPayments(clientData || [])
+      setClientPayments(sortClientPayments(clientData || []))
       
       // Fetch vendor payments
       const { data: vendorData, error: vendorError } = await supabase
         .from('vendor_payments')
         .select('*')
         .eq('project_id', projectId)
-        .order('due_date', { ascending: true })
       
       if (vendorError) throw vendorError
-      setVendorPayments(vendorData || [])
+      setVendorPayments(sortVendorPayments(vendorData || []))
 
       const { data: milestonesData, error: milestonesError } = await supabase
         .from('milestones')
@@ -254,7 +283,9 @@ export function PaymentsTab({
         return
       }
 
-      setClientPayments((prev) => [...prev, result.data as ClientPayment])
+      setClientPayments((prev) =>
+        sortClientPayments([...prev, result.data as ClientPayment]),
+      )
       onProjectChange?.()
       toast.success("Client payment added successfully")
       setClientAmount("")
@@ -297,7 +328,9 @@ export function PaymentsTab({
         return
       }
 
-      setVendorPayments((prev) => [...prev, result.data as VendorPayment])
+      setVendorPayments((prev) =>
+        sortVendorPayments([...prev, result.data as VendorPayment]),
+      )
       onProjectChange?.()
       toast.success("Vendor payment added successfully")
 
@@ -357,8 +390,10 @@ export function PaymentsTab({
       }
 
       setClientPayments((prev) =>
-        prev.map((p) =>
-          p.id === editingClientPayment.id ? (result.data as ClientPayment) : p,
+        sortClientPayments(
+          prev.map((p) =>
+            p.id === editingClientPayment.id ? (result.data as ClientPayment) : p,
+          ),
         ),
       )
       onProjectChange?.()
@@ -438,8 +473,10 @@ export function PaymentsTab({
       }
 
       setVendorPayments((prev) =>
-        prev.map((p) =>
-          p.id === editingVendorPayment.id ? (result.data as VendorPayment) : p,
+        sortVendorPayments(
+          prev.map((p) =>
+            p.id === editingVendorPayment.id ? (result.data as VendorPayment) : p,
+          ),
         ),
       )
       onProjectChange?.()
@@ -474,6 +511,15 @@ export function PaymentsTab({
       setIsSubmitting(false)
     }
   }
+
+  const sortedClientPayments = useMemo(
+    () => sortClientPayments(clientPayments),
+    [clientPayments],
+  )
+  const sortedVendorPayments = useMemo(
+    () => sortVendorPayments(vendorPayments),
+    [vendorPayments],
+  )
 
   const totalReceived = clientPayments
     .filter(p => p.status === 'received')
@@ -656,7 +702,7 @@ export function PaymentsTab({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientPayments.length === 0 ? (
+                {sortedClientPayments.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={canManageProjects ? 6 : 5}
@@ -666,7 +712,7 @@ export function PaymentsTab({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  clientPayments.map((payment) => (
+                  sortedClientPayments.map((payment) => (
                     <TableRow key={payment.id} className="border-border hover:bg-muted/50">
                       <TableCell className="font-medium">{payment.stage_name}</TableCell>
                       <TableCell className="font-medium text-green-500">
@@ -834,7 +880,7 @@ export function PaymentsTab({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {vendorPayments.length === 0 ? (
+                {sortedVendorPayments.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={canManageProjects ? 8 : 7}
@@ -844,7 +890,7 @@ export function PaymentsTab({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  vendorPayments.map((payment) => (
+                  sortedVendorPayments.map((payment) => (
                     <TableRow key={payment.id} className="border-border hover:bg-muted/50">
                       <TableCell className="font-medium">
                         {payment.vendor_name}
