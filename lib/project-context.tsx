@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useState, useMemo, ReactNode } from "react"
 import {
   calculateTotalContractValue,
+  calculateExpectedProfit,
+  calculateStageBudget,
   calculateRemainingBudget,
   calculateCurrentProfit,
   calculateProjectedProfit,
@@ -207,6 +209,11 @@ export function ProjectProvider({ children, initialData }: { children: ReactNode
     
     // Use centralized calculation
     const revisedContractValue = calculateTotalContractValue(originalContractValue, additionalWorksApproved)
+    const expectedProfitAmount = calculateExpectedProfit(
+      revisedContractValue,
+      projectData.expectedProfitPercent,
+    )
+    const stageBudget = calculateStageBudget(revisedContractValue, expectedProfitAmount)
     
     // Total approved expenses
     const totalExpenses = projectData.expenses
@@ -230,7 +237,7 @@ export function ProjectProvider({ children, initialData }: { children: ReactNode
       .reduce((sum, vp) => sum + vp.amountPaid, 0)
     
     // Use centralized calculations
-    const remainingBudget = calculateRemainingBudget(revisedContractValue, totalExpenses)
+    const remainingBudget = calculateRemainingBudget(stageBudget, totalExpenses)
     const currentProfit = calculateCurrentProfit(totalClientPaymentsReceived, totalExpenses)
     const liveProfit = calculateProjectedProfit(revisedContractValue, totalExpenses)
     
@@ -245,7 +252,7 @@ export function ProjectProvider({ children, initialData }: { children: ReactNode
     }))
     
     const completionPercent = calculateCompletionPercent(milestonesForCalc)
-    const budgetUsagePercent = calculateBudgetUsagePercent(totalExpenses, revisedContractValue)
+    const budgetUsagePercent = calculateBudgetUsagePercent(totalExpenses, stageBudget)
     const cashflowStatus = determineCashflowStatus(currentProfit, budgetUsagePercent, completionPercent)
     
     // Next milestone payment

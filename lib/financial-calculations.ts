@@ -120,24 +120,61 @@ export function calculateStageBudget(
 }
 
 /**
- * Calculate remaining budget
+ * Remaining construction budget (stage budget minus approved spend).
  */
 export function calculateRemainingBudget(
-  totalContractValue: number,
-  totalExpenses: number
+  stageBudget: number,
+  totalExpenses: number,
 ): number {
-  return totalContractValue - totalExpenses
+  return stageBudget - totalExpenses
 }
 
 /**
- * Calculate budget usage percentage
+ * Approved spend as a percentage of total stage budget.
  */
 export function calculateBudgetUsagePercent(
   totalExpenses: number,
-  totalContractValue: number
+  stageBudget: number,
 ): number {
-  if (totalContractValue <= 0) return 0
-  return Math.round((totalExpenses / totalContractValue) * 100)
+  if (stageBudget <= 0) return 0
+  return Math.round((totalExpenses / stageBudget) * 100)
+}
+
+/**
+ * Standard contract vs stage-budget figures for a single project.
+ */
+export function summarizeProjectFinancials(input: {
+  contractValue: number
+  additionalWorksApproved: number
+  expectedMarginPercent: number
+  totalExpenses: number
+}) {
+  const originalContractValue = input.contractValue
+  const totalContractValue = calculateTotalContractValue(
+    originalContractValue,
+    input.additionalWorksApproved,
+  )
+  const expectedProfitAmount = calculateExpectedProfit(
+    totalContractValue,
+    input.expectedMarginPercent,
+  )
+  const stageBudget = calculateStageBudget(totalContractValue, expectedProfitAmount)
+  const remainingStageBudget = calculateRemainingBudget(stageBudget, input.totalExpenses)
+  const stageBudgetUsagePercent = calculateBudgetUsagePercent(
+    input.totalExpenses,
+    stageBudget,
+  )
+
+  return {
+    originalContractValue,
+    additionalWorksApproved: input.additionalWorksApproved,
+    totalContractValue,
+    expectedProfitAmount,
+    stageBudget,
+    totalExpenses: input.totalExpenses,
+    remainingStageBudget,
+    stageBudgetUsagePercent,
+  }
 }
 
 /**
@@ -350,8 +387,8 @@ export function calculateProjectMetrics(data: ProjectFinancialData): CalculatedP
   const stageBudget = calculateStageBudget(totalContractValue, expectedProfitAmount)
   
   const totalExpenses = data.totalExpenses
-  const remainingBudget = calculateRemainingBudget(totalContractValue, totalExpenses)
-  const budgetUsagePercent = calculateBudgetUsagePercent(totalExpenses, totalContractValue)
+  const remainingBudget = calculateRemainingBudget(stageBudget, totalExpenses)
+  const budgetUsagePercent = calculateBudgetUsagePercent(totalExpenses, stageBudget)
   
   const totalClientPaymentsReceived = data.totalClientPaymentsReceived
   const totalClientPaymentsPending = data.totalClientPaymentsPending

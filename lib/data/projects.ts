@@ -15,6 +15,7 @@ import {
   calculateTotalContractValue,
   calculateCompletionPercent,
   calculateProjectedProfit,
+  summarizeProjectFinancials,
   type MilestoneData
 } from "@/lib/financial-calculations"
 import { milestonesWithCalculatedExpenses } from "@/lib/project-tab-hydration"
@@ -295,6 +296,13 @@ export function calculateProjectMetrics(project: ProjectWithDetails) {
     Number(project.contract_value), 
     additionalWorksApproved
   )
+
+  const finances = summarizeProjectFinancials({
+    contractValue: Number(project.contract_value),
+    additionalWorksApproved,
+    expectedMarginPercent: Number(project.expected_margin_percent),
+    totalExpenses,
+  })
   
   const enrichedMilestones = milestonesWithCalculatedExpenses(project)
   const milestonesForCalc: MilestoneData[] = enrichedMilestones.map(ms => ({
@@ -315,6 +323,9 @@ export function calculateProjectMetrics(project: ProjectWithDetails) {
     totalVendorPaymentsDue,
     additionalWorksApproved,
     totalContractValue,
+    stageBudget: finances.stageBudget,
+    remainingStageBudget: finances.remainingStageBudget,
+    stageBudgetUsagePercent: finances.stageBudgetUsagePercent,
     completionPercent
   }
 }

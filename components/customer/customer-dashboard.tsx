@@ -60,9 +60,9 @@ export function CustomerDashboard() {
     const progress = calculateCompletionPercent(milestonesForCalc)
     const currentMilestone = project.milestones.find(ms => ms.status === 'in-progress')
     
-    const contractValue = Number(project.contract_value)
+    const contractValue = metrics.totalContractValue
     const totalPaid = metrics.totalClientPaymentsReceived
-    const pendingAmount = contractValue - totalPaid
+    const pendingAmount = Math.max(0, contractValue - totalPaid)
 
     // Payment history (received payments)
     const paymentHistory = project.client_payments
@@ -210,7 +210,7 @@ export function CustomerDashboard() {
             {/* Payment Summary - What customer paid */}
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Contract Value</p>
+                <p className="text-sm text-muted-foreground">Total Contract Value</p>
                 <p className="text-xl font-bold">{formatINR(customerData.contractValue)}</p>
               </div>
               <div className="p-4 bg-green-500/10 rounded-lg">

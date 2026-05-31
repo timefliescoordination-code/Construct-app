@@ -29,6 +29,7 @@ import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { formatINR } from "@/lib/currency"
+import { summarizeProjectFinancials } from "@/lib/financial-calculations"
 import type { ProjectWithDetails } from "@/lib/types/database"
 
 interface Milestone {
@@ -231,23 +232,52 @@ export function ReportsTab({ projectId: propProjectId, project }: ReportsTabProp
     .filter(exp => exp.status === 'approved')
     .reduce((sum, exp) => sum + Number(exp.amount), 0)
 
-  const totalBudget = milestones.reduce((sum, ms) => sum + Number(ms.target_budget), 0)
+  const projectFinances = project
+    ? summarizeProjectFinancials({
+        contractValue: Number(project.contract_value),
+        additionalWorksApproved: project.additional_works
+          .filter((aw) => aw.approval_status === "approved")
+          .reduce((sum, aw) => sum + Number(aw.amount), 0),
+        expectedMarginPercent: Number(project.expected_margin_percent),
+        totalExpenses,
+      })
+    : null
+
+  const totalStageBudget =
+    projectFinances?.stageBudget ??
+    milestones.reduce((sum, ms) => sum + Number(ms.target_budget), 0)
+  const remainingStageBudget =
+    projectFinances?.remainingStageBudget ?? totalStageBudget - totalExpenses
 
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {projectFinances ? (
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Contract Value
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatINR(projectFinances.totalContractValue)}</div>
+            </CardContent>
+          </Card>
+        ) : null}
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Budget</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Stage Budget
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatINR(totalBudget)}</div>
+            <div className="text-2xl font-bold text-primary">{formatINR(totalStageBudget)}</div>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Expenses</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Spent (approved)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{formatINR(totalExpenses)}</div>
@@ -255,11 +285,13 @@ export function ReportsTab({ projectId: propProjectId, project }: ReportsTabProp
         </Card>
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Remaining Budget</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Remaining Stage Budget
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${totalBudget - totalExpenses >= 0 ? 'text-green-500' : 'text-destructive'}`}>
-              {formatINR(totalBudget - totalExpenses)}
+            <div className={`text-2xl font-bold ${remainingStageBudget >= 0 ? 'text-green-500' : 'text-destructive'}`}>
+              {formatINR(remainingStageBudget)}
             </div>
           </CardContent>
         </Card>

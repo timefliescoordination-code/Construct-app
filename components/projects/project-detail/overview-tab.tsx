@@ -137,9 +137,9 @@ export function OverviewTab({
   const totalClientPaymentsReceived = projectData.totalClientPaymentsReceived
   
   // Use centralized calculation functions
-  const revisedContractValue = calculateTotalContractValue(originalContractValue, additionalWorksApproved)
-  const expectedProfitAmount = calculateExpectedProfit(revisedContractValue, expectedProfitPercent)
-  const totalStageBudget = calculateStageBudget(revisedContractValue, expectedProfitAmount)
+  const totalContractValue = calculateTotalContractValue(originalContractValue, additionalWorksApproved)
+  const expectedProfitAmount = calculateExpectedProfit(totalContractValue, expectedProfitPercent)
+  const totalStageBudget = calculateStageBudget(totalContractValue, expectedProfitAmount)
   
   // Convert milestones to centralized format for calculations
   const milestonesForCalc: MilestoneData[] = projectData.milestones.map(ms => ({
@@ -222,10 +222,10 @@ export function OverviewTab({
       pendingInAttention
   
   // Use centralized calculations
-  const remainingBudget = calculateRemainingBudget(revisedContractValue, totalExpenses)
+  const remainingStageBudget = calculateRemainingBudget(totalStageBudget, totalExpenses)
   const currentProfit = calculateCurrentProfit(totalClientPaymentsReceived, totalExpenses)
   const completionPercent = calculateCompletionPercent(milestonesForCalc)
-  const budgetUsagePercent = calculateBudgetUsagePercent(totalExpenses, revisedContractValue)
+  const stageBudgetUsagePercent = calculateBudgetUsagePercent(totalExpenses, totalStageBudget)
   
   // Cashflow balance (same as currentProfit in this context)
   const cashflowBalance = calculateCurrentCashflow(totalClientPaymentsReceived, totalExpenses)
@@ -266,7 +266,7 @@ export function OverviewTab({
     }
 
     // Check for overbudget conditions
-    const isOverBudget = budgetUsagePercent > completionPercent + 15
+    const isOverBudget = stageBudgetUsagePercent > completionPercent + 15
     const hasOverbudgetStages = overbudgetStages.length > 0
     
     // Check for cashflow risk
@@ -318,7 +318,7 @@ export function OverviewTab({
       : inProgressMilestones > 0
         ? "On Schedule"
         : "Pending"
-    : completionPercent >= budgetUsagePercent - 5
+    : completionPercent >= stageBudgetUsagePercent - 5
       ? "On Schedule"
       : "Behind Schedule"
 
@@ -377,22 +377,35 @@ export function OverviewTab({
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <IndianRupee className="h-4 w-4" />
-                Received vs Spent
+                Project Finances
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Received</span>
-                  <span className="text-lg font-bold text-green-500">{formatINR(totalClientPaymentsReceived)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Spent</span>
-                  <span className="text-lg font-bold text-destructive">{formatINR(totalExpenses)}</span>
+                  <span className="text-sm text-muted-foreground">Total Contract Value</span>
+                  <span className="text-lg font-bold">{formatINR(totalContractValue)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Total Stage Budget</span>
                   <span className="text-lg font-bold text-primary">{formatINR(totalStageBudget)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Received</span>
+                  <span className="text-lg font-bold text-green-500">{formatINR(totalClientPaymentsReceived)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Spent (approved)</span>
+                  <span className="text-lg font-bold text-destructive">{formatINR(totalExpenses)}</span>
+                </div>
+                <div className="flex justify-between items-center border-t border-border/50 pt-2">
+                  <span className="text-sm text-muted-foreground">Remaining stage budget</span>
+                  <span className={cn(
+                    "text-lg font-bold",
+                    remainingStageBudget >= 0 ? "text-green-500" : "text-destructive",
+                  )}>
+                    {formatINR(remainingStageBudget)}
+                  </span>
                 </div>
               </div>
               <div className={cn(
@@ -400,7 +413,7 @@ export function OverviewTab({
                 cashflowBalance >= 0 ? "bg-green-500/10" : "bg-destructive/10"
               )}>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Balance</span>
+                  <span className="text-sm font-medium">Cash balance (received − spent)</span>
                   <span className={cn(
                     "text-xl font-bold",
                     cashflowBalance >= 0 ? "text-green-500" : "text-destructive"
@@ -408,6 +421,9 @@ export function OverviewTab({
                     {cashflowBalance >= 0 ? "+" : ""}{formatINR(cashflowBalance)}
                   </span>
                 </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {stageBudgetUsagePercent}% of stage budget used
+                </p>
               </div>
             </CardContent>
           </Card>

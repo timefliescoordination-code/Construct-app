@@ -70,6 +70,7 @@ import {
   updateVendorPaymentAction,
   deleteVendorPaymentAction,
 } from "@/lib/projects/tab-actions"
+import { ProjectFinancialSummary } from "@/components/projects/project-detail/project-financial-summary"
 
 interface ClientPayment {
   id: string
@@ -538,6 +539,8 @@ export function PaymentsTab({
 
   return (
     <div className="space-y-6">
+      {project ? <ProjectFinancialSummary project={project} /> : null}
+
       {/* Cashflow Summary */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-card border-border">

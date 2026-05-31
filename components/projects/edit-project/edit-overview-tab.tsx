@@ -87,7 +87,7 @@ export function EditOverviewTab({ project, onUpdate }: EditOverviewTabProps) {
             <div className="space-y-2">
               <Label htmlFor="remainingBudget" className="flex items-center gap-2">
                 <PiggyBank className="h-4 w-4 text-muted-foreground" />
-                Remaining Budget
+                Remaining Stage Budget
                 <Badge variant="secondary" className="text-[10px] ml-1">Auto</Badge>
               </Label>
               <div className="relative">
@@ -101,7 +101,7 @@ export function EditOverviewTab({ project, onUpdate }: EditOverviewTabProps) {
                   disabled
                 />
               </div>
-              <p className="text-xs text-muted-foreground">Contract Value - Current Spending</p>
+              <p className="text-xs text-muted-foreground">Total Stage Budget − approved spending</p>
             </div>
 
             {/* Current Profit - Read Only (auto-calculated) */}

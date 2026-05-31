@@ -30,7 +30,10 @@ import { formatINR } from "@/lib/currency"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { updateExpenseStatusAction } from "@/lib/projects/tab-actions"
-import { calculateMilestoneCompletionFromExpenses } from "@/lib/financial-calculations"
+import {
+  calculateTotalContractValue,
+  calculateMilestoneCompletionFromExpenses,
+} from "@/lib/financial-calculations"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { DashboardHeader } from "@/components/dashboard/header"
 import { MetricCard } from "@/components/layout/metric-card"
@@ -76,6 +79,10 @@ interface PmProjectRow {
     amount: number
     status: string
   }>
+  additional_works: Array<{
+    amount: number
+    approval_status: string
+  }>
 }
 
 function mapApiProject(project: ProjectWithDetails): PmProjectRow {
@@ -110,7 +117,18 @@ function mapApiProject(project: ProjectWithDetails): PmProjectRow {
       amount: Number(cp.amount),
       status: cp.status,
     })),
+    additional_works: (project.additional_works ?? []).map((aw) => ({
+      amount: Number(aw.amount),
+      approval_status: aw.approval_status,
+    })),
   }
+}
+
+function projectTotalContractValue(project: PmProjectRow): number {
+  const additionalWorksApproved = project.additional_works
+    .filter((aw) => aw.approval_status === "approved")
+    .reduce((sum, aw) => sum + aw.amount, 0)
+  return calculateTotalContractValue(project.contract_value, additionalWorksApproved)
 }
 
 function milestoneCompletionPercent(
@@ -225,7 +243,7 @@ export function PMDashboard() {
     ).length
 
     const totalContractValue = projects.reduce(
-      (sum, p) => sum + p.contract_value,
+      (sum, p) => sum + projectTotalContractValue(p),
       0,
     )
 
@@ -406,7 +424,7 @@ export function PMDashboard() {
                         <TableHead>Status</TableHead>
                         <TableHead>Progress</TableHead>
                         <TableHead className="text-right">
-                          Contract Value
+                          Total Contract Value
                         </TableHead>
                         <TableHead></TableHead>
                       </TableRow>
@@ -448,7 +466,7 @@ export function PMDashboard() {
                               </div>
                             </TableCell>
                             <TableCell className="text-right">
-                              {formatINR(project.contract_value)}
+                              {formatINR(projectTotalContractValue(project))}
                             </TableCell>
                             <TableCell>
                               <Button variant="ghost" size="sm" asChild>

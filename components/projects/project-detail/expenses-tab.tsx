@@ -103,6 +103,7 @@ import {
   ExpenseSelectAllCheckbox,
 } from "@/components/projects/project-detail/expense-bulk-toolbar"
 import { ExpenseCategorySummary } from "@/components/projects/project-detail/expense-category-summary"
+import { ProjectFinancialSummary } from "@/components/projects/project-detail/project-financial-summary"
 import {
   findMatchingOpenSplitGroup,
   getSplitPaymentStatus,
@@ -1870,6 +1871,8 @@ export function ExpensesTab({
 
   return (
     <div className="space-y-6">
+      {project ? <ProjectFinancialSummary project={project} /> : null}
+
       <Card className="section-card border-border overflow-hidden">
         <CardContent className="pt-6">
           <ExpenseCategorySummary
