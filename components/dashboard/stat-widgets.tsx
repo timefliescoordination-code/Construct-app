@@ -1,6 +1,8 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
+import { MetricCard } from "@/components/layout/metric-card"
+import { STATS_GRID_CLASS } from "@/components/layout/page"
 import { 
   Briefcase, 
   Activity, 
@@ -28,48 +30,37 @@ interface StatWidgetProps {
   variant?: "default" | "warning" | "danger" | "success"
 }
 
-export function StatWidget({ 
-  title, 
-  value, 
-  description, 
+export function StatWidget({
+  title,
+  value,
+  description,
   icon: Icon,
   trend,
-  variant = "default" 
+  variant = "default",
 }: StatWidgetProps) {
-  const variantStyles = {
-    default: "bg-card border-border",
-    warning: "bg-card border-warning/30",
-    danger: "bg-card border-destructive/30",
-    success: "bg-card border-success/30"
-  }
-
-  const iconStyles = {
-    default: "text-primary",
-    warning: "text-warning",
-    danger: "text-destructive",
-    success: "text-success"
-  }
+  const descriptionNode = (
+    <div className="flex flex-wrap items-center gap-2">
+      <span>{description}</span>
+      {trend && (
+        <span
+          className={`font-medium ${trend.positive ? "text-success" : "text-destructive"}`}
+        >
+          {trend.positive ? "+" : ""}
+          {trend.value}
+        </span>
+      )}
+    </div>
+  )
 
   return (
-    <Card className={`${variantStyles[variant]} transition-all hover:border-primary/50`}>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
-        <Icon className={`h-4 w-4 ${iconStyles[variant]}`} />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold text-foreground">{value}</div>
-        <div className="flex items-center gap-2 mt-1">
-          <p className="text-xs text-muted-foreground">{description}</p>
-          {trend && (
-            <span className={`text-xs font-medium ${trend.positive ? 'text-success' : 'text-destructive'}`}>
-              {trend.positive ? '+' : ''}{trend.value}
-            </span>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+    <MetricCard
+      title={title}
+      value={value}
+      description={descriptionNode}
+      icon={Icon}
+      variant={variant}
+      className="transition-colors hover:border-primary/40"
+    />
   )
 }
 
@@ -80,9 +71,9 @@ export function DashboardWidgets() {
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={STATS_GRID_CLASS}>
         {Array.from({ length: 8 }).map((_, i) => (
-          <Card key={i} className="bg-card border-border">
+          <Card key={i} className="card-metric bg-card border-border">
             <CardContent className="pt-6 flex items-center justify-center h-24">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </CardContent>
@@ -171,7 +162,7 @@ export function DashboardWidgets() {
   ]
 
   return (
-    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+    <div className={STATS_GRID_CLASS}>
       {widgets.map((widget, index) => (
         <StatWidget key={index} {...widget} />
       ))}

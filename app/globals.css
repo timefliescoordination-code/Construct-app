@@ -79,8 +79,8 @@
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback';
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -133,5 +133,30 @@
   /* Tailwind v4: Radix Tabs use the hidden attribute on inactive panels */
   [hidden] {
     display: none !important;
+  }
+}
+
+@layer components {
+  /* Compact KPI cards — avoids default Card gap-6 / py-6 padding */
+  .card-metric {
+    @apply gap-0 py-0 shadow-sm;
+  }
+  .card-metric [data-slot="card-header"] {
+    @apply pt-6;
+  }
+  .card-metric [data-slot="card-content"] {
+    @apply pb-6;
+  }
+  /* Section cards (tables, charts) */
+  .section-card {
+    @apply bg-card border-border shadow-sm;
+  }
+  /* Hint that tables scroll horizontally on small screens */
+  .table-scroll-hint {
+    @apply relative;
+  }
+  .table-scroll-hint::after {
+    content: "";
+    @apply pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent sm:hidden;
   }
 }

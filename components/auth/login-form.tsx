@@ -218,7 +218,7 @@ export function LoginForm() {
             {/* Role Selection (for display only - actual role comes from database) */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">Login as</Label>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {roles.map((role) => {
                   const Icon = role.icon
                   return (

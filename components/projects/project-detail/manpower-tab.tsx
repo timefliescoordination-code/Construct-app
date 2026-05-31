@@ -424,7 +424,7 @@ export function ManpowerTab({
         />
       )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
         <div className="rounded-xl border border-border bg-card p-3">
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Users className="h-3.5 w-3.5" />

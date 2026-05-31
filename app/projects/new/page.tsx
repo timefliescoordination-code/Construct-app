@@ -1,6 +1,7 @@
 import { Metadata } from "next"
 import { CreateProjectForm } from "@/components/projects/create-project-form"
 import { DashboardHeader } from "@/components/dashboard/header"
+import { PageMain, PageShell } from "@/components/layout/page"
 
 export const metadata: Metadata = {
   title: "Create Project | VRA HOMES",
@@ -9,11 +10,11 @@ export const metadata: Metadata = {
 
 export default function NewProjectPage() {
   return (
-    <div className="min-h-screen bg-background">
+    <PageShell>
       <DashboardHeader />
-      <main className="container mx-auto px-4 py-6 md:px-6 lg:px-8 max-w-4xl">
+      <PageMain narrow>
         <CreateProjectForm />
-      </main>
-    </div>
+      </PageMain>
+    </PageShell>
   )
 }

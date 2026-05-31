@@ -1,13 +1,14 @@
 import { DashboardHeader } from "@/components/dashboard/header"
+import { PageMain, PageShell } from "@/components/layout/page"
 import { ProjectsContent } from "@/components/projects/projects-content"
 
 export default function ProjectsPage() {
   return (
-    <div className="min-h-screen bg-background">
+    <PageShell>
       <DashboardHeader />
-      <main className="container mx-auto px-4 py-6 md:px-6 lg:px-8">
+      <PageMain>
         <ProjectsContent />
-      </main>
-    </div>
+      </PageMain>
+    </PageShell>
   )
 }

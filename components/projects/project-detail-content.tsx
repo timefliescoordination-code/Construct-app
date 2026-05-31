@@ -45,6 +45,12 @@ import {
 } from "@/lib/permissions"
 import { isDatabaseSetupError } from "@/lib/supabase/db-errors"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  PAGE_MAIN_CLASS,
+  PAGE_STACK_CLASS,
+  TABS_LIST_RESPONSIVE_CLASS,
+} from "@/components/layout/page"
+import { cn } from "@/lib/utils"
 import { archiveProjectAction } from "@/lib/projects/actions"
 import { toast } from "sonner"
 import {
@@ -277,7 +283,12 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
 
   if (isLoading) {
     return (
-      <main className="p-4 md:p-6 lg:p-8 flex items-center justify-center min-h-[400px]">
+      <main
+        className={cn(
+          PAGE_MAIN_CLASS,
+          "flex min-h-[400px] items-center justify-center",
+        )}
+      >
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-muted-foreground">Loading project data...</p>
@@ -293,8 +304,8 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       loadError instanceof Error ? loadError.message : null
 
     return (
-      <main className="p-4 md:p-6 lg:p-8">
-        <div className="flex items-center gap-2 mb-4">
+      <main className={cn(PAGE_MAIN_CLASS, PAGE_STACK_CLASS)}>
+        <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" asChild>
             <Link href="/projects">
               <ArrowLeft className="h-5 w-5" />
@@ -341,10 +352,9 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   }
 
   return (
-    <main className="p-4 md:p-6 lg:p-8">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-4">
+    <main className={cn(PAGE_MAIN_CLASS, PAGE_STACK_CLASS)}>
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" asChild>
             <Link href="/projects">
               <ArrowLeft className="h-5 w-5" />
@@ -353,29 +363,41 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           <span className="text-muted-foreground">Back to Projects</span>
         </div>
         
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                 {project.name}
               </h1>
               {getStatusBadge(project.status)}
             </div>
-            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
-              <span>Client: {project.client_name}</span>
-              <span>|</span>
-              <span>{project.site_address}</span>
-              <span>|</span>
-              <span>PM: {getProjectPmLabel(project)}</span>
-              <span>|</span>
-              <span>Site Engineer: {getProjectEngineersLabel(project)}</span>
-            </div>
+            <dl className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <div>
+                <dt className="sr-only">Client</dt>
+                <dd>
+                  <span className="text-foreground/70">Client: </span>
+                  {project.client_name}
+                </dd>
+              </div>
+              <div className="sm:col-span-2 lg:col-span-1">
+                <dt className="sr-only">Site</dt>
+                <dd className="break-words">{project.site_address}</dd>
+              </div>
+              <div>
+                <dt className="sr-only">PM</dt>
+                <dd>PM: {getProjectPmLabel(project)}</dd>
+              </div>
+              <div>
+                <dt className="sr-only">Site Engineer</dt>
+                <dd>Site Engineer: {getProjectEngineersLabel(project)}</dd>
+              </div>
+            </dl>
           </div>
-          
-          <div className="flex gap-2">
+
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
             {canManageProjects && (
               <>
-                <Button variant="outline" className="gap-2" asChild>
+                <Button variant="outline" className="w-full gap-2 sm:w-auto" asChild>
                   <Link href={`/projects/${project.id}/edit`}>
                     <Edit className="h-4 w-4" />
                     Edit Project
@@ -444,15 +466,15 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       </AlertDialog>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="bg-muted/50 border border-border p-1 h-auto flex-wrap gap-1">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-6">
+        <TabsList className={TABS_LIST_RESPONSIVE_CLASS}>
           {tabs.map((tab) => (
             <TabsTrigger 
               key={tab.id}
               value={tab.id}
-              className="gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              className="gap-1.5 px-2.5 py-1.5 text-xs sm:gap-2 sm:px-3 sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
             >
-              <tab.icon className="h-4 w-4" />
+              <tab.icon className="h-4 w-4 shrink-0" />
               <span className="hidden sm:inline">{tab.label}</span>
             </TabsTrigger>
           ))}

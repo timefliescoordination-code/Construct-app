@@ -33,6 +33,16 @@ import { updateExpenseStatusAction } from "@/lib/projects/tab-actions"
 import { calculateMilestoneCompletionFromExpenses } from "@/lib/financial-calculations"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { DashboardHeader } from "@/components/dashboard/header"
+import { MetricCard } from "@/components/layout/metric-card"
+import {
+  CONTENT_SIDEBAR_GRID_CLASS,
+  CONTENT_SIDEBAR_MAIN_CLASS,
+  PageHeader,
+  PageMain,
+  PageShell,
+  STATS_GRID_CLASS,
+} from "@/components/layout/page"
+import { ScrollTable } from "@/components/layout/scroll-table"
 import { toast } from "sonner"
 
 interface PmProjectRow {
@@ -293,7 +303,7 @@ export function PMDashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
+      <PageShell>
         <DashboardHeader />
         <div className="flex items-center justify-center py-24">
           <div className="flex flex-col items-center gap-4">
@@ -301,25 +311,19 @@ export function PMDashboard() {
             <p className="text-muted-foreground">Loading your projects...</p>
           </div>
         </div>
-      </div>
+      </PageShell>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <PageShell>
       <DashboardHeader notificationCount={pmMetrics.pendingApprovalCount} />
 
-      <main className="container mx-auto px-4 py-6 md:px-6 lg:px-8 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">PM Dashboard</h1>
-            <p className="text-muted-foreground">
-              {format(new Date(), "EEEE, dd MMMM yyyy")} - Managing{" "}
-              {pmMetrics.totalProjects} project
-              {pmMetrics.totalProjects !== 1 ? "s" : ""}
-            </p>
-          </div>
-        </div>
+      <PageMain>
+        <PageHeader
+          title="PM Dashboard"
+          description={`${format(new Date(), "EEEE, dd MMMM yyyy")} — Managing ${pmMetrics.totalProjects} project${pmMetrics.totalProjects !== 1 ? "s" : ""}`}
+        />
 
         {fetchError && (
           <Card className="border-destructive/50 bg-destructive/10">
@@ -339,92 +343,45 @@ export function PMDashboard() {
           </Card>
         )}
 
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                My Projects
-              </CardTitle>
-              <Briefcase className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{pmMetrics.totalProjects}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {pmMetrics.activeProjects} active, {pmMetrics.completedProjects}{" "}
-                completed
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Contract Value
-              </CardTitle>
-              <IndianRupee className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {formatINR(pmMetrics.totalContractValue)}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Across all projects
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Avg. Completion
-              </CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {pmMetrics.avgCompletion.toFixed(1)}%
-              </div>
+        <div className={STATS_GRID_CLASS}>
+          <MetricCard
+            title="My Projects"
+            value={pmMetrics.totalProjects}
+            description={`${pmMetrics.activeProjects} active, ${pmMetrics.completedProjects} completed`}
+            icon={Briefcase}
+          />
+          <MetricCard
+            title="Total Contract Value"
+            value={formatINR(pmMetrics.totalContractValue)}
+            description="Across all projects"
+            icon={IndianRupee}
+          />
+          <MetricCard
+            title="Avg. Completion"
+            value={`${pmMetrics.avgCompletion.toFixed(1)}%`}
+            description={
               <Progress value={pmMetrics.avgCompletion} className="mt-2 h-2" />
-            </CardContent>
-          </Card>
-
-          <Card
+            }
+            icon={TrendingUp}
+          />
+          <MetricCard
+            title="Pending Approvals"
+            value={pmMetrics.pendingApprovalCount}
+            description="Awaiting your action"
+            icon={ClipboardList}
+            variant={pmMetrics.pendingApprovalCount > 0 ? "warning" : "default"}
             className={cn(
               pmMetrics.pendingApprovalCount > 0 && "border-yellow-500/50",
             )}
-          >
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Pending Approvals
-              </CardTitle>
-              <ClipboardList
-                className={cn(
-                  "h-4 w-4",
-                  pmMetrics.pendingApprovalCount > 0
-                    ? "text-yellow-500"
-                    : "text-muted-foreground",
-                )}
-              />
-            </CardHeader>
-            <CardContent>
-              <div
-                className={cn(
-                  "text-2xl font-bold",
-                  pmMetrics.pendingApprovalCount > 0 && "text-yellow-500",
-                )}
-              >
-                {pmMetrics.pendingApprovalCount}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Awaiting your action
-              </p>
-            </CardContent>
-          </Card>
+            valueClassName={
+              pmMetrics.pendingApprovalCount > 0 ? "text-yellow-500" : undefined
+            }
+          />
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <Card>
+        <div className={CONTENT_SIDEBAR_GRID_CLASS}>
+          <div className={CONTENT_SIDEBAR_MAIN_CLASS}>
+            <Card className="section-card">
               <CardHeader>
                 <CardTitle>My Projects</CardTitle>
               </CardHeader>
@@ -441,6 +398,7 @@ export function PMDashboard() {
                     </p>
                   </div>
                 ) : (
+                  <ScrollTable minWidth="min-w-[36rem]">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-border">
@@ -505,13 +463,14 @@ export function PMDashboard() {
                       })}
                     </TableBody>
                   </Table>
+                  </ScrollTable>
                 )}
               </CardContent>
             </Card>
           </div>
 
-          <div>
-            <Card>
+          <div className="min-w-0">
+            <Card className="section-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <ClipboardList className="h-5 w-5" />
@@ -590,7 +549,7 @@ export function PMDashboard() {
             </Card>
           </div>
         </div>
-      </main>
-    </div>
+      </PageMain>
+    </PageShell>
   )
 }

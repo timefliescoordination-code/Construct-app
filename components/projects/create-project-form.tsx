@@ -170,7 +170,7 @@ export function CreateProjectForm() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Create a Project</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Create a Project</h1>
           <p className="text-muted-foreground">Fill in the details to create a new construction project</p>
         </div>
       </div>

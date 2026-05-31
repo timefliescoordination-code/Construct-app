@@ -37,6 +37,9 @@ import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/lib/hooks/use-auth"
 import Link from "next/link"
+import { DashboardHeader } from "@/components/dashboard/header"
+import { PageHeader, PageMain, PageShell } from "@/components/layout/page"
+import { STATS_GRID_3_CLASS } from "@/components/layout/page"
 
 type UserRole = "admin" | "pm" | "engineer" | "customer"
 
@@ -244,9 +247,12 @@ export default function AdminUsersPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <PageShell>
+        <DashboardHeader />
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </PageShell>
     )
   }
 
@@ -255,38 +261,46 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="icon">
+    <PageShell>
+      <DashboardHeader />
+      <PageMain>
+        <PageHeader
+          title="User Management"
+          description="Create and manage user accounts"
+        >
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <Button variant="outline" size="icon" className="w-full sm:w-10" asChild>
+              <Link href="/admin" aria-label="Back to admin dashboard">
                 <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold">User Management</h1>
-              <p className="text-muted-foreground">Create and manage user accounts</p>
-            </div>
+              </Link>
+            </Button>
+            <Button
+              className="w-full sm:w-auto"
+              onClick={() => {
+                setFormData({
+                  email: "",
+                  password: "",
+                  newPassword: "",
+                  full_name: "",
+                  phone: "",
+                  role: "engineer",
+                })
+                setCreateDialogOpen(true)
+              }}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add User
+            </Button>
           </div>
-          <Button onClick={() => {
-            setFormData({ email: "", password: "", newPassword: "", full_name: "", phone: "", role: "engineer" })
-            setCreateDialogOpen(true)
-          }}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add User
-          </Button>
-        </div>
+        </PageHeader>
 
-        {/* Users Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className={STATS_GRID_3_CLASS}>
           {users.map((user) => {
             const config = roleConfig[user.role]
             const Icon = config.icon
             
             return (
-              <Card key={user.id} className="bg-card border-border">
+              <Card key={user.id} className="section-card gap-0 py-0">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -374,7 +388,7 @@ export default function AdminUsersPage() {
             </CardContent>
           </Card>
         )}
-      </div>
+      </PageMain>
 
       {/* Create User Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -560,6 +574,6 @@ export default function AdminUsersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageShell>
   )
 }

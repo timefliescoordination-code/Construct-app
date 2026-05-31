@@ -40,6 +40,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Loader2 } from "lucide-react"
+import { ScrollTable } from "@/components/layout/scroll-table"
 
 export interface Project {
   id: string
@@ -112,7 +113,8 @@ export function ProjectTable({
   )
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
+    <div className="table-scroll-hint rounded-xl border border-border bg-card shadow-sm">
+      <ScrollTable minWidth="min-w-[52rem]">
       <Table>
         <TableHeader>
           <TableRow className="border-border hover:bg-transparent">
@@ -257,6 +259,7 @@ export function ProjectTable({
           )}
         </TableBody>
       </Table>
+      </ScrollTable>
 
       <AlertDialog
         open={archiveTarget !== null}

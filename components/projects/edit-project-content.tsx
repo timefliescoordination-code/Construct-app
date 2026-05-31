@@ -32,6 +32,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from "next/link"
+import { PAGE_MAIN_CLASS, PAGE_STACK_CLASS } from "@/components/layout/page"
+import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format } from "date-fns"
@@ -275,7 +277,7 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
 
   if (!canEdit) {
     return (
-      <main className="p-4 md:p-6 lg:p-8">
+      <main className={cn(PAGE_MAIN_CLASS, PAGE_STACK_CLASS)}>
         <div className="text-center py-12">
           <p className="text-muted-foreground">You do not have permission to edit projects.</p>
           <Button variant="outline" className="mt-4" asChild>
@@ -288,7 +290,12 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
 
   if (isLoading || !form) {
     return (
-      <main className="p-4 md:p-6 lg:p-8 flex items-center justify-center min-h-[400px]">
+      <main
+        className={cn(
+          PAGE_MAIN_CLASS,
+          "flex min-h-[400px] items-center justify-center",
+        )}
+      >
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-muted-foreground">Loading project...</p>
@@ -299,7 +306,7 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
 
   if (!project) {
     return (
-      <main className="p-4 md:p-6 lg:p-8">
+      <main className={cn(PAGE_MAIN_CLASS, PAGE_STACK_CLASS)}>
         <div className="flex items-center gap-2 mb-4">
           <Button variant="ghost" size="icon" asChild>
             <Link href="/projects">
@@ -316,8 +323,8 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
   }
 
   return (
-    <main className="p-4 md:p-6 lg:p-8">
-      <div className="mb-6">
+    <main className={cn(PAGE_MAIN_CLASS, PAGE_STACK_CLASS)}>
+      <div className="flex flex-col gap-6">
         <div className="flex items-center gap-2 mb-4">
           <Button variant="ghost" size="icon" onClick={handleCancel}>
             <ArrowLeft className="h-5 w-5" />
@@ -327,7 +334,7 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
 
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Edit Project</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">Edit Project</h1>
             <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
               {project.name}
             </Badge>
@@ -339,15 +346,15 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
             )}
           </div>
 
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button variant="outline" className="w-full sm:w-auto" onClick={handleCancel} disabled={isSaving}>
               <X className="h-4 w-4 mr-2" />
               Cancel
             </Button>
             <Button
               onClick={handleSave}
               disabled={!hasChanges || isSaving}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto"
             >
               {isSaving ? (
                 <>
@@ -465,7 +472,7 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="bg-muted/50 border border-border p-1 h-auto flex-wrap gap-1">
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 border border-border bg-muted/50 p-1">
           {tabs.map((tab) => (
             <TabsTrigger
               key={tab.id}

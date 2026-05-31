@@ -41,6 +41,14 @@ import {
 import { useAdminDashboard } from "@/lib/hooks/use-admin-dashboard"
 import { PM_NOT_CREATED } from "@/lib/staff-labels"
 import { DashboardHeader } from "@/components/dashboard/header"
+import {
+  PageHeader,
+  PageMain,
+  PageShell,
+  STATS_GRID_CLASS,
+  STATS_GRID_3_CLASS,
+} from "@/components/layout/page"
+import { ScrollTable } from "@/components/layout/scroll-table"
 import { MoneyTimelineSection } from "@/components/admin/money-timeline"
 import { ProjectMilestoneLink } from "@/components/admin/project-milestone-link"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -48,7 +56,7 @@ import { useAuth } from "@/lib/hooks/use-auth"
 
 function StatCardSkeleton() {
   return (
-    <Card className="bg-card border-border">
+    <Card className="card-metric bg-card border-border">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-4 w-4 rounded" />
@@ -63,7 +71,7 @@ function StatCardSkeleton() {
 
 function MetricSkeleton({ className }: { className?: string }) {
   return (
-    <Card className={cn("bg-card border-border", className)}>
+    <Card className={cn("card-metric bg-card border-border", className)}>
       <CardContent className="pt-6">
         <div className="flex items-center gap-4">
           <Skeleton className="h-12 w-12 rounded-lg" />
@@ -79,7 +87,7 @@ function MetricSkeleton({ className }: { className?: string }) {
 
 function PmCardSkeleton() {
   return (
-    <Card className="bg-muted/30">
+    <Card className="card-metric bg-muted/30">
       <CardContent className="pt-4">
         <div className="flex items-center gap-3 mb-3">
           <Skeleton className="h-10 w-10 rounded-full" />
@@ -133,21 +141,16 @@ export function AdminDashboard() {
     : selectedProject?.name ?? "selected project"
 
   return (
-    <div className="min-h-screen bg-background">
+    <PageShell>
       <DashboardHeader notificationCount={cashflowWarnings} />
 
-      <main className="container mx-auto px-4 py-6 md:px-6 lg:px-8">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Admin Dashboard</h1>
-            <p className="text-muted-foreground mt-1">
-              Company-wide financial overview and project management
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
+      <PageMain>
+        <PageHeader
+          title="Admin Dashboard"
+          description="Company-wide financial overview and project management"
+        >
             <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-              <SelectTrigger className="w-[200px] bg-secondary border-border">
+              <SelectTrigger className="w-full sm:w-[200px] bg-secondary border-border">
                 <SelectValue placeholder="Select project" />
               </SelectTrigger>
               <SelectContent>
@@ -161,7 +164,7 @@ export function AdminDashboard() {
             </Select>
 
             <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-              <SelectTrigger className="w-[140px] bg-secondary border-border">
+              <SelectTrigger className="w-full sm:w-[140px] bg-secondary border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -181,12 +184,11 @@ export function AdminDashboard() {
               </Button>
             )}
 
-            <Button variant="outline" className="border-border">
-              <Calendar className="mr-2 h-4 w-4" />
-              Export Report
+            <Button variant="outline" className="border-border w-full sm:w-auto">
+              <Calendar className="mr-2 h-4 w-4 shrink-0" />
+              <span className="truncate">Export Report</span>
             </Button>
-          </div>
-        </div>
+        </PageHeader>
 
         {error && (
           <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -195,15 +197,16 @@ export function AdminDashboard() {
         )}
 
         {showAllProjects && !isLoading && projects.length > 0 && (
-          <section className="mb-8">
-            <Card>
+          <section>
+            <Card className="section-card">
               <CardHeader>
                 <CardTitle>Profit &amp; Loss by Project</CardTitle>
                 <CardDescription>
                   Realized profit (collected − spent) and forecast profit (contract − projected cost at completion)
                 </CardDescription>
               </CardHeader>
-              <CardContent className="overflow-x-auto">
+              <CardContent className="p-0 sm:p-6 sm:pt-0">
+                <ScrollTable className="table-scroll-hint px-4 pb-4 sm:px-6 sm:pb-6" minWidth="min-w-[56rem]">
                 <TooltipProvider delayDuration={200}>
                 <Table>
                   <TableHeader>
@@ -328,13 +331,14 @@ export function AdminDashboard() {
                   </TableBody>
                 </Table>
                 </TooltipProvider>
+                </ScrollTable>
               </CardContent>
             </Card>
           </section>
         )}
 
-        <section className="mb-8">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <section>
+          <div className={STATS_GRID_CLASS}>
             {isLoading || !displayCompany ? (
               <>
                 <StatCardSkeleton />
@@ -344,7 +348,7 @@ export function AdminDashboard() {
               </>
             ) : (
               <>
-                <Card className="bg-card border-border">
+                <Card className="card-metric bg-card border-border">
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       Total Projects
@@ -352,7 +356,7 @@ export function AdminDashboard() {
                     <Briefcase className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">{displayCompany.totalProjects}</div>
+                    <div className="text-2xl font-semibold tabular-nums tracking-tight">{displayCompany.totalProjects}</div>
                     <div className="flex items-center gap-2 mt-2 text-xs">
                       <Badge variant="outline" className="text-green-500 border-green-500/30">
                         {displayCompany.activeProjects} Active
@@ -364,7 +368,7 @@ export function AdminDashboard() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-card border-border">
+                <Card className="card-metric bg-card border-border">
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       Total Contract Value
@@ -372,7 +376,7 @@ export function AdminDashboard() {
                     <Building2 className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">
+                    <div className="text-2xl font-semibold tabular-nums tracking-tight">
                       {formatINR(displayCompany.totalContractValue)}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
@@ -402,7 +406,7 @@ export function AdminDashboard() {
                   <CardContent>
                     <div
                       className={cn(
-                        "text-3xl font-bold",
+                        "text-2xl font-semibold tabular-nums tracking-tight",
                         displayCompany.realizedProfit >= 0 ? "text-green-500" : "text-destructive",
                       )}
                     >
@@ -415,7 +419,7 @@ export function AdminDashboard() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-card border-border">
+                <Card className="card-metric bg-card border-border">
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       Forecast Profit
@@ -429,7 +433,7 @@ export function AdminDashboard() {
                   <CardContent>
                     <div
                       className={cn(
-                        "text-3xl font-bold",
+                        "text-2xl font-semibold tabular-nums tracking-tight",
                         displayCompany.forecastProfit >= 0 ? "text-green-500" : "text-destructive",
                       )}
                     >
@@ -455,11 +459,11 @@ export function AdminDashboard() {
           </div>
         </section>
 
-        <section className="mb-8">
-          <h2 className="text-lg font-semibold text-foreground mb-4">
+        <section>
+          <h2 className="text-lg font-semibold tracking-tight text-foreground mb-4">
             {showAllProjects ? "Company Cashflow" : "Project Cashflow"}
           </h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className={STATS_GRID_3_CLASS}>
             {isLoading || !displayCompany ? (
               <>
                 <StatCardSkeleton />
@@ -484,7 +488,7 @@ export function AdminDashboard() {
                   <CardContent>
                     <div
                       className={cn(
-                        "text-3xl font-bold",
+                        "text-2xl font-semibold tabular-nums tracking-tight",
                         displayCompany.currentCashflow >= 0
                           ? "text-green-500"
                           : "text-destructive",
@@ -499,28 +503,28 @@ export function AdminDashboard() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-card border-border">
+                <Card className="card-metric bg-card border-border">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       Pending Receivables
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-green-500">
+                    <div className="text-2xl font-semibold tabular-nums tracking-tight text-green-500">
                       {formatINR(displayCompany.totalReceivables)}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">Client payments due</p>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-card border-border">
+                <Card className="card-metric bg-card border-border">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
                       Pending Payables
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold text-destructive">
+                    <div className="text-2xl font-semibold tabular-nums tracking-tight text-destructive">
                       {formatINR(displayCompany.totalPayables)}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">Vendor payments due</p>
@@ -531,9 +535,9 @@ export function AdminDashboard() {
           </div>
         </section>
 
-        <section className="mb-8">
-          <h2 className="text-lg font-semibold text-foreground mb-4">Risk Alerts</h2>
-          <div className="grid gap-4 md:grid-cols-3">
+        <section>
+          <h2 className="text-lg font-semibold tracking-tight text-foreground mb-4">Risk Alerts</h2>
+          <div className={STATS_GRID_3_CLASS}>
             {isLoading || !displayCompany ? (
               <>
                 <MetricSkeleton />
@@ -543,11 +547,12 @@ export function AdminDashboard() {
             ) : (
               <>
                 <Card
-                  className={
+                  className={cn(
+                    "card-metric",
                     displayCompany.overbudgetProjects > 0
                       ? "bg-destructive/5 border-destructive/30"
-                      : "bg-card border-border"
-                  }
+                      : "bg-card border-border",
+                  )}
                 >
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-4">
@@ -622,7 +627,7 @@ export function AdminDashboard() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-card border-border">
+                <Card className="card-metric bg-card border-border">
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-4">
                       <div className="p-3 rounded-lg bg-muted">
@@ -650,7 +655,7 @@ export function AdminDashboard() {
             </CardHeader>
             <CardContent>
               {isLoading ? (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className={STATS_GRID_CLASS}>
                   <PmCardSkeleton />
                   <PmCardSkeleton />
                   <PmCardSkeleton />
@@ -664,7 +669,7 @@ export function AdminDashboard() {
                   </p>
                 </div>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className={STATS_GRID_CLASS}>
                   {projectManagers
                     .filter((pm) => {
                       const pmName = pm.full_name || pm.email
@@ -727,7 +732,7 @@ export function AdminDashboard() {
         </section>
 
         <MoneyTimelineSection />
-      </main>
-    </div>
+      </PageMain>
+    </PageShell>
   )
 }

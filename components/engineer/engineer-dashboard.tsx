@@ -50,6 +50,15 @@ import { cn } from "@/lib/utils"
 import { useDefaultProject, useLabourTypes } from "@/lib/hooks/use-project-data"
 import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
 import { DashboardHeader } from "@/components/dashboard/header"
+import { MetricCard } from "@/components/layout/metric-card"
+import {
+  CONTENT_SIDEBAR_GRID_CLASS,
+  CONTENT_SIDEBAR_MAIN_CLASS,
+  PageHeader,
+  PageMain,
+  PageShell,
+  STATS_GRID_CLASS,
+} from "@/components/layout/page"
 
 export function EngineerDashboard() {
   const { project, isLoading, error } = useDefaultProject()
@@ -110,7 +119,7 @@ export function EngineerDashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
+      <PageShell>
         <DashboardHeader />
         <div className="flex items-center justify-center py-24">
           <div className="flex flex-col items-center gap-4">
@@ -118,7 +127,7 @@ export function EngineerDashboard() {
             <p className="text-muted-foreground">Loading site data...</p>
           </div>
         </div>
-      </div>
+      </PageShell>
     )
   }
 
@@ -126,34 +135,32 @@ export function EngineerDashboard() {
     const message =
       error instanceof Error ? error.message : NO_ASSIGNED_PROJECT_MESSAGE
     return (
-      <div className="min-h-screen bg-background">
+      <PageShell>
         <DashboardHeader />
-        <div className="flex max-w-lg flex-col items-center justify-center gap-2 px-6 py-24 text-center">
+        <div className="mx-auto flex max-w-lg flex-col items-center justify-center gap-2 px-6 py-24 text-center">
           <p className="text-muted-foreground">{message}</p>
         </div>
-      </div>
+      </PageShell>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <PageShell>
       <DashboardHeader />
 
-      <main className="container mx-auto px-4 py-6 md:px-6 lg:px-8 space-y-6">
-        {/* Page Title & Project Info */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Site Dashboard</h1>
-            <p className="text-muted-foreground">{format(new Date(), "EEEE, dd MMMM yyyy")}</p>
-          </div>
+      <PageMain>
+        <PageHeader
+          title="Site Dashboard"
+          description={format(new Date(), "EEEE, dd MMMM yyyy")}
+        >
           <div className="text-right">
-            <p className="font-medium">{engineerData.projectName}</p>
+            <p className="text-sm font-medium text-foreground">{engineerData.projectName}</p>
             <p className="text-sm text-muted-foreground">{engineerData.siteAddress}</p>
           </div>
-        </div>
+        </PageHeader>
 
         {/* Current Stage - Compact Inline Display */}
-        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border">
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/50 p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
               <Building2 className="h-4 w-4 text-primary" />
@@ -172,60 +179,39 @@ export function EngineerDashboard() {
         </div>
 
         {/* Quick Stats - NO budget/profit info for engineer */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Today&apos;s Expenses</CardTitle>
-              <Receipt className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold">{formatINR(engineerData.totalTodayExpenses)}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {engineerData.todayExpenses.length} entries
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Labour Today</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold">{engineerData.labourCount}</div>
-              <p className="text-xs text-muted-foreground mt-1">Workers on site</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Active Vendors</CardTitle>
-              <Truck className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold">{engineerData.activeVendors}</div>
-              <p className="text-xs text-muted-foreground mt-1">Unique vendors</p>
-            </CardContent>
-          </Card>
-
-          <Card className={cn(engineerData.pendingCount > 0 && "border-yellow-500/30")}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pending Approvals</CardTitle>
-              <Clock className={cn("h-4 w-4", engineerData.pendingCount > 0 ? "text-yellow-500" : "text-muted-foreground")} />
-            </CardHeader>
-            <CardContent>
-              <div className={cn("text-xl font-bold", engineerData.pendingCount > 0 && "text-yellow-500")}>
-                {engineerData.pendingCount}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">Awaiting PM approval</p>
-            </CardContent>
-          </Card>
+        <div className={STATS_GRID_CLASS}>
+          <MetricCard
+            title="Today's Expenses"
+            value={formatINR(engineerData.totalTodayExpenses)}
+            description={`${engineerData.todayExpenses.length} entries`}
+            icon={Receipt}
+          />
+          <MetricCard
+            title="Labour Today"
+            value={engineerData.labourCount}
+            description="Workers on site"
+            icon={Users}
+          />
+          <MetricCard
+            title="Active Vendors"
+            value={engineerData.activeVendors}
+            description="Unique vendors"
+            icon={Truck}
+          />
+          <MetricCard
+            title="Pending Approvals"
+            value={engineerData.pendingCount}
+            description="Awaiting PM approval"
+            icon={Clock}
+            variant={engineerData.pendingCount > 0 ? "warning" : "default"}
+            className={cn(engineerData.pendingCount > 0 && "border-yellow-500/30")}
+            valueClassName={engineerData.pendingCount > 0 ? "text-yellow-500" : undefined}
+          />
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Left Column - Expenses */}
-          <div className="lg:col-span-2 space-y-6">
+        <div className={CONTENT_SIDEBAR_GRID_CLASS}>
+          <div className={cn(CONTENT_SIDEBAR_MAIN_CLASS, "space-y-6")}>
             {/* Expenses Tabs */}
             <Tabs defaultValue="today" className="w-full">
               <div className="flex items-center justify-between mb-4">
@@ -416,8 +402,7 @@ export function EngineerDashboard() {
             </Tabs>
           </div>
 
-          {/* Right Column - Labour */}
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -480,7 +465,7 @@ export function EngineerDashboard() {
             </Card>
           </div>
         </div>
-      </main>
-    </div>
+      </PageMain>
+    </PageShell>
   )
 }

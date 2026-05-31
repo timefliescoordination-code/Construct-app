@@ -5,8 +5,14 @@ import { Toaster } from 'sonner'
 import { AuthProvider } from '@/lib/providers/auth-provider'
 import './globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+const geistSans = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist-sans",
+});
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
+});
 
 export const metadata: Metadata = {
   title: 'VRA HOMES - Build Unique One',
@@ -35,6 +41,7 @@ export const viewport: Viewport = {
   themeColor: '#3DD67C',
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({
@@ -43,8 +50,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="bg-background">
-      <body className="font-sans antialiased">
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} bg-background`}>
+      <body className="font-sans antialiased min-h-screen">
         <AuthProvider>
           {children}
         </AuthProvider>

@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils"
 import { useDefaultProject, useProjectMetrics } from "@/lib/hooks/use-project-data"
 import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
 import { DashboardHeader } from "@/components/dashboard/header"
+import { PageHeader, PageMain, PageShell } from "@/components/layout/page"
 import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
 import {
   calculateCompletionPercent,
@@ -120,7 +121,7 @@ export function CustomerDashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
+      <PageShell>
         <DashboardHeader />
         <div className="flex items-center justify-center py-24">
           <div className="flex flex-col items-center gap-4">
@@ -128,7 +129,7 @@ export function CustomerDashboard() {
             <p className="text-muted-foreground">Loading your project...</p>
           </div>
         </div>
-      </div>
+      </PageShell>
     )
   }
 
@@ -136,37 +137,33 @@ export function CustomerDashboard() {
     const message =
       error instanceof Error ? error.message : NO_ASSIGNED_PROJECT_MESSAGE
     return (
-      <div className="min-h-screen bg-background">
+      <PageShell>
         <DashboardHeader />
-        <div className="flex max-w-lg flex-col items-center justify-center gap-2 px-6 py-24 text-center">
+        <div className="flex max-w-lg flex-col items-center justify-center gap-2 px-6 py-24 text-center mx-auto">
           <p className="text-muted-foreground">{message}</p>
         </div>
-      </div>
+      </PageShell>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <PageShell>
       <DashboardHeader />
 
-      <main className="container mx-auto px-4 py-6 md:px-6 lg:px-8 space-y-6">
-        {/* Page Title */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">My Project</h1>
-            <p className="text-muted-foreground">Track your project payments and progress</p>
-          </div>
-        </div>
+      <PageMain>
+        <PageHeader
+          title="My Project"
+          description="Track your project payments and progress"
+        />
 
-        {/* Project Details Card */}
-        <Card>
+        <Card className="section-card">
           <CardHeader>
             <CardTitle>{customerData.name}</CardTitle>
             <CardDescription>View payment schedule and progress</CardDescription>
           </CardHeader>
           <CardContent>
             {/* Project Info - Limited to what customer should see */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 mb-6">
+            <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
               <div className="p-4 bg-muted/50 rounded-lg">
                 <div className="flex items-center gap-2 mb-1">
                   <MapPin className="h-4 w-4 text-muted-foreground" />
@@ -211,7 +208,7 @@ export function CustomerDashboard() {
             </div>
 
             {/* Payment Summary - What customer paid */}
-            <div className="grid gap-4 md:grid-cols-3 mb-6">
+            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
               <div className="p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Contract Value</p>
                 <p className="text-xl font-bold">{formatINR(customerData.contractValue)}</p>
@@ -388,7 +385,7 @@ export function CustomerDashboard() {
             </Tabs>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </PageMain>
+    </PageShell>
   )
 }

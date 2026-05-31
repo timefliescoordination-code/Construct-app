@@ -12,6 +12,7 @@ import { useProjects } from "@/lib/hooks/use-project-data"
 import { isDatabaseSetupError } from "@/lib/supabase/db-errors"
 import { AlertCircle } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/layout/page"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { canViewProjectFinancials } from "@/lib/permissions"
 
@@ -132,21 +133,18 @@ export function ProjectsContent() {
     const needsSetup = isDatabaseSetupError(error)
 
     return (
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Projects</h1>
-            <p className="text-muted-foreground">
-              Manage and track all your construction projects
-            </p>
-          </div>
+      <div className="flex flex-col gap-8">
+        <PageHeader
+          title="Projects"
+          description="Manage and track all your construction projects"
+        >
           <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
             <Link href="/projects/new">
               <Plus className="h-4 w-4" />
               New Project
             </Link>
           </Button>
-        </div>
+        </PageHeader>
 
         <Card className="border-amber-500/30 bg-amber-500/5">
           <CardHeader>
@@ -172,30 +170,26 @@ export function ProjectsContent() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Projects</h1>
-          <p className="text-muted-foreground">
-            Manage and track all your construction projects
-          </p>
-        </div>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        title="Projects"
+        description="Manage and track all your construction projects"
+      >
         <div className="flex items-center gap-2">
           <Button variant="outline" className="gap-2 border-border text-muted-foreground hover:text-foreground">
             <Download className="h-4 w-4" />
             Export
           </Button>
           {!authLoading && showCreateProject && (
-          <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
-            <Link href="/projects/new">
-              <Plus className="h-4 w-4" />
-              New Project
-            </Link>
-          </Button>
+            <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90" asChild>
+              <Link href="/projects/new">
+                <Plus className="h-4 w-4" />
+                New Project
+              </Link>
+            </Button>
           )}
         </div>
-      </div>
+      </PageHeader>
 
       {/* Filters and Search */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
