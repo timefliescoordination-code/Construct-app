@@ -120,6 +120,7 @@ function categoryUsesLabourTeams(
   return categoryName.trim().toLowerCase() === "labour"
 }
 const statuses = ["pending", "approved", "rejected"]
+const EXPENSE_LIST_PREVIEW_LIMIT = 15
 
 type ExpenseInvoiceDetailsState = {
   loading: boolean
@@ -306,6 +307,7 @@ export function ExpensesTab({
   const [isLoading, setIsLoading] = useState(!project)
   const [filterCategory, setFilterCategory] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<string>("all")
+  const [showAllExpenses, setShowAllExpenses] = useState(false)
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(
     () => new Set(),
   )
@@ -1767,8 +1769,21 @@ export function ExpensesTab({
       )
   }, [expenses, filterCategory, filterStatus])
 
+  const visibleExpenses = useMemo(
+    () =>
+      showAllExpenses
+        ? filteredExpenses
+        : filteredExpenses.slice(0, EXPENSE_LIST_PREVIEW_LIMIT),
+    [filteredExpenses, showAllExpenses],
+  )
+  const hiddenExpenseCount = Math.max(
+    0,
+    filteredExpenses.length - EXPENSE_LIST_PREVIEW_LIMIT,
+  )
+
   useEffect(() => {
     setSelectedExpenseIds(new Set())
+    setShowAllExpenses(false)
   }, [filterCategory, filterStatus])
 
   const allFilteredSelected =
@@ -2629,7 +2644,7 @@ export function ExpensesTab({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredExpenses.map((expense) => {
+                  visibleExpenses.map((expense) => {
                     const isSplit = Boolean(expense.split_group_id && expense.split_number)
                     const groupPaymentStatus = expense.split_group_id
                       ? splitPaymentByGroupId.get(expense.split_group_id)
@@ -2798,6 +2813,21 @@ export function ExpensesTab({
               </TableBody>
             </Table>
           </div>
+          {hiddenExpenseCount > 0 && (
+            <div className="pt-3 flex justify-center">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-primary"
+                onClick={() => setShowAllExpenses((prev) => !prev)}
+              >
+                {showAllExpenses
+                  ? "Show less"
+                  : `Show more (${hiddenExpenseCount} more)`}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
@@ -41,6 +41,8 @@ import {
   getOverbudgetStages,
   type MilestoneData
 } from "@/lib/financial-calculations"
+
+const EXPENSE_LIST_PREVIEW_LIMIT = 15
 
 interface Milestone {
   name: string
@@ -126,6 +128,7 @@ export function OverviewTab({
   onExpenseStatusChange,
 }: OverviewTabProps) {
   const [processingId, setProcessingId] = useState<string | null>(null)
+  const [showAllExpenseApprovals, setShowAllExpenseApprovals] = useState(false)
   // Use centralized calculations
   const originalContractValue = projectData.originalContractValue
   const additionalWorksApproved = projectData.additionalWorksApproved
@@ -163,8 +166,23 @@ export function OverviewTab({
   const delayedClientPayments = projectData.delayedClientPayments || []
   const pendingApprovals = projectData.pendingApprovals || []
   const expenseApprovals = projectData.expenseApprovals || []
+  const visibleExpenseApprovals = useMemo(
+    () =>
+      showAllExpenseApprovals
+        ? expenseApprovals
+        : expenseApprovals.slice(0, EXPENSE_LIST_PREVIEW_LIMIT),
+    [expenseApprovals, showAllExpenseApprovals],
+  )
+  const hiddenExpenseApprovalCount = Math.max(
+    0,
+    expenseApprovals.length - EXPENSE_LIST_PREVIEW_LIMIT,
+  )
   const showExpenseApprovals =
     expenseApprovals.length > 0 && (canApproveExpenses || restrictFinancials)
+
+  useEffect(() => {
+    setShowAllExpenseApprovals(false)
+  }, [expenseApprovals.length, projectId])
 
   async function handleExpenseStatus(expenseId: string, status: ExpenseStatus) {
     setProcessingId(expenseId)
@@ -372,6 +390,10 @@ export function OverviewTab({
                   <span className="text-sm text-muted-foreground">Spent</span>
                   <span className="text-lg font-bold text-destructive">{formatINR(totalExpenses)}</span>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Total Stage Budget</span>
+                  <span className="text-lg font-bold text-primary">{formatINR(totalStageBudget)}</span>
+                </div>
               </div>
               <div className={cn(
                 "p-3 rounded-lg mt-2",
@@ -535,7 +557,7 @@ export function OverviewTab({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {expenseApprovals.map((expense) => (
+              {visibleExpenseApprovals.map((expense) => (
                 <div
                   key={expense.id}
                   className={cn(
@@ -607,6 +629,21 @@ export function OverviewTab({
                   </div>
                 </div>
               ))}
+              {hiddenExpenseApprovalCount > 0 && (
+                <div className="pt-1 flex justify-center">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-primary"
+                    onClick={() => setShowAllExpenseApprovals((prev) => !prev)}
+                  >
+                    {showAllExpenseApprovals
+                      ? "Show less"
+                      : `Show more (${hiddenExpenseApprovalCount} more)`}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
