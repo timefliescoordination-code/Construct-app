@@ -23,13 +23,43 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Loader2 } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Plus,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react"
 import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/hooks/use-auth"
-import type { ProjectWithDetails } from "@/lib/types/database"
-import { createAdditionalWorkAction } from "@/lib/projects/tab-actions"
+import type { AdditionalWorkStatus, ProjectWithDetails } from "@/lib/types/database"
+import {
+  createAdditionalWorkAction,
+  deleteAdditionalWorkAction,
+  updateAdditionalWorkAction,
+  updateAdditionalWorkStatusAction,
+} from "@/lib/projects/tab-actions"
 
 interface AdditionalWorkRow {
   id: string
@@ -46,6 +76,24 @@ interface AdditionalWorksTabProps {
   onProjectChange?: () => void
 }
 
+function mapWorkRow(w: {
+  id: string
+  description: string
+  amount: number | string
+  approval_status: string
+  requested_date: string
+  notes: string | null
+}): AdditionalWorkRow {
+  return {
+    id: w.id,
+    description: w.description,
+    amount: Number(w.amount),
+    approval_status: w.approval_status,
+    requested_date: w.requested_date,
+    notes: w.notes,
+  }
+}
+
 export function AdditionalWorksTab({
   projectId: propProjectId,
   project,
@@ -56,40 +104,32 @@ export function AdditionalWorksTab({
   const { canManageProjects } = useAuth()
 
   const [additionalWorks, setAdditionalWorks] = useState<AdditionalWorkRow[]>(() =>
-    project
-      ? project.additional_works.map((w) => ({
-          id: w.id,
-          description: w.description,
-          amount: Number(w.amount),
-          approval_status: w.approval_status,
-          requested_date: w.requested_date,
-          notes: w.notes,
-        }))
-      : [],
+    project ? project.additional_works.map(mapWorkRow) : [],
   )
   const [isLoading, setIsLoading] = useState(!project)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [editingWork, setEditingWork] = useState<AdditionalWorkRow | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<AdditionalWorkRow | null>(null)
+
   const [description, setDescription] = useState("")
   const [amount, setAmount] = useState("")
   const [requestedDate, setRequestedDate] = useState(format(new Date(), "yyyy-MM-dd"))
+  const [notes, setNotes] = useState("")
+
+  const [editDescription, setEditDescription] = useState("")
+  const [editAmount, setEditAmount] = useState("")
+  const [editRequestedDate, setEditRequestedDate] = useState("")
+  const [editNotes, setEditNotes] = useState("")
 
   useEffect(() => {
     if (project) {
-      setAdditionalWorks(
-        project.additional_works.map((w) => ({
-          id: w.id,
-          description: w.description,
-          amount: Number(w.amount),
-          approval_status: w.approval_status,
-          requested_date: w.requested_date,
-          notes: w.notes,
-        })),
-      )
+      setAdditionalWorks(project.additional_works.map(mapWorkRow))
       setIsLoading(false)
       return
     }
-    fetchWorks()
+    void fetchWorks()
   }, [projectId, project])
 
   async function fetchWorks() {
@@ -111,11 +151,19 @@ export function AdditionalWorksTab({
         console.error("[additional-works] fetch error:", error)
         toast.error("Failed to load additional works")
       } else {
-        setAdditionalWorks(data || [])
+        setAdditionalWorks((data ?? []).map(mapWorkRow))
       }
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const applyWorkUpdate = (row: Record<string, unknown>) => {
+    const updated = mapWorkRow(row as AdditionalWorkRow)
+    setAdditionalWorks((prev) =>
+      prev.map((w) => (w.id === updated.id ? updated : w)),
+    )
+    onProjectChange?.()
   }
 
   const handleAddWork = async () => {
@@ -136,25 +184,106 @@ export function AdditionalWorksTab({
     if (!result.ok) {
       toast.error(result.error)
     } else {
-      setAdditionalWorks((prev) => [
-        {
-          id: result.data.id as string,
-          description: result.data.description as string,
-          amount: Number(result.data.amount),
-          approval_status: result.data.approval_status as string,
-          requested_date: result.data.requested_date as string,
-          notes: (result.data.notes as string | null) ?? null,
-        },
-        ...prev,
-      ])
+      setAdditionalWorks((prev) => [mapWorkRow(result.data as AdditionalWorkRow), ...prev])
       onProjectChange?.()
       toast.success("Additional work added")
       setDescription("")
       setAmount("")
+      setNotes("")
       setRequestedDate(format(new Date(), "yyyy-MM-dd"))
       setIsAddDialogOpen(false)
     }
     setIsSubmitting(false)
+  }
+
+  const openEditDialog = (work: AdditionalWorkRow) => {
+    setEditingWork(work)
+    setEditDescription(work.description)
+    setEditAmount(String(work.amount))
+    setEditRequestedDate(work.requested_date)
+    setEditNotes(work.notes ?? "")
+    setIsEditDialogOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!projectId || !editingWork) return
+    if (!editDescription.trim() || !editAmount) {
+      toast.error("Please enter description and amount")
+      return
+    }
+
+    const parsedAmount = parseFloat(editAmount)
+    if (Number.isNaN(parsedAmount) || parsedAmount < 0) {
+      toast.error("Enter a valid amount")
+      return
+    }
+
+    setIsSubmitting(true)
+    const result = await updateAdditionalWorkAction({
+      projectId,
+      workId: editingWork.id,
+      description: editDescription.trim(),
+      amount: parsedAmount,
+      requestedDate: editRequestedDate,
+      notes: editNotes.trim() || null,
+    })
+    setIsSubmitting(false)
+
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+
+    applyWorkUpdate(result.data)
+    toast.success("Additional work updated")
+    setIsEditDialogOpen(false)
+    setEditingWork(null)
+  }
+
+  const handleStatusChange = async (
+    workId: string,
+    status: AdditionalWorkStatus,
+  ) => {
+    if (!projectId) return
+
+    setIsSubmitting(true)
+    const result = await updateAdditionalWorkStatusAction({
+      projectId,
+      workId,
+      approvalStatus: status,
+    })
+    setIsSubmitting(false)
+
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+
+    applyWorkUpdate(result.data)
+    const label =
+      status === "approved" ? "approved" : status === "rejected" ? "rejected" : "updated"
+    toast.success(`Additional work ${label}`)
+  }
+
+  const handleDelete = async () => {
+    if (!projectId || !deleteTarget) return
+
+    setIsSubmitting(true)
+    const result = await deleteAdditionalWorkAction({
+      projectId,
+      workId: deleteTarget.id,
+    })
+    setIsSubmitting(false)
+
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+
+    setAdditionalWorks((prev) => prev.filter((w) => w.id !== deleteTarget.id))
+    onProjectChange?.()
+    toast.success("Additional work deleted")
+    setDeleteTarget(null)
   }
 
   const getStatusBadge = (status: string) => {
@@ -187,17 +316,17 @@ export function AdditionalWorksTab({
   return (
     <div className="space-y-6">
       <Card className="bg-card border-border">
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Additional Works</CardTitle>
           {canManageProjects && (
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-2">
+                <Button size="sm" className="gap-2 w-full sm:w-auto">
                   <Plus className="h-4 w-4" />
                   Add Work
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-card border-border">
+              <DialogContent className="bg-card border-border sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle>Add Additional Work</DialogTitle>
                 </DialogHeader>
@@ -211,7 +340,7 @@ export function AdditionalWorksTab({
                       onChange={(e) => setDescription(e.target.value)}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Amount (₹)</Label>
                       <Input
@@ -233,11 +362,11 @@ export function AdditionalWorksTab({
                     </div>
                   </div>
                 </div>
-                <div className="flex justify-end gap-2">
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button onClick={handleAddWork} disabled={isSubmitting}>
+                  <Button onClick={() => void handleAddWork()} disabled={isSubmitting}>
                     {isSubmitting ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
@@ -255,7 +384,7 @@ export function AdditionalWorksTab({
               No additional works recorded for this project yet.
             </p>
           ) : (
-            <div className="rounded-md border border-border">
+            <div className="overflow-x-auto rounded-md border border-border">
               <Table>
                 <TableHeader>
                   <TableRow className="border-border hover:bg-muted/50">
@@ -263,21 +392,86 @@ export function AdditionalWorksTab({
                     <TableHead>Amount</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Status</TableHead>
+                    {canManageProjects && (
+                      <TableHead className="w-12 text-right">Actions</TableHead>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {additionalWorks.map((work) => (
                     <TableRow key={work.id} className="border-border hover:bg-muted/50">
                       <TableCell className="font-medium max-w-[300px]">
-                        {work.description}
+                        <p>{work.description}</p>
+                        {work.notes ? (
+                          <p className="mt-1 text-xs text-muted-foreground">{work.notes}</p>
+                        ) : null}
                       </TableCell>
-                      <TableCell className="font-medium">
+                      <TableCell className="font-medium whitespace-nowrap">
                         ₹ {Number(work.amount).toLocaleString("en-IN")}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="whitespace-nowrap">
                         {format(new Date(work.requested_date), "MMM dd, yyyy")}
                       </TableCell>
                       <TableCell>{getStatusBadge(work.approval_status)}</TableCell>
+                      {canManageProjects && (
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                disabled={isSubmitting}
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openEditDialog(work)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              {work.approval_status === "pending" && (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      void handleStatusChange(work.id, "approved")
+                                    }
+                                  >
+                                    <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
+                                    Approve
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      void handleStatusChange(work.id, "rejected")
+                                    }
+                                  >
+                                    <XCircle className="mr-2 h-4 w-4 text-destructive" />
+                                    Reject
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                              {work.approval_status !== "pending" && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    void handleStatusChange(work.id, "pending")
+                                  }
+                                >
+                                  Reset to pending
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setDeleteTarget(work)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -286,6 +480,116 @@ export function AdditionalWorksTab({
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={isEditDialogOpen}
+        onOpenChange={(open) => {
+          setIsEditDialogOpen(open)
+          if (!open) setEditingWork(null)
+        }}
+      >
+        <DialogContent className="bg-card border-border sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Additional Work</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                className="bg-muted border-border"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Amount (₹)</Label>
+                <Input
+                  type="number"
+                  className="bg-muted border-border"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Date</Label>
+                <Input
+                  type="date"
+                  className="bg-muted border-border"
+                  value={editRequestedDate}
+                  onChange={(e) => setEditRequestedDate(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Notes (optional)</Label>
+              <Textarea
+                className="bg-muted border-border"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Internal notes..."
+              />
+            </div>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setIsEditDialogOpen(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => void handleSaveEdit()} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                "Save changes"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !isSubmitting) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete additional work?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget
+                ? `"${deleteTarget.description}" will be removed permanently.`
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isSubmitting}
+              onClick={(e) => {
+                e.preventDefault()
+                void handleDelete()
+              }}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting…
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

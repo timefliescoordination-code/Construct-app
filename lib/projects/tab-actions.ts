@@ -6,7 +6,12 @@ import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import { calculateMilestoneCompletionFromExpenses } from '@/lib/financial-calculations'
 import { expensesByMilestoneId } from '@/lib/project-tab-hydration'
 import { notifyExpenseStatusChange } from '@/lib/notifications'
-import type { Expense, ExpenseStatus, UserRole } from '@/lib/types/database'
+import type {
+  AdditionalWorkStatus,
+  Expense,
+  ExpenseStatus,
+  UserRole,
+} from '@/lib/types/database'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type TabActionResult<T = void> =
@@ -579,6 +584,108 @@ export async function createAdditionalWorkAction(input: {
 
   revalidateProject(input.projectId)
   return { ok: true, data: data as Record<string, unknown> }
+}
+
+export async function updateAdditionalWorkAction(input: {
+  projectId: string
+  workId: string
+  description: string
+  amount: number
+  requestedDate: string
+  notes?: string | null
+}): Promise<TabActionResult<Record<string, unknown>>> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canManageProjectData(session.role)) {
+    return { ok: false, error: 'Only admins and project managers can edit additional works.' }
+  }
+
+  const { data, error } = await session.supabase
+    .from('additional_works')
+    .update({
+      description: input.description.trim(),
+      amount: input.amount,
+      requested_date: input.requestedDate,
+      notes: input.notes?.trim() || null,
+    })
+    .eq('id', input.workId)
+    .eq('project_id', input.projectId)
+    .select('id, description, amount, approval_status, requested_date, notes')
+    .single()
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  revalidateProject(input.projectId)
+  return { ok: true, data: data as Record<string, unknown> }
+}
+
+export async function updateAdditionalWorkStatusAction(input: {
+  projectId: string
+  workId: string
+  approvalStatus: AdditionalWorkStatus
+}): Promise<TabActionResult<Record<string, unknown>>> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canManageProjectData(session.role)) {
+    return {
+      ok: false,
+      error: 'Only admins and project managers can approve or reject additional works.',
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+  const updates: Record<string, unknown> = {
+    approval_status: input.approvalStatus,
+    approved_by:
+      input.approvalStatus === 'approved' || input.approvalStatus === 'rejected'
+        ? session.userId
+        : null,
+    approved_date:
+      input.approvalStatus === 'approved' || input.approvalStatus === 'rejected'
+        ? today
+        : null,
+  }
+
+  const { data, error } = await session.supabase
+    .from('additional_works')
+    .update(updates)
+    .eq('id', input.workId)
+    .eq('project_id', input.projectId)
+    .select('id, description, amount, approval_status, requested_date, notes')
+    .single()
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  revalidateProject(input.projectId)
+  return { ok: true, data: data as Record<string, unknown> }
+}
+
+export async function deleteAdditionalWorkAction(input: {
+  projectId: string
+  workId: string
+}): Promise<TabActionResult> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canManageProjectData(session.role)) {
+    return { ok: false, error: 'Only admins and project managers can delete additional works.' }
+  }
+
+  const { error } = await session.supabase
+    .from('additional_works')
+    .delete()
+    .eq('id', input.workId)
+    .eq('project_id', input.projectId)
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  revalidateProject(input.projectId)
+  return { ok: true, data: undefined }
 }
 
 export type MilestoneUpdateInput = {
