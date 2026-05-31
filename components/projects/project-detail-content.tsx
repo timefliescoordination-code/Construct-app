@@ -79,6 +79,14 @@ const PROJECT_TAB_IDS = [
   "photos",
 ] as const
 
+const RECENT_EXPENSE_ACTION_MS = 3 * 24 * 60 * 60 * 1000
+
+function shouldShowExpenseInOverview(exp: { status: string; updated_at: string }) {
+  if (exp.status === "pending") return true
+  if (exp.status !== "approved" && exp.status !== "rejected") return false
+  return Date.now() - new Date(exp.updated_at).getTime() <= RECENT_EXPENSE_ACTION_MS
+}
+
 export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -183,10 +191,20 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       .filter(cp => cp.overdueDays > 0)
 
     const expenseApprovals = [...project.expenses]
-      .sort(
-        (a, b) =>
-          new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime(),
-      )
+      .filter(shouldShowExpenseInOverview)
+      .sort((a, b) => {
+        if (a.status === "pending" && b.status !== "pending") return -1
+        if (b.status === "pending" && a.status !== "pending") return 1
+        const timeA =
+          a.status === "pending"
+            ? new Date(a.expense_date).getTime()
+            : new Date(a.updated_at).getTime()
+        const timeB =
+          b.status === "pending"
+            ? new Date(b.expense_date).getTime()
+            : new Date(b.updated_at).getTime()
+        return timeB - timeA
+      })
       .map((exp) => ({
         id: exp.id,
         type: 'Expense',
