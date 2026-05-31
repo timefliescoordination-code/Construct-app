@@ -7,7 +7,6 @@ export type PaymentStatus = 'pending' | 'received' | 'overdue'
 export type VendorPaymentStatus = 'pending' | 'partial' | 'paid' | 'overdue'
 export type AdditionalWorkStatus = 'pending' | 'approved' | 'rejected'
 export type InvoiceProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed'
-export type MaterialMappingReviewStatus = 'pending' | 'mapped' | 'dismissed'
 
 export interface Profile {
   id: string
@@ -67,7 +66,6 @@ export interface Expense {
   split_group_id: string | null
   split_number: number | null
   status: ExpenseStatus
-  material_rate_warning: boolean
   submitted_by: string | null
   approved_by: string | null
   created_at: string
@@ -185,44 +183,6 @@ export interface LabourEntry {
   updated_at: string
 }
 
-export interface MaterialMaster {
-  id: string
-  material_name: string
-  category: string | null
-  average_rate: number
-  latest_rate: number
-  previous_rate: number
-  purchase_count: number
-  created_at: string
-  updated_at: string
-}
-
-export interface MaterialAlias {
-  id: string
-  material_id: string
-  alias_name: string
-  created_at: string
-}
-
-export interface MaterialMasterWithAliases extends MaterialMaster {
-  aliases: MaterialAlias[]
-}
-
-export interface MaterialPurchase {
-  id: string
-  material_id: string
-  project_id: string | null
-  vendor_name: string | null
-  purchase_date: string
-  rate: number
-  expense_id: string | null
-  created_at: string
-}
-
-export interface MaterialPurchaseWithProject extends MaterialPurchase {
-  project_name: string | null
-}
-
 export interface ExpenseInvoice {
   id: string
   expense_id: string
@@ -241,7 +201,6 @@ export interface ExpenseInvoice {
 export interface InvoiceItem {
   id: string
   expense_id: string
-  material_id: string | null
   material_description_original: string
   material_description_standardized: string | null
   quantity: number | null
@@ -249,18 +208,6 @@ export interface InvoiceItem {
   unit_rate: number | null
   total_amount: number
   created_at: string
-}
-
-export interface MaterialMappingReview {
-  id: string
-  alias_name: string
-  expense_id: string
-  invoice_item_id: string | null
-  status: MaterialMappingReviewStatus
-  mapped_material_id: string | null
-  mapped_by: string | null
-  created_at: string
-  resolved_at: string | null
 }
 
 export interface ExpenseInvoiceWithItems extends ExpenseInvoice {

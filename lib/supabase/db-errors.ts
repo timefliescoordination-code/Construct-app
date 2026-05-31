@@ -27,18 +27,6 @@ export function getSupabaseErrorMessage(error: unknown): string {
       return 'Expense split tables are missing. In Supabase SQL Editor, run supabase/expense-splits-module.sql, then refresh this page.'
     }
 
-    if (/material_master|material_aliases/i.test(msg)) {
-      return 'Material Intelligence tables are missing. In Supabase SQL Editor, run supabase/material-intelligence-module.sql, then refresh this page.'
-    }
-
-    if (/material_purchases/i.test(msg)) {
-      return 'Material purchase history tables are missing. In Supabase SQL Editor, run supabase/material-purchases-module.sql, then refresh this page.'
-    }
-
-    if (/material_mapping_reviews/i.test(msg)) {
-      return 'Invoice OCR mapping tables are missing. In Supabase SQL Editor, run supabase/invoice-ocr-module.sql, then refresh this page.'
-    }
-
     if (/expense_invoices|invoice_items/i.test(msg)) {
       return 'Expense invoice tables are missing. In Supabase SQL Editor, run supabase/expense-invoices-module.sql, then refresh this page.'
     }

@@ -97,9 +97,6 @@ export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps)
   const navItems = [
     { href: getDashboardHome(), label: "Dashboard" },
     { href: "/projects", label: "Projects" },
-    ...(role === "admin"
-      ? [{ href: "/admin/material-intelligence", label: "Material Intelligence" }]
-      : []),
   ]
 
   const handleSignOut = async () => {
@@ -124,9 +121,6 @@ export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps)
   const isNavActive = (href: string) => {
     if (href === "/projects") {
       return pathname === "/projects" || pathname.startsWith("/projects/")
-    }
-    if (href === "/admin/material-intelligence") {
-      return pathname.startsWith("/admin/material-intelligence")
     }
     if (href === "/admin") {
       return pathname === "/admin"

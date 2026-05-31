@@ -140,11 +140,6 @@ export async function replaceExpenseInvoiceFromBrowser(
   }
 
   await supabase.from('invoice_items').delete().eq('expense_id', input.expenseId)
-  await supabase.from('material_mapping_reviews').delete().eq('expense_id', input.expenseId)
-  await supabase
-    .from('expenses')
-    .update({ material_rate_warning: false })
-    .eq('id', input.expenseId)
 
   const { data, error } = await supabase
     .from('expense_invoices')

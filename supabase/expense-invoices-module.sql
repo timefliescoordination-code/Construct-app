@@ -1,4 +1,4 @@
--- Expense invoice uploads and line items (Material Intelligence pipeline)
+-- Expense invoice uploads and line items (invoice upload, OCR line items)
 -- Run in Supabase SQL Editor after schema.sql and assignment-scoped-access.sql
 
 create table if not exists public.expense_invoices (

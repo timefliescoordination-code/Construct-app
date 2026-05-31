@@ -10,7 +10,6 @@ import type {
   ExpenseInvoice,
   ExpenseInvoiceWithItems,
   InvoiceItem,
-  MaterialMappingReview,
 } from '@/lib/types/database'
 
 export type CreateExpenseInvoiceInput = {
@@ -51,8 +50,6 @@ async function clearInvoiceDerivedData(
   expenseId: string,
 ) {
   await supabase.from('invoice_items').delete().eq('expense_id', expenseId)
-  await supabase.from('material_mapping_reviews').delete().eq('expense_id', expenseId)
-  await supabase.from('expenses').update({ material_rate_warning: false }).eq('id', expenseId)
 }
 
 export async function createExpenseInvoiceRecord(
@@ -447,7 +444,6 @@ export async function listExpenseIdsWithInvoicesForProject(projectId: string) {
 export type ExpenseInvoiceDetailsPayload = {
   invoice: ExpenseInvoiceWithItems
   viewUrl: string | null
-  pendingReviews: MaterialMappingReview[]
 }
 
 export async function getExpenseInvoiceDetails(input: {
@@ -504,17 +500,6 @@ export async function getExpenseInvoiceDetails(input: {
     return { data: null, error: getSupabaseErrorMessage(itemsError) }
   }
 
-  const { data: reviews, error: reviewsError } = await supabase
-    .from('material_mapping_reviews')
-    .select('*')
-    .eq('expense_id', input.expenseId)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true })
-
-  if (reviewsError && reviewsError.code !== 'PGRST205') {
-    return { data: null, error: getSupabaseErrorMessage(reviewsError) }
-  }
-
   const signed = await createSignedExpenseInvoiceUrl(supabase, invoice.file_path as string)
   const viewUrl = 'error' in signed ? null : signed.url
 
@@ -525,7 +510,6 @@ export async function getExpenseInvoiceDetails(input: {
         items: (items ?? []) as InvoiceItem[],
       },
       viewUrl,
-      pendingReviews: (reviews ?? []) as MaterialMappingReview[],
     },
     error: null,
   }
