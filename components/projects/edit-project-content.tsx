@@ -1,18 +1,10 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
   ArrowLeft,
-  LayoutDashboard,
-  Receipt,
-  CreditCard,
-  Flag,
-  PlusCircle,
-  FileBarChart,
-  Camera,
   Save,
   X,
   AlertCircle,
@@ -48,17 +40,8 @@ import {
 } from "@/lib/financial-calculations"
 import type { ProjectStatus } from "@/lib/types/database"
 import { useAuth } from "@/lib/hooks/use-auth"
-import {
-  canViewProjectFinancials,
-  ENGINEER_RESTRICTED_PROJECT_TABS,
-} from "@/lib/permissions"
+import { canViewProjectFinancials } from "@/lib/permissions"
 import { EditOverviewTab } from "./edit-project/edit-overview-tab"
-import { ExpensesTab } from "./project-detail/expenses-tab"
-import { PaymentsTab } from "./project-detail/payments-tab"
-import { MilestonesTab } from "./project-detail/milestones-tab"
-import { AdditionalWorksTab } from "./project-detail/additional-works-tab"
-import { ReportsTab } from "./project-detail/reports-tab"
-import { PhotosTab } from "./project-detail/photos-tab"
 
 interface EditProjectContentProps {
   projectId: string
@@ -93,7 +76,6 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
   const { customers } = useStaffProfiles()
   const metrics = useProjectMetrics(project)
 
-  const [activeTab, setActiveTab] = useState("overview")
   const [form, setForm] = useState<ProjectEditForm | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -162,26 +144,6 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
       expectedEndDate: form.expected_completion_date,
     }
   }, [project, form, metrics])
-
-  const tabs = useMemo(
-    () =>
-      [
-        { id: "overview", label: "Overview", icon: LayoutDashboard },
-        { id: "expenses", label: "Expenses", icon: Receipt },
-        { id: "payments", label: "Payments", icon: CreditCard },
-        { id: "milestones", label: "Milestones", icon: Flag },
-        { id: "additional-works", label: "Additional Works", icon: PlusCircle },
-        { id: "reports", label: "Reports", icon: FileBarChart },
-        { id: "photos", label: "Photos", icon: Camera },
-      ].filter((tab) => showFinancials || !ENGINEER_RESTRICTED_PROJECT_TABS.has(tab.id)),
-    [showFinancials],
-  )
-
-  useEffect(() => {
-    if (!showFinancials && ENGINEER_RESTRICTED_PROJECT_TABS.has(activeTab)) {
-      setActiveTab("overview")
-    }
-  }, [showFinancials, activeTab])
 
   const updateField = useCallback((field: keyof ProjectEditForm, value: string | number) => {
     setForm((prev) => (prev ? { ...prev, [field]: value } : prev))
@@ -457,8 +419,8 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
                     className="bg-background"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Amount entered at project creation. Also manage items on the
-                    Additional Works tab.
+                    Amount entered at project creation. Manage line items from the
+                    project detail Additional Works tab.
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -515,55 +477,9 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
         />
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 border border-border bg-muted/50 p-1">
-          {tabs.map((tab) => (
-            <TabsTrigger
-              key={tab.id}
-              value={tab.id}
-              className="gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              <tab.icon className="h-4 w-4" />
-              <span className="hidden sm:inline">{tab.label}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        <TabsContent value="overview" className="mt-6">
-          {overviewMetrics && (
-            <EditOverviewTab project={overviewMetrics} onUpdate={updateOverviewField} />
-          )}
-        </TabsContent>
-
-        <TabsContent value="expenses" className="mt-6">
-          <ExpensesTab projectId={projectId} />
-        </TabsContent>
-
-        {showFinancials && (
-          <TabsContent value="payments" className="mt-6">
-            <PaymentsTab projectId={projectId} />
-          </TabsContent>
-        )}
-
-        <TabsContent value="milestones" className="mt-6">
-          <MilestonesTab projectId={projectId} />
-        </TabsContent>
-
-        {showFinancials && (
-          <>
-            <TabsContent value="additional-works" className="mt-6">
-              <AdditionalWorksTab projectId={projectId} />
-            </TabsContent>
-            <TabsContent value="reports" className="mt-6">
-              <ReportsTab projectId={projectId} />
-            </TabsContent>
-          </>
-        )}
-
-        <TabsContent value="photos" className="mt-6">
-          <PhotosTab projectId={projectId} />
-        </TabsContent>
-      </Tabs>
+      {overviewMetrics && (
+        <EditOverviewTab project={overviewMetrics} onUpdate={updateOverviewField} />
+      )}
 
       <AlertDialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
         <AlertDialogContent>
