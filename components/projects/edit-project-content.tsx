@@ -144,7 +144,10 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
     })
 
     return {
-      contractValue: calculated.totalContractValue,
+      originalContractValue: form.contract_value,
+      additionalWorksApproved,
+      totalContractValue: calculated.totalContractValue,
+      stageBudget: calculated.stageBudget,
       currentSpending: calculated.totalExpenses,
       remainingBudget: calculated.remainingBudget,
       currentProfit: calculated.currentProfit,
@@ -184,6 +187,7 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
     (field: string, value: unknown) => {
       if (!form) return
       switch (field) {
+        case "originalContractValue":
         case "contractValue":
           updateField("contract_value", Number(value))
           break
@@ -408,14 +412,26 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
             {showFinancials && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="contractValue">Contract Value (₹)</Label>
+                  <Label htmlFor="editProjectOriginalContractValue">
+                    Original Contract Value (₹)
+                  </Label>
                   <Input
-                    id="contractValue"
+                    id="editProjectOriginalContractValue"
                     type="number"
+                    min={0}
                     value={form.contract_value}
-                    onChange={(e) => updateField("contract_value", Number(e.target.value))}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      updateField(
+                        "contract_value",
+                        next === "" ? 0 : Number(next),
+                      )
+                    }}
                     className="bg-background"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Approved additional works are added on top for total contract value.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="expectedMargin">Expected Margin (%)</Label>
