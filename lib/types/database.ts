@@ -1,6 +1,6 @@
 // Database types matching the Supabase schema
 export type UserRole = 'admin' | 'pm' | 'engineer' | 'customer'
-export type ProjectStatus = 'active' | 'completed' | 'on-hold' | 'pending'
+export type ProjectStatus = 'active' | 'completed' | 'on-hold' | 'pending' | 'archived'
 export type MilestoneStatus = 'completed' | 'in-progress' | 'pending'
 export type ExpenseStatus = 'pending' | 'approved' | 'rejected'
 export type PaymentStatus = 'pending' | 'received' | 'overdue'

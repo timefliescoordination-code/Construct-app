@@ -7,6 +7,7 @@ export const PROJECT_STATUS_LABELS: Record<DbProjectStatus, string> = {
   completed: "Completed",
   "on-hold": "On Hold",
   pending: "Pending",
+  archived: "Archived",
 }
 
 export const PROJECT_STATUS_BADGE: Record<
@@ -29,8 +30,18 @@ export const PROJECT_STATUS_BADGE: Record<
     className: "bg-muted text-muted-foreground border-border",
     label: "Pending",
   },
+  archived: {
+    className: "bg-muted text-muted-foreground border-border line-through",
+    label: "Archived",
+  },
 }
 
 export function isDbProjectStatus(value: string): value is DbProjectStatus {
-  return value === "active" || value === "completed" || value === "on-hold" || value === "pending"
+  return (
+    value === "active" ||
+    value === "completed" ||
+    value === "on-hold" ||
+    value === "pending" ||
+    value === "archived"
+  )
 }

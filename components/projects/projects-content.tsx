@@ -24,7 +24,7 @@ export function ProjectsContent() {
   const showCreateProject = canManageProjects || isAdmin
   const showFinancials = canViewProjectFinancials(role)
   
-  const { projects: dbProjects, isLoading, error } = useProjects()
+  const { projects: dbProjects, isLoading, error, mutate } = useProjects()
 
   // Transform database projects to the format expected by ProjectTable
   const projects: Project[] = useMemo(() => {
@@ -48,13 +48,15 @@ export function ProjectsContent() {
   }, [showFinancials, activeFilter])
 
   const filterCounts = useMemo(() => {
+    const nonArchived = projects.filter((p) => p.status !== "archived")
     return {
-      all: projects.length,
+      all: nonArchived.length,
       active: projects.filter((p) => p.status === "active").length,
       completed: projects.filter((p) => p.status === "completed").length,
       "on-hold": projects.filter((p) => p.status === "on-hold").length,
       pending: projects.filter((p) => p.status === "pending").length,
-      "high-risk": projects.filter((p) => p.profitLoss < 0).length,
+      archived: projects.filter((p) => p.status === "archived").length,
+      "high-risk": nonArchived.filter((p) => p.profitLoss < 0).length,
     }
   }, [projects])
 
@@ -62,12 +64,12 @@ export function ProjectsContent() {
     let result = [...projects]
 
     // Filter by status
-    if (activeFilter !== "all") {
-      if (activeFilter === "high-risk") {
-        result = result.filter((p) => p.profitLoss < 0)
-      } else {
-        result = result.filter((p) => p.status === activeFilter)
-      }
+    if (activeFilter === "all") {
+      result = result.filter((p) => p.status !== "archived")
+    } else if (activeFilter === "high-risk") {
+      result = result.filter((p) => p.status !== "archived" && p.profitLoss < 0)
+    } else {
+      result = result.filter((p) => p.status === activeFilter)
     }
 
     // Filter by search query
@@ -223,6 +225,7 @@ export function ProjectsContent() {
         sortField={sortField}
         sortDirection={sortDirection}
         onSort={handleSort}
+        onProjectArchived={() => void mutate()}
       />
     </div>
   )

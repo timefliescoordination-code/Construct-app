@@ -13,6 +13,7 @@ interface ProjectFiltersProps {
     completed: number
     "on-hold": number
     pending: number
+    archived: number
     "high-risk": number
   }
   excludeFilters?: ProjectFilterStatus[]
@@ -25,6 +26,7 @@ export function ProjectFilters({ activeFilter, onFilterChange, counts, excludeFi
     { key: "completed", label: "Completed" },
     { key: "on-hold", label: "On Hold" },
     { key: "pending", label: "Pending" },
+    { key: "archived", label: "Archived" },
     { key: "high-risk", label: "High Risk" },
   ].filter((filter) => !excludeFilters.includes(filter.key))
 

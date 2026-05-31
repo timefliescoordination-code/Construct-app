@@ -33,7 +33,7 @@ export type UpdateProjectInput = {
   expected_margin_percent: number
   start_date: string | null
   expected_completion_date: string | null
-  status: 'active' | 'completed' | 'on-hold' | 'pending'
+  status: 'active' | 'completed' | 'on-hold' | 'pending' | 'archived'
   pm_id: string | null
   customer_id: string | null
   assigned_engineer_ids: string[]
@@ -292,6 +292,52 @@ export async function updateProjectAction(
     return {
       ok: false,
       error: err instanceof Error ? err.message : 'Failed to update project',
+    }
+  }
+}
+
+export type ArchiveProjectResult = { ok: true } | { ok: false; error: string }
+
+export async function archiveProjectAction(
+  projectId: string,
+): Promise<ArchiveProjectResult> {
+  try {
+    const supabase = await createClient()
+    const auth = await assertCanManageProjects(supabase)
+    if (!auth.ok) return auth
+
+    const canEdit = await assertCanEditProject(supabase, projectId, auth)
+    if (!canEdit.ok) return canEdit
+
+    const { error } = await supabase
+      .from('projects')
+      .update({ status: 'archived' })
+      .eq('id', projectId)
+
+    if (error) {
+      const message = getSupabaseErrorMessage(error)
+      if (/check constraint|projects_status_check/i.test(message)) {
+        return {
+          ok: false,
+          error:
+            'Archive is not enabled in the database yet. Run supabase/archive-project-module.sql in the Supabase SQL Editor, then try again.',
+        }
+      }
+      return { ok: false, error: message }
+    }
+
+    revalidatePath('/projects')
+    revalidatePath(`/projects/${projectId}`)
+    revalidatePath(`/projects/${projectId}/edit`)
+    revalidatePath('/admin')
+    revalidatePath('/pm')
+
+    return { ok: true }
+  } catch (err) {
+    console.error('[archiveProjectAction]', err)
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Failed to archive project',
     }
   }
 }

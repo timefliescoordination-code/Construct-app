@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Table,
   TableBody,
@@ -25,6 +27,19 @@ import { PROJECT_STATUS_BADGE } from "@/lib/project-status"
 import { formatINR } from "@/lib/currency"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { canViewProjectFinancials } from "@/lib/permissions"
+import { archiveProjectAction } from "@/lib/projects/actions"
+import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Loader2 } from "lucide-react"
 
 export interface Project {
   id: string
@@ -43,6 +58,7 @@ interface ProjectTableProps {
   sortField: keyof Project | null
   sortDirection: "asc" | "desc"
   onSort: (field: keyof Project) => void
+  onProjectArchived?: () => void
 }
 
 const formatCurrency = (amount: number) => {
@@ -51,8 +67,34 @@ const formatCurrency = (amount: number) => {
 
 const getStatusBadge = (status: DbProjectStatus) => PROJECT_STATUS_BADGE[status]
 
-export function ProjectTable({ projects, sortField, sortDirection, onSort }: ProjectTableProps) {
+export function ProjectTable({
+  projects,
+  sortField,
+  sortDirection,
+  onSort,
+  onProjectArchived,
+}: ProjectTableProps) {
+  const router = useRouter()
   const { role, canManageProjects } = useAuth()
+  const [archiveTarget, setArchiveTarget] = useState<Project | null>(null)
+  const [isArchiving, setIsArchiving] = useState(false)
+
+  const handleConfirmArchive = async () => {
+    if (!archiveTarget) return
+    setIsArchiving(true)
+    const result = await archiveProjectAction(archiveTarget.id)
+    setIsArchiving(false)
+
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+
+    toast.success(`"${archiveTarget.projectName}" archived.`)
+    setArchiveTarget(null)
+    onProjectArchived?.()
+    router.refresh()
+  }
   const showFinancials = canViewProjectFinancials(role)
   const columnCount = showFinancials ? 9 : 6
   const SortableHeader = ({ field, children }: { field: keyof Project; children: React.ReactNode }) => (
@@ -197,7 +239,11 @@ export function ProjectTable({ projects, sortField, sortDirection, onSort }: Pro
                         <DropdownMenuItem asChild>
                           <Link href={`/projects/${project.id}?tab=payments`}>View Financials</Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          disabled={project.status === "archived"}
+                          onClick={() => setArchiveTarget(project)}
+                        >
                           Archive Project
                         </DropdownMenuItem>
                           </>
@@ -211,6 +257,44 @@ export function ProjectTable({ projects, sortField, sortDirection, onSort }: Pro
           )}
         </TableBody>
       </Table>
+
+      <AlertDialog
+        open={archiveTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !isArchiving) setArchiveTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {archiveTarget
+                ? `"${archiveTarget.projectName}" will be hidden from the main project list. You can still find it under the Archived filter. Data is not deleted.`
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isArchiving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isArchiving}
+              onClick={(event) => {
+                event.preventDefault()
+                void handleConfirmArchive()
+              }}
+            >
+              {isArchiving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Archiving…
+                </>
+              ) : (
+                "Archive"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

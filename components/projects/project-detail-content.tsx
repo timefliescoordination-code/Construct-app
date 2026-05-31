@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -45,6 +45,18 @@ import {
 } from "@/lib/permissions"
 import { isDatabaseSetupError } from "@/lib/supabase/db-errors"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { archiveProjectAction } from "@/lib/projects/actions"
+import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface ProjectDetailContentProps {
   projectId: string
@@ -62,8 +74,11 @@ const PROJECT_TAB_IDS = [
 ] as const
 
 export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState("overview")
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
+  const [isArchiving, setIsArchiving] = useState(false)
   const { role, canManageProjects } = useAuth()
   const showFinancials = canViewProjectFinancials(role)
   const canEditManpower = canEnterManpowerData(role)
@@ -237,9 +252,27 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
         return <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">On Hold</Badge>
       case "pending":
         return <Badge variant="outline">Pending</Badge>
+      case "archived":
+        return <Badge variant="outline" className="text-muted-foreground">Archived</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
+  }
+
+  const handleArchiveProject = async () => {
+    setIsArchiving(true)
+    const result = await archiveProjectAction(projectId)
+    setIsArchiving(false)
+
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+
+    toast.success("Project archived.")
+    setArchiveDialogOpen(false)
+    router.push("/projects")
+    router.refresh()
   }
 
   if (isLoading) {
@@ -358,7 +391,13 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
                     <DropdownMenuItem>Export Project Data</DropdownMenuItem>
                     <DropdownMenuItem>Generate Report</DropdownMenuItem>
                     <DropdownMenuItem>Share Project</DropdownMenuItem>
-                    <DropdownMenuItem className="text-destructive">Archive Project</DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      disabled={project.status === "archived"}
+                      onClick={() => setArchiveDialogOpen(true)}
+                    >
+                      Archive Project
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </>
@@ -366,6 +405,43 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           </div>
         </div>
       </div>
+
+      <AlertDialog
+        open={archiveDialogOpen}
+        onOpenChange={(open) => {
+          if (!isArchiving) setArchiveDialogOpen(open)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {project.name} will be hidden from the main project list. You can still find it
+              under the Archived filter on Projects. Data is not deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isArchiving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isArchiving}
+              onClick={(event) => {
+                event.preventDefault()
+                void handleArchiveProject()
+              }}
+            >
+              {isArchiving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Archiving…
+                </>
+              ) : (
+                "Archive"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
