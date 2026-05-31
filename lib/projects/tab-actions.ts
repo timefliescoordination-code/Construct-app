@@ -143,6 +143,65 @@ export async function createExpenseAction(input: {
   return { ok: true, data: data as Record<string, unknown> }
 }
 
+export type BulkCreateExpenseRow = {
+  milestoneId: string | null
+  category: string
+  description: string
+  amount: number
+  vendorName: string | null
+  billNumber: string | null
+  expenseDate: string
+  labourTeamId?: string | null
+  status?: 'approved' | 'rejected' | 'pending'
+}
+
+export async function bulkCreateExpensesAction(input: {
+  projectId: string
+  rows: BulkCreateExpenseRow[]
+}): Promise<TabActionResult<{ created: number }>> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canEnterExpenses(session.role)) {
+    return { ok: false, error: 'You do not have permission to add expenses.' }
+  }
+
+  if (input.rows.length === 0) {
+    return { ok: false, error: 'No valid rows to import.' }
+  }
+
+  const payload = input.rows.map((row) => ({
+    project_id: input.projectId,
+    milestone_id: row.milestoneId,
+    category: row.category,
+    description: row.description,
+    amount: row.amount,
+    vendor_name: row.vendorName,
+    bill_number: row.billNumber,
+    expense_date: row.expenseDate,
+    labour_team_id: row.category === 'Labour' ? row.labourTeamId ?? null : null,
+    status: row.status ?? 'pending',
+    entered_by: session.userId,
+  }))
+
+  const { data, error } = await session.supabase
+    .from('expenses')
+    .insert(payload)
+    .select('id')
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  const created = data?.length ?? 0
+  const anyApproved = input.rows.some((r) => (r.status ?? 'pending') === 'approved')
+  if (anyApproved) {
+    await syncProjectMilestoneMetrics(session.supabase, input.projectId)
+  }
+
+  revalidateProject(input.projectId)
+  return { ok: true, data: { created } }
+}
+
 export async function updateExpenseAction(input: {
   projectId: string
   expenseId: string

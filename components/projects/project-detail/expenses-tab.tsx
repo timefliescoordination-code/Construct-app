@@ -72,6 +72,7 @@ import { formatINR } from "@/lib/currency"
 import { cn } from "@/lib/utils"
 import { milestoneNameById } from "@/lib/project-tab-hydration"
 import {
+  bulkCreateExpensesAction,
   createExpenseAction,
   updateExpenseAction,
   updateExpenseStatusAction,
@@ -310,7 +311,8 @@ export function ExpensesTab({
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
-  const [isImporting, setIsImporting] = useState(false)
+  const [isParsingImportFile, setIsParsingImportFile] = useState(false)
+  const [isCommittingImport, setIsCommittingImport] = useState(false)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [importDraftRows, setImportDraftRows] = useState<ImportDraftRow[]>([])
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null)
@@ -1545,15 +1547,27 @@ export function ExpensesTab({
   }
 
   const importDraftRowsToProject = async () => {
-    if (!projectId || importDraftRows.length === 0) return
-    setIsImporting(true)
+    if (!projectId) {
+      toast.error("Project ID is missing.")
+      return
+    }
+    if (importDraftRows.length === 0) {
+      toast.error("No rows to import.")
+      return
+    }
+
+    setIsCommittingImport(true)
+    const loadingToastId = toast.loading(
+      `Importing ${importDraftRows.length} row(s)…`,
+    )
+
     try {
       const milestoneByName = new Map(
         milestones.map((m) => [m.name.trim().toLowerCase(), m.id]),
       )
-      let successCount = 0
-      let failedCount = 0
       const failedReasons: string[] = []
+      const rowsToCreate: Parameters<typeof bulkCreateExpensesAction>[0]["rows"] =
+        []
 
       for (const row of importDraftRows) {
         const category = normalizeCategory(row.category)
@@ -1562,7 +1576,6 @@ export function ExpensesTab({
         const milestoneName = row.milestone.trim().toLowerCase()
 
         if (!category || !description || Number.isNaN(amount) || amount <= 0) {
-          failedCount += 1
           failedReasons.push(
             `Row ${row.rowNumber}: missing/invalid category, description, or amount`,
           )
@@ -1571,7 +1584,6 @@ export function ExpensesTab({
 
         const milestoneId = milestoneName ? (milestoneByName.get(milestoneName) ?? null) : null
         if (milestoneName && !milestoneId) {
-          failedCount += 1
           failedReasons.push(`Row ${row.rowNumber}: milestone "${row.milestone}" not found`)
           continue
         }
@@ -1585,8 +1597,7 @@ export function ExpensesTab({
               )
             : undefined
 
-        const result = await createExpenseAction({
-          projectId,
+        rowsToCreate.push({
           milestoneId,
           category,
           description: usesLabour
@@ -1601,48 +1612,65 @@ export function ExpensesTab({
           labourTeamId: labourTeam?.id ?? null,
           status: "approved",
         })
-
-        if (result.ok) {
-          successCount += 1
-        } else {
-          failedCount += 1
-          failedReasons.push(`Row ${row.rowNumber}: ${result.error}`)
-        }
       }
 
-      if (successCount > 0) {
-        toast.success(`Imported ${successCount} expense(s).`)
-        onProjectChange?.()
-        const supabase = createClient()
-        const { data: refreshed } = await supabase
-          .from("expenses")
-          .select("*, milestones(name)")
-          .eq("project_id", projectId)
-          .order("expense_date", { ascending: false })
-        setExpenses(
-          (refreshed ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>)),
+      if (rowsToCreate.length === 0) {
+        toast.dismiss(loadingToastId)
+        const preview = failedReasons.slice(0, 3).join(" | ")
+        toast.error(
+          preview
+            ? `No rows imported. ${preview}`
+            : "No valid rows to import. Check category, amount, and milestone names.",
         )
+        return
       }
 
-      if (failedCount > 0) {
+      const result = await bulkCreateExpensesAction({
+        projectId,
+        rows: rowsToCreate,
+      })
+
+      toast.dismiss(loadingToastId)
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      const created = result.data.created
+      const skipped = failedReasons.length
+
+      await refreshExpensesWithJoin()
+
+      if (skipped > 0) {
         const preview = failedReasons.slice(0, 3).join(" | ")
         toast.warning(
-          `${failedCount} row(s) were skipped. ${preview || "Check required fields and milestone names."}`,
+          `Imported ${created} expense(s). ${skipped} row(s) skipped. ${preview}`,
         )
+      } else {
+        toast.success(`Imported ${created} expense(s).`)
       }
 
       setIsImportDialogOpen(false)
       setImportDraftRows([])
       setLastSelectedIndex(null)
+    } catch (error) {
+      toast.dismiss(loadingToastId)
+      console.error("[expenses-tab] commit import:", error)
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Import failed. Please try again.",
+      )
     } finally {
-      setIsImporting(false)
+      setIsCommittingImport(false)
     }
   }
 
   const handleImportFile = async (file: File | null) => {
     if (!file || !projectId) return
 
-    setIsImporting(true)
+    setIsParsingImportFile(true)
     try {
       const buffer = await file.arrayBuffer()
       const workbook = XLSX.read(buffer, { type: "array" })
@@ -1683,11 +1711,14 @@ export function ExpensesTab({
       setImportDraftRows(draftRows)
       setLastSelectedIndex(null)
       setIsImportDialogOpen(true)
+      toast.success(
+        `Loaded ${draftRows.length} row(s). Review and click Import All Rows.`,
+      )
     } catch (error) {
       console.error("[expenses-tab] import error:", error)
-      toast.error("Failed to import file. Check format and try again.")
+      toast.error("Failed to read file. Check format and try again.")
     } finally {
-      setIsImporting(false)
+      setIsParsingImportFile(false)
       if (csvInputRef.current) csvInputRef.current.value = ""
       if (excelInputRef.current) excelInputRef.current.value = ""
     }
@@ -1810,8 +1841,8 @@ export function ExpensesTab({
               />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="gap-2" disabled={isImporting}>
-                    {isImporting ? (
+                  <Button variant="outline" className="gap-2" disabled={isParsingImportFile || isCommittingImport}>
+                    {isParsingImportFile ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Upload className="h-4 w-4" />
@@ -1831,7 +1862,17 @@ export function ExpensesTab({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+              <Dialog
+                open={isImportDialogOpen}
+                onOpenChange={(open) => {
+                  if (isCommittingImport) return
+                  setIsImportDialogOpen(open)
+                  if (!open) {
+                    setImportDraftRows([])
+                    setLastSelectedIndex(null)
+                  }
+                }}
+              >
                 <DialogContent className="w-[95vw] max-w-7xl bg-card border-border">
                   <DialogHeader>
                     <DialogTitle>Review Import Rows</DialogTitle>
@@ -1921,6 +1962,7 @@ export function ExpensesTab({
                   <div className="flex justify-end gap-2">
                     <Button
                       variant="outline"
+                      disabled={isCommittingImport}
                       onClick={() => {
                         setIsImportDialogOpen(false)
                         setImportDraftRows([])
@@ -1929,8 +1971,11 @@ export function ExpensesTab({
                     >
                       Cancel
                     </Button>
-                    <Button onClick={() => void importDraftRowsToProject()} disabled={isImporting}>
-                      {isImporting ? (
+                    <Button
+                      onClick={() => void importDraftRowsToProject()}
+                      disabled={isCommittingImport || importDraftRows.length === 0}
+                    >
+                      {isCommittingImport ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                           Importing...
