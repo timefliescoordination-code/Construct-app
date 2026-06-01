@@ -125,7 +125,9 @@ export function buildMoneyTimeline(
   const entries = [...receivedEntries(payments), ...groupExpenses(expenses)]
 
   entries.sort((a, b) => {
-    const dateCompare = a.date.localeCompare(b.date)
+    const endA = a.endDate ?? a.date
+    const endB = b.endDate ?? b.date
+    const dateCompare = endB.localeCompare(endA)
     if (dateCompare !== 0) return dateCompare
     if (a.type !== b.type) return a.type === "received" ? -1 : 1
     return a.id.localeCompare(b.id)

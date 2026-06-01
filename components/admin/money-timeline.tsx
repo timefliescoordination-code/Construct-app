@@ -118,7 +118,18 @@ function TimelineRow({
             <TypeBadge type={row.type} />
           </div>
         </TableCell>
-        <TableCell className="text-sm">
+        <TableCell className="text-sm font-medium text-foreground">
+          {row.projectName}
+        </TableCell>
+        <TableCell
+          className={cn(
+            "text-right font-medium tabular-nums",
+            isReceived && "text-green-600",
+          )}
+        >
+          {formatINR(row.amount)}
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground">
           {isGroupedExpense ? (
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
               <span className="min-w-0">{summaryText}</span>
@@ -142,17 +153,6 @@ function TimelineRow({
             </span>
           )}
         </TableCell>
-        <TableCell className="text-sm text-muted-foreground">
-          {row.projectName}
-        </TableCell>
-        <TableCell
-          className={cn(
-            "text-right font-medium tabular-nums",
-            isReceived && "text-green-600",
-          )}
-        >
-          {formatINR(row.amount)}
-        </TableCell>
       </TableRow>
 
       {isGroupedExpense &&
@@ -164,6 +164,10 @@ function TimelineRow({
           >
             <TableCell />
             <TableCell />
+            <TableCell />
+            <TableCell className="py-2 text-right text-sm tabular-nums">
+              {formatINR(item.amount)}
+            </TableCell>
             <TableCell className="py-2 pl-8 text-sm text-muted-foreground">
               {isMultiDayRange && item.date ? (
                 <span>
@@ -175,10 +179,6 @@ function TimelineRow({
               ) : (
                 item.description
               )}
-            </TableCell>
-            <TableCell />
-            <TableCell className="py-2 text-right text-sm tabular-nums">
-              {formatINR(item.amount)}
             </TableCell>
           </TableRow>
         ))}
@@ -367,14 +367,14 @@ export function MoneyTimelineSection() {
                   <TableHead className="sticky top-0 z-10 bg-muted/95 backdrop-blur min-w-[100px]">
                     Type
                   </TableHead>
-                  <TableHead className="sticky top-0 z-10 bg-muted/95 backdrop-blur min-w-[200px]">
-                    Description
-                  </TableHead>
                   <TableHead className="sticky top-0 z-10 bg-muted/95 backdrop-blur min-w-[140px]">
                     Project
                   </TableHead>
                   <TableHead className="sticky top-0 z-10 bg-muted/95 backdrop-blur text-right min-w-[120px]">
                     Amount
+                  </TableHead>
+                  <TableHead className="sticky top-0 z-10 bg-muted/95 backdrop-blur min-w-[200px]">
+                    Description
                   </TableHead>
                 </TableRow>
               </TableHeader>
