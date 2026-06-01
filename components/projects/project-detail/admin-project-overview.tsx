@@ -143,38 +143,24 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
   }))
 
   const completionPercent = calculateCompletionPercent(milestonesForCalc)
-  const totalExpectedPercent = projectData.milestones.reduce(
-    (sum, ms) => sum + ms.expectedCostPercent,
-    0,
-  )
 
   const stageRows = useMemo(() => {
     return projectData.milestones.map((stage) => {
-      const weight = totalExpectedPercent > 0 ? stage.expectedCostPercent / totalExpectedPercent : 0
-      const budgetedProfit = expectedProfitAmount * weight
       const isCompleted =
         stage.status === "completed" || stage.actualCompletionPercent === 100
-      const actualProfit = isCompleted ? stage.targetBudget - stage.actualExpenses : null
-      const variance =
-        actualProfit !== null ? actualProfit - budgetedProfit : null
+      const profitLoss = isCompleted ? stage.targetBudget - stage.actualExpenses : null
 
       return {
         ...stage,
-        budgetedProfit,
-        actualProfit,
-        variance,
+        profitLoss,
         isCompleted,
       }
     })
-  }, [projectData.milestones, expectedProfitAmount, totalExpectedPercent])
+  }, [projectData.milestones])
 
-  const stageTotals = stageRows.reduce(
-    (acc, row) => ({
-      budgeted: acc.budgeted + row.budgetedProfit,
-      actual: acc.actual + (row.actualProfit ?? 0),
-      variance: acc.variance + (row.variance ?? 0),
-    }),
-    { budgeted: 0, actual: 0, variance: 0 },
+  const totalStageProfit = stageRows.reduce(
+    (sum, row) => sum + (row.profitLoss ?? 0),
+    0,
   )
 
   const currentStage =
@@ -337,66 +323,59 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <Card className="dashboard-card border-border xl:col-span-2">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Stage-wise Profit Summary</CardTitle>
+      <div className="grid gap-6 lg:grid-cols-5">
+        <Card className="dashboard-card border-border lg:col-span-2">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Stage Summary</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Profit or loss shown only for completed stages
+            </p>
           </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto rounded-md border border-border">
+          <CardContent className="pt-0">
+            <div className="overflow-x-auto rounded-md border border-border text-sm">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Stage</TableHead>
-                    <TableHead className="text-right">Budgeted Profit</TableHead>
-                    <TableHead className="text-right">Actual Profit</TableHead>
-                    <TableHead className="text-right">Variance</TableHead>
-                    <TableHead className="text-center">Status</TableHead>
+                    <TableHead className="h-9">Stage</TableHead>
+                    <TableHead className="h-9 text-right">Profit / Loss</TableHead>
+                    <TableHead className="h-9 text-center">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {stageRows.map((row) => (
                     <TableRow key={row.name}>
-                      <TableCell className="font-medium">{row.name}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {formatINR(row.budgetedProfit)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {row.actualProfit !== null ? formatINR(row.actualProfit) : "—"}
-                      </TableCell>
+                      <TableCell className="py-2 font-medium">{row.name}</TableCell>
                       <TableCell
                         className={cn(
-                          "text-right font-medium",
-                          row.variance === null
+                          "py-2 text-right font-medium",
+                          row.profitLoss === null
                             ? "text-muted-foreground"
-                            : row.variance >= 0
+                            : row.profitLoss >= 0
                               ? "text-green-500"
                               : "text-destructive",
                         )}
                       >
-                        {row.variance !== null
-                          ? `${row.variance >= 0 ? "+" : ""}${formatINR(row.variance)}`
+                        {row.profitLoss !== null
+                          ? `${row.profitLoss >= 0 ? "+" : ""}${formatINR(row.profitLoss)}`
                           : "—"}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="py-2 text-center">
                         {getStageStatusBadge(row.status, row.actualCompletionPercent)}
                       </TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="bg-muted/30 font-semibold">
-                    <TableCell>Total</TableCell>
-                    <TableCell className="text-right">{formatINR(stageTotals.budgeted)}</TableCell>
-                    <TableCell className="text-right">{formatINR(stageTotals.actual)}</TableCell>
+                    <TableCell className="py-2">Total</TableCell>
                     <TableCell
                       className={cn(
-                        "text-right",
-                        stageTotals.variance >= 0 ? "text-green-500" : "text-destructive",
+                        "py-2 text-right",
+                        totalStageProfit >= 0 ? "text-green-500" : "text-destructive",
                       )}
                     >
-                      {stageTotals.variance >= 0 ? "+" : ""}
-                      {formatINR(stageTotals.variance)}
+                      {totalStageProfit >= 0 ? "+" : ""}
+                      {formatINR(totalStageProfit)}
                     </TableCell>
-                    <TableCell />
+                    <TableCell className="py-2" />
                   </TableRow>
                 </TableBody>
               </Table>
@@ -404,7 +383,7 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
           </CardContent>
         </Card>
 
-        <Card className="dashboard-card border-border">
+        <Card className="dashboard-card border-border lg:col-span-3">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold">Current Stage Progress</CardTitle>
           </CardHeader>
