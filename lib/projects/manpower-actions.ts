@@ -3,7 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
-import { nextWeekStartDate, weekDayDates } from '@/lib/manpower/dates'
+import {
+  nextWeekStartDate,
+  weekDayDates,
+  weekStartIsoFromPickerDate,
+} from '@/lib/manpower/dates'
 import type { UserRole } from '@/lib/types/database'
 
 export type ManpowerActionResult<T = void> =
@@ -51,6 +55,8 @@ export async function createManpowerWeekAction(input: {
   projectId: string
   milestoneId: string
   projectStartDate?: string | null
+  /** Any day in the target week; stored as that week's Monday. */
+  weekStartDate?: string | null
 }): Promise<ManpowerActionResult<{ weekId: string }>> {
   const session = await getSession()
   if (!session.ok) return session
@@ -68,12 +74,23 @@ export async function createManpowerWeekAction(input: {
     return { ok: false, error: getSupabaseErrorMessage(weeksError) }
   }
 
+  const existingStarts = (existingWeeks ?? []).map((w) => w.start_date as string)
   const nextNumber =
     existingWeeks?.length ? Number(existingWeeks[0].week_number) + 1 : 1
-  const startDate = nextWeekStartDate(
-    input.projectStartDate,
-    (existingWeeks ?? []).map((w) => w.start_date as string),
-  )
+
+  let startDate: string
+  if (input.weekStartDate) {
+    startDate = weekStartIsoFromPickerDate(new Date(`${input.weekStartDate}T00:00:00`))
+  } else {
+    startDate = nextWeekStartDate(input.projectStartDate, existingStarts)
+  }
+
+  if (existingStarts.includes(startDate)) {
+    return {
+      ok: false,
+      error: 'A week starting on this date already exists. Pick another week on the calendar.',
+    }
+  }
 
   const { data: week, error: insertError } = await session.supabase
     .from('manpower_weeks')

@@ -55,3 +55,15 @@ export function nextWeekStartDate(
     .sort((a, b) => b.getTime() - a.getTime())[0]
   return toIsoDate(addDays(latest, 7))
 }
+
+/** Any calendar day → Monday ISO start for that work week. */
+export function weekStartIsoFromPickerDate(date: Date): string {
+  return toIsoDate(getMonday(date))
+}
+
+export function formatWeekRangeLabel(startDateIso: string): string {
+  const days = weekDayDates(startDateIso)
+  if (days.length === 0) return startDateIso
+  if (days.length === 1) return days[0].label
+  return `${days[0].label} – ${days[days.length - 1].label}`
+}

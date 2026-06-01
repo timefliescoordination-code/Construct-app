@@ -40,9 +40,24 @@ import {
   Loader2,
   Trash2,
   Pencil,
+  Calendar,
 } from "lucide-react"
+import { format } from "date-fns"
 import { toast } from "sonner"
 import { formatINR } from "@/lib/currency"
+import { cn } from "@/lib/utils"
+import {
+  formatWeekRangeLabel,
+  nextWeekStartDate,
+  toIsoDate,
+  weekStartIsoFromPickerDate,
+} from "@/lib/manpower/dates"
+import { Calendar as CalendarPicker } from "@/components/ui/calendar"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import type { ManpowerPayload, ManpowerWeekView } from "@/lib/data/manpower"
 import type { LabourTeamExpenseSummary } from "@/lib/data/labour-teams"
 import type { LabourType } from "@/lib/types/database"
@@ -96,6 +111,7 @@ export function ManpowerTab({
 
   const [addWeekOpen, setAddWeekOpen] = useState(false)
   const [selectedMilestoneId, setSelectedMilestoneId] = useState("")
+  const [selectedWeekDate, setSelectedWeekDate] = useState<Date | undefined>()
 
   const [typesOpen, setTypesOpen] = useState(false)
   const [teamsOpen, setTeamsOpen] = useState(false)
@@ -166,9 +182,41 @@ export function ManpowerTab({
     return Array.from(byId.values())
   }, [projectMilestones, data?.milestones])
 
+  const existingWeekStarts = useMemo(
+    () => new Set(weeks.map((week) => week.startDate)),
+    [weeks],
+  )
+
+  const selectedWeekStartIso = selectedWeekDate
+    ? weekStartIsoFromPickerDate(selectedWeekDate)
+    : null
+
+  const selectedWeekRangeLabel = selectedWeekStartIso
+    ? formatWeekRangeLabel(selectedWeekStartIso)
+    : null
+
+  const isDuplicateSelectedWeek =
+    selectedWeekStartIso != null && existingWeekStarts.has(selectedWeekStartIso)
+
+  const openAddWeekDialog = () => {
+    const existingStarts = weeks.map((week) => week.startDate)
+    const suggestedIso = nextWeekStartDate(projectStartDate, existingStarts)
+    setSelectedWeekDate(new Date(`${suggestedIso}T00:00:00`))
+    setSelectedMilestoneId(stageOptions[0]?.id ?? "")
+    setAddWeekOpen(true)
+  }
+
   const handleAddWeek = async () => {
     if (!selectedMilestoneId) {
       toast.error("Select a project stage for this week.")
+      return
+    }
+    if (!selectedWeekDate) {
+      toast.error("Select a week on the calendar.")
+      return
+    }
+    if (isDuplicateSelectedWeek) {
+      toast.error("This week is already on the manpower sheet. Pick another date.")
       return
     }
     setSaving(true)
@@ -176,6 +224,7 @@ export function ManpowerTab({
       projectId,
       milestoneId: selectedMilestoneId,
       projectStartDate,
+      weekStartDate: toIsoDate(selectedWeekDate),
     })
     setSaving(false)
     if (!result.ok) {
@@ -185,6 +234,7 @@ export function ManpowerTab({
     toast.success("Week added.")
     setAddWeekOpen(false)
     setSelectedMilestoneId("")
+    setSelectedWeekDate(undefined)
     setExpandedWeekId(result.data.weekId)
     await loadData()
   }
@@ -408,7 +458,7 @@ export function ManpowerTab({
                 <Settings2 className="mr-1 h-4 w-4" />
                 Manage Types
               </Button>
-              <Button size="sm" onClick={() => setAddWeekOpen(true)}>
+              <Button size="sm" onClick={openAddWeekDialog}>
                 <Plus className="mr-1 h-4 w-4" />
                 Add Week
               </Button>
@@ -686,35 +736,92 @@ export function ManpowerTab({
         </div>
       )}
 
-      <Dialog open={addWeekOpen} onOpenChange={setAddWeekOpen}>
-        <DialogContent>
+      <Dialog
+        open={addWeekOpen}
+        onOpenChange={(open) => {
+          setAddWeekOpen(open)
+          if (!open) {
+            setSelectedMilestoneId("")
+            setSelectedWeekDate(undefined)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add Week</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label>Project stage</Label>
-            {stageOptions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No stages found for this project. Add stages on the Stages tab
-                first, then return here to add a week.
-              </p>
-            ) : (
-              <Select
-                value={selectedMilestoneId}
-                onValueChange={setSelectedMilestoneId}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select stage for this week" />
-                </SelectTrigger>
-                <SelectContent className="z-[100]">
-                  {stageOptions.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Week</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !selectedWeekDate && "text-muted-foreground",
+                    )}
+                  >
+                    <Calendar className="mr-2 h-4 w-4 shrink-0" />
+                    {selectedWeekDate
+                      ? format(selectedWeekDate, "PPP")
+                      : "Pick a date in the week"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarPicker
+                    mode="single"
+                    selected={selectedWeekDate}
+                    onSelect={setSelectedWeekDate}
+                    defaultMonth={selectedWeekDate}
+                    initialFocus
+                    disabled={(date) =>
+                      existingWeekStarts.has(weekStartIsoFromPickerDate(date))
+                    }
+                  />
+                </PopoverContent>
+              </Popover>
+              {selectedWeekRangeLabel && (
+                <p
+                  className={cn(
+                    "text-sm",
+                    isDuplicateSelectedWeek
+                      ? "text-destructive"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {isDuplicateSelectedWeek
+                    ? "This week already exists. Choose another date."
+                    : `Work week: ${selectedWeekRangeLabel} (Mon–Sun)`}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Project stage</Label>
+              {stageOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No stages found for this project. Add stages on the Stages tab
+                  first, then return here to add a week.
+                </p>
+              ) : (
+                <Select
+                  value={selectedMilestoneId}
+                  onValueChange={setSelectedMilestoneId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select stage for this week" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[100]">
+                    {stageOptions.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddWeekOpen(false)}>
@@ -722,7 +829,12 @@ export function ManpowerTab({
             </Button>
             <Button
               onClick={() => void handleAddWeek()}
-              disabled={saving || stageOptions.length === 0}
+              disabled={
+                saving ||
+                stageOptions.length === 0 ||
+                !selectedWeekDate ||
+                isDuplicateSelectedWeek
+              }
             >
               {saving ? "Adding..." : "Add Week"}
             </Button>
