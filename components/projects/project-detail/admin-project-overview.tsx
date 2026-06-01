@@ -229,7 +229,7 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Expected Profit
               </p>
-              <p className="mt-2 text-2xl font-bold text-green-500">
+              <p className="mt-2 text-2xl font-bold text-success">
                 {formatINR(expectedProfitAmount)}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -243,7 +243,7 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
               <p
                 className={cn(
                   "mt-2 text-2xl font-bold",
-                  actualProfitTillDate >= 0 ? "text-green-500" : "text-destructive",
+                  actualProfitTillDate >= 0 ? "text-success" : "text-destructive",
                 )}
               >
                 {formatINR(actualProfitTillDate)}
@@ -259,7 +259,7 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Total Profit (Expected + Actual)
               </p>
-              <p className="mt-2 text-2xl font-bold text-green-500">
+              <p className="mt-2 text-2xl font-bold text-success">
                 {formatINR(totalProfitCombined)}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -270,8 +270,8 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
               className={cn(
                 "rounded-xl border p-4",
                 profitOnTrack
-                  ? "border-green-500/30 bg-green-500/5"
-                  : "border-destructive/30 bg-destructive/5",
+                  ? "border-success/30 bg-success/10"
+                  : "border-destructive/30 bg-destructive/10",
               )}
             >
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -279,14 +279,14 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
               </p>
               <div className="mt-2 flex items-center gap-2">
                 {profitOnTrack ? (
-                  <TrendingUp className="h-5 w-5 text-green-500" />
+                  <TrendingUp className="h-5 w-5 text-success" />
                 ) : (
                   <TrendingDown className="h-5 w-5 text-destructive" />
                 )}
                 <p
                   className={cn(
                     "text-xl font-bold",
-                    profitOnTrack ? "text-green-500" : "text-destructive",
+                    profitOnTrack ? "text-success" : "text-destructive",
                   )}
                 >
                   {profitOnTrack ? "On Track" : "At Risk"}
@@ -351,7 +351,7 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
                           row.profitLoss === null
                             ? "text-muted-foreground"
                             : row.profitLoss >= 0
-                              ? "text-green-500"
+                              ? "text-success"
                               : "text-destructive",
                         )}
                       >
@@ -369,7 +369,7 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
                     <TableCell
                       className={cn(
                         "py-2 text-right",
-                        totalStageProfit >= 0 ? "text-green-500" : "text-destructive",
+                        totalStageProfit >= 0 ? "text-success" : "text-destructive",
                       )}
                     >
                       {totalStageProfit >= 0 ? "+" : ""}
@@ -502,7 +502,7 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
                   <p
                     className={cn(
                       "shrink-0 text-sm font-semibold",
-                      item.type === "payment_received" ? "text-green-500" : "text-foreground",
+                      item.type === "payment_received" ? "text-success" : "text-foreground",
                     )}
                   >
                     {item.type === "payment_received" ? "+" : ""}
@@ -521,9 +521,9 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
           <CardContent className="space-y-3">
             {upcomingAlerts.length === 0 ? (
               <div className="flex items-center gap-3 rounded-lg border border-green-500/20 bg-green-500/5 p-4">
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
+                <CheckCircle2 className="h-5 w-5 text-success" />
                 <div>
-                  <p className="text-sm font-medium text-green-500">All clear</p>
+                  <p className="text-sm font-medium text-success">All clear</p>
                   <p className="text-xs text-muted-foreground">No upcoming alerts right now</p>
                 </div>
               </div>
