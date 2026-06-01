@@ -1,4 +1,4 @@
-import type { UserRole } from "@/lib/hooks/use-auth"
+import type { UserRole } from "@/lib/types/database"
 import type { ProjectWithDetails } from "@/lib/types/database"
 
 /** Site engineers must not see contract, payment, profit, or budget planning data. */
@@ -53,8 +53,10 @@ export function stripProjectFinancialsForEngineer(
     contract_value: 0,
     additional_works_value: 0,
     expected_margin_percent: 0,
-    client_payments: [],
-    vendor_payments: [],
-    additional_works: [],
+    client_payments: project.client_payments ?? [],
+    vendor_payments: project.vendor_payments ?? [],
+    additional_works: project.additional_works ?? [],
+    expenses: project.expenses ?? [],
+    milestones: project.milestones ?? [],
   }
 }

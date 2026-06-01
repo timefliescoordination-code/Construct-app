@@ -28,6 +28,27 @@ export const PROJECT_LIST_SELECT_BASIC = `
   client_payments(*)
 `
 
+/** Site engineers cannot read client_payments / vendor_payments via RLS — omit those embeds. */
+export const PROJECT_LIST_SELECT_ENGINEER = `
+  *,
+  milestones(*),
+  expenses(*),
+  project_engineers(
+    engineer_id,
+    engineer:profiles!engineer_id(id, email, full_name, role, phone, company_name, created_at, updated_at)
+  )
+`
+
+export const PROJECT_LIST_SELECT_ENGINEER_BASIC = `
+  *,
+  milestones(*),
+  expenses(*)
+`
+
+export const PROJECT_DETAIL_SELECT_ENGINEER = `
+  ${PROJECT_LIST_SELECT_ENGINEER.trim()}
+`
+
 export const PROJECT_DETAIL_SELECT = `
   ${PROJECT_LIST_SELECT.trim()},
   vendor_payments(*),
@@ -78,10 +99,31 @@ function shouldRetryWithBasicSelect(error: { code?: string; message?: string }):
   return (
     error.code === 'PGRST205' ||
     error.code === 'PGRST200' ||
+    error.code === '42501' ||
     message.includes('Could not find the table') ||
     message.includes('Could not find a relationship') ||
-    message.includes('project_engineers')
+    message.includes('project_engineers') ||
+    message.includes('client_payments') ||
+    message.includes('vendor_payments') ||
+    message.includes('additional_works') ||
+    message.includes('permission denied')
   )
+}
+
+function getProjectListSelect(role: string | undefined) {
+  return role === 'engineer' ? PROJECT_LIST_SELECT_ENGINEER : PROJECT_LIST_SELECT
+}
+
+function getProjectListSelectBasic(role: string | undefined) {
+  return role === 'engineer' ? PROJECT_LIST_SELECT_ENGINEER_BASIC : PROJECT_LIST_SELECT_BASIC
+}
+
+function getProjectDetailSelect(role: string | undefined) {
+  return role === 'engineer' ? PROJECT_DETAIL_SELECT_ENGINEER : PROJECT_DETAIL_SELECT
+}
+
+function getProjectDetailSelectBasic(role: string | undefined) {
+  return role === 'engineer' ? PROJECT_DETAIL_SELECT_ENGINEER : PROJECT_DETAIL_SELECT_BASIC
 }
 
 function applyRoleProjectVisibility(
@@ -108,9 +150,12 @@ export async function listProjectsForApi(options?: { includeArchived?: boolean }
     return { data: null, error: 'You must be signed in to view projects.' }
   }
 
+  const listSelect = getProjectListSelect(access?.role)
+  const listSelectBasic = getProjectListSelectBasic(access?.role)
+
   let query = supabase
     .from('projects')
-    .select(PROJECT_LIST_SELECT)
+    .select(listSelect)
     .order('created_at', { ascending: false })
 
   if (!includeArchived) {
@@ -122,7 +167,7 @@ export async function listProjectsForApi(options?: { includeArchived?: boolean }
   if (error && shouldRetryWithBasicSelect(error)) {
     let fallbackQuery = supabase
       .from('projects')
-      .select(PROJECT_LIST_SELECT_BASIC)
+      .select(listSelectBasic)
       .order('created_at', { ascending: false })
 
     if (!includeArchived) {
@@ -147,7 +192,12 @@ export async function listProjectsForApi(options?: { includeArchived?: boolean }
   )
 
   const enriched = rows.map((project) => {
-    const base = enrichProjectWithMilestoneMetrics(project as ProjectWithDetails)
+    const row = project as ProjectWithDetails
+    const base = enrichProjectWithMilestoneMetrics({
+      ...row,
+      expenses: row.expenses ?? [],
+      milestones: row.milestones ?? [],
+    })
     const withLabour = {
       ...base,
       labour_workers_today: labourByProject.get(project.id as string) ?? 0,
@@ -170,16 +220,19 @@ export async function getProjectByIdForApi(projectId: string) {
     return { data: null, error: 'You must be signed in to view this project.' }
   }
 
+  const detailSelect = getProjectDetailSelect(access?.role)
+  const detailSelectBasic = getProjectDetailSelectBasic(access?.role)
+
   let { data, error } = await supabase
     .from('projects')
-    .select(PROJECT_DETAIL_SELECT)
+    .select(detailSelect)
     .eq('id', projectId)
     .single()
 
   if (error && shouldRetryWithBasicSelect(error)) {
     const fallback = await supabase
       .from('projects')
-      .select(PROJECT_DETAIL_SELECT_BASIC)
+      .select(detailSelectBasic)
       .eq('id', projectId)
       .single()
     data = fallback.data
@@ -203,8 +256,13 @@ export async function getProjectByIdForApi(projectId: string) {
     todayIso,
   )
 
+  const row = data as ProjectWithDetails
   const enriched = {
-    ...enrichProjectWithMilestoneMetrics(data as ProjectWithDetails),
+    ...enrichProjectWithMilestoneMetrics({
+      ...row,
+      expenses: row.expenses ?? [],
+      milestones: row.milestones ?? [],
+    }),
     labour_workers_today: labourWorkersToday,
   }
 

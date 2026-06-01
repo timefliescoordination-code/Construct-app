@@ -365,8 +365,13 @@ export function EngineerDashboard() {
     return (
       <PageShell>
         <DashboardHeader />
-        <div className="mx-auto flex max-w-lg flex-col items-center justify-center gap-2 px-6 py-24 text-center">
+        <div className="mx-auto flex max-w-lg flex-col items-center justify-center gap-4 px-6 py-24 text-center">
           <p className="text-muted-foreground">{message}</p>
+          {error && (
+            <Button variant="outline" onClick={() => void mutate()}>
+              Try again
+            </Button>
+          )}
         </div>
       </PageShell>
     )
@@ -381,21 +386,23 @@ export function EngineerDashboard() {
           title="Site Dashboard"
           description="Log site expenses and manpower — payments and budgets are managed by your PM."
         >
-          <Select value={effectiveProjectId} onValueChange={handleProjectChange}>
-            <SelectTrigger className="w-full sm:w-[220px] bg-secondary border-border">
-              <SelectValue placeholder="Select project" />
-            </SelectTrigger>
-            <SelectContent>
-              {assignedProjects.length > 1 && (
-                <SelectItem value={SHOW_ALL_PROJECTS}>Show all</SelectItem>
-              )}
-              {assignedProjects.map((project, index) => (
-                <SelectItem key={project.id} value={project.id}>
-                  {project.name || `Project ${index + 1}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {assignedProjects.length > 0 && (
+            <Select value={effectiveProjectId} onValueChange={handleProjectChange}>
+              <SelectTrigger className="w-full sm:w-[220px] bg-secondary border-border">
+                <SelectValue placeholder="Select project" />
+              </SelectTrigger>
+              <SelectContent>
+                {assignedProjects.length > 1 && (
+                  <SelectItem value={SHOW_ALL_PROJECTS}>Show all</SelectItem>
+                )}
+                {assignedProjects.map((project, index) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name || `Project ${index + 1}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </PageHeader>
 
         <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm">
