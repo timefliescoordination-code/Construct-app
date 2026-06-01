@@ -12,8 +12,8 @@ export function expensesByMilestoneId(expenses: Expense[]): Record<string, numbe
 }
 
 export function milestonesWithCalculatedExpenses(project: ProjectWithDetails): Milestone[] {
-  const byMilestone = expensesByMilestoneId(project.expenses)
-  return project.milestones.map((ms) => {
+  const byMilestone = expensesByMilestoneId(project.expenses ?? [])
+  return (project.milestones ?? []).map((ms) => {
     const actualExpenses = byMilestone[ms.id] ?? 0
     const targetBudget = Number(ms.target_budget) || 0
     return {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect, useRef } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -115,15 +115,17 @@ function mapExpenseRow(
 
 function buildViewFromProject(project: ProjectWithDetails): EngineerDashboardView {
   const today = new Date()
+  const expenses = project.expenses ?? []
+  const milestoneRows = project.milestones ?? []
   const currentMilestone =
-    project.milestones.find((ms) => ms.status === "in-progress") ?? null
-  const milestones = project.milestones.map((ms) => ({
+    milestoneRows.find((ms) => ms.status === "in-progress") ?? null
+  const milestones = milestoneRows.map((ms) => ({
     id: ms.id,
     name: ms.name,
     status: ms.status,
   }))
 
-  const todayExpenses = project.expenses
+  const todayExpenses = expenses
     .filter((exp) => isSameDay(parseExpenseDate(exp.expense_date), today))
     .sort(
       (a, b) =>
@@ -132,7 +134,7 @@ function buildViewFromProject(project: ProjectWithDetails): EngineerDashboardVie
     )
     .map((exp) => mapExpenseRow(exp))
 
-  const allExpenses = [...project.expenses]
+  const allExpenses = [...expenses]
     .sort(
       (a, b) =>
         parseExpenseDate(b.expense_date).getTime() -
@@ -140,7 +142,7 @@ function buildViewFromProject(project: ProjectWithDetails): EngineerDashboardVie
     )
     .map((exp) => mapExpenseRow(exp))
 
-  const pendingCount = project.expenses.filter((exp) => exp.status === "pending").length
+  const pendingCount = expenses.filter((exp) => exp.status === "pending").length
   const activeVendors = new Set(
     todayExpenses.map((exp) => exp.vendor).filter((name) => name !== "N/A"),
   ).size
@@ -165,7 +167,7 @@ function buildViewFromAllProjects(projects: ProjectWithDetails[]): EngineerDashb
   const today = new Date()
   const todayExpenses = projects
     .flatMap((project) =>
-      project.expenses
+      (project.expenses ?? [])
         .filter((exp) => isSameDay(parseExpenseDate(exp.expense_date), today))
         .map((exp) => mapExpenseRow(exp, project.name)),
     )
@@ -177,7 +179,7 @@ function buildViewFromAllProjects(projects: ProjectWithDetails[]): EngineerDashb
 
   const allExpenses = projects
     .flatMap((project) =>
-      project.expenses.map((exp) => mapExpenseRow(exp, project.name)),
+      (project.expenses ?? []).map((exp) => mapExpenseRow(exp, project.name)),
     )
     .sort(
       (a, b) =>
@@ -187,7 +189,7 @@ function buildViewFromAllProjects(projects: ProjectWithDetails[]): EngineerDashb
 
   const pendingCount = projects.reduce(
     (sum, project) =>
-      sum + project.expenses.filter((exp) => exp.status === "pending").length,
+      sum + (project.expenses ?? []).filter((exp) => exp.status === "pending").length,
     0,
   )
 
@@ -231,16 +233,28 @@ export function EngineerDashboard() {
     milestoneId: ''
   })
 
-  const hasInitializedProject = useRef(false)
+  const effectiveProjectId = useMemo(() => {
+    if (!assignedProjects.length) return SHOW_ALL_PROJECTS
+    if (assignedProjects.length === 1) return assignedProjects[0].id
+    if (selectedProjectId === SHOW_ALL_PROJECTS) return SHOW_ALL_PROJECTS
+    if (assignedProjects.some((project) => project.id === selectedProjectId)) {
+      return selectedProjectId
+    }
+    return SHOW_ALL_PROJECTS
+  }, [assignedProjects, selectedProjectId])
 
   useEffect(() => {
-    if (!assignedProjects.length || hasInitializedProject.current) return
-    hasInitializedProject.current = true
-
+    if (!assignedProjects.length) return
     if (assignedProjects.length === 1) {
       setSelectedProjectId(assignedProjects[0].id)
       return
     }
+
+    if (assignedProjects.some((project) => project.id === selectedProjectId)) {
+      return
+    }
+
+    if (selectedProjectId === SHOW_ALL_PROJECTS) return
 
     try {
       const stored = localStorage.getItem(ENGINEER_PROJECT_STORAGE_KEY)
@@ -256,22 +270,22 @@ export function EngineerDashboard() {
     }
 
     setSelectedProjectId(SHOW_ALL_PROJECTS)
-  }, [assignedProjects])
+  }, [assignedProjects, selectedProjectId])
 
   const engineerData = useMemo((): EngineerDashboardView | null => {
     if (!assignedProjects.length) return null
 
-    if (selectedProjectId === SHOW_ALL_PROJECTS) {
+    if (effectiveProjectId === SHOW_ALL_PROJECTS) {
       return buildViewFromAllProjects(assignedProjects)
     }
 
-    const project = assignedProjects.find((p) => p.id === selectedProjectId)
+    const project = assignedProjects.find((p) => p.id === effectiveProjectId)
     if (!project) {
       return buildViewFromAllProjects(assignedProjects)
     }
 
     return buildViewFromProject(project)
-  }, [assignedProjects, selectedProjectId])
+  }, [assignedProjects, effectiveProjectId])
 
   function handleProjectChange(projectId: string) {
     setSelectedProjectId(projectId)
@@ -363,7 +377,7 @@ export function EngineerDashboard() {
           title="Site Dashboard"
           description={format(new Date(), "EEEE, dd MMMM yyyy")}
         >
-          <Select value={selectedProjectId} onValueChange={handleProjectChange}>
+          <Select value={effectiveProjectId} onValueChange={handleProjectChange}>
             <SelectTrigger className="w-full sm:w-[220px] bg-secondary border-border">
               <SelectValue placeholder="Select project" />
             </SelectTrigger>

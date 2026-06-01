@@ -44,15 +44,32 @@ async function getLabourWorkersCountForDate(
   projectId: string,
   dateIso: string,
 ): Promise<number> {
+  const totals = await getLabourWorkersCountByProjectForDate(supabase, [projectId], dateIso)
+  return totals.get(projectId) ?? 0
+}
+
+async function getLabourWorkersCountByProjectForDate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectIds: string[],
+  dateIso: string,
+): Promise<Map<string, number>> {
+  const totals = new Map<string, number>()
+  if (!projectIds.length) return totals
+
   const { data, error } = await supabase
     .from('labour_entries')
-    .select('count')
-    .eq('project_id', projectId)
+    .select('project_id, count')
+    .in('project_id', projectIds)
     .eq('entry_date', dateIso)
 
-  if (error || !data?.length) return 0
+  if (error) return totals
 
-  return data.reduce((sum, row) => sum + Number(row.count), 0)
+  for (const row of data ?? []) {
+    const projectId = row.project_id as string
+    totals.set(projectId, (totals.get(projectId) ?? 0) + Number(row.count))
+  }
+
+  return totals
 }
 
 function shouldRetryWithBasicSelect(error: { code?: string; message?: string }): boolean {
@@ -108,18 +125,21 @@ export async function listProjectsForApi(options?: { includeArchived?: boolean }
     return { data: null, error: getSupabaseErrorMessage(error) }
   }
 
+  const rows = data ?? []
   const todayIso = new Date().toISOString().slice(0, 10)
-  const enriched = await Promise.all(
-    (data ?? []).map(async (project) => {
-      const base = enrichProjectWithMilestoneMetrics(project as ProjectWithDetails)
-      const labour_workers_today = await getLabourWorkersCountForDate(
-        supabase,
-        project.id,
-        todayIso,
-      )
-      return { ...base, labour_workers_today }
-    }),
+  const labourByProject = await getLabourWorkersCountByProjectForDate(
+    supabase,
+    rows.map((project) => project.id as string),
+    todayIso,
   )
+
+  const enriched = rows.map((project) => {
+    const base = enrichProjectWithMilestoneMetrics(project as ProjectWithDetails)
+    return {
+      ...base,
+      labour_workers_today: labourByProject.get(project.id as string) ?? 0,
+    }
+  })
 
   return { data: enriched, error: null }
 }
