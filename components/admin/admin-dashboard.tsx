@@ -18,16 +18,18 @@ import {
 } from "@/components/ui/select"
 import {
   Briefcase,
-  TrendingUp,
-  TrendingDown,
   AlertTriangle,
-  AlertCircle,
-  Building2,
   Users,
   Calendar,
-  ArrowUpRight,
-  ArrowDownRight,
+  Wallet,
+  Target,
+  Layers,
 } from "lucide-react"
+import {
+  DashboardSection,
+  HealthBadge,
+  MetricTile,
+} from "@/components/dashboard/financial-layers"
 import Link from "next/link"
 import { Plus } from "lucide-react"
 import {
@@ -147,7 +149,7 @@ export function AdminDashboard() {
       <PageMain>
         <PageHeader
           title="Admin Dashboard"
-          description="Company-wide financial overview and project management"
+          description="Portfolio view across plan, stage results, and cash — separate layers, no blended profit"
         >
             <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
               <SelectTrigger className="w-full sm:w-[200px] bg-secondary border-border">
@@ -196,141 +198,298 @@ export function AdminDashboard() {
           </div>
         )}
 
+        {!isLoading && displayCompany && (
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <Briefcase className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">Portfolio snapshot</p>
+                  <p className="text-xs text-muted-foreground">
+                    {displayCompany.totalProjects} projects · {scopeLabel}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline" className="text-success border-success/30">
+                  {displayCompany.activeProjects} active
+                </Badge>
+                <Badge variant="outline" className="text-muted-foreground">
+                  {displayCompany.completedProjects} completed
+                </Badge>
+              </div>
+            </div>
+
+            <DashboardSection
+              layer="plan"
+              title="Contract & planned margin"
+              description="Reserved profit at setup — portfolio contract value and target margin."
+            >
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <MetricTile
+                  label="Total contract value"
+                  value={formatINR(displayCompany.totalContractValue)}
+                  hint={`Weighted margin target ${displayCompany.weightedMarginPercent}%`}
+                />
+                <MetricTile
+                  label="Fixed profit (reserved)"
+                  value={formatINR(displayCompany.totalPlannedProfit)}
+                  hint="Sum of per-project planned margin"
+                  valueClassName="text-success"
+                />
+                <MetricTile
+                  label="Balance to collect"
+                  value={formatINR(displayCompany.totalBalanceToCollect)}
+                  hint="Contract value not yet received from clients"
+                  valueClassName="text-primary"
+                />
+              </div>
+            </DashboardSection>
+
+            <DashboardSection
+              layer="cash"
+              title="Portfolio cash"
+              description="Received minus spent — operational liquidity, not project profit."
+            >
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricTile
+                  label="Received from clients"
+                  value={formatINR(displayCompany.totalReceived)}
+                  hint={`${displayCompany.portfolioReceivedPercent}% of contract collected`}
+                  valueClassName="text-success"
+                />
+                <MetricTile
+                  label="Spent (approved)"
+                  value={formatINR(displayCompany.totalSpent)}
+                  hint="Approved expenses across portfolio"
+                />
+                <MetricTile
+                  label="Portfolio cash balance"
+                  value={formatINR(displayCompany.portfolioCashBalance)}
+                  hint="Received − spent"
+                  valueClassName={
+                    displayCompany.portfolioCashBalance >= 0
+                      ? "text-success"
+                      : "text-destructive"
+                  }
+                />
+                <MetricTile
+                  label="Pending payables"
+                  value={formatINR(displayCompany.totalPayables)}
+                  hint="Vendor bills due"
+                  valueClassName="text-destructive"
+                />
+              </div>
+            </DashboardSection>
+
+            <DashboardSection
+              layer="stage"
+              title="Stage results (portfolio)"
+              description="Profit or loss from completed stages only — real operational outcomes."
+            >
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <MetricTile
+                  label="Completed stages P/L"
+                  value={
+                    <>
+                      {displayCompany.totalCompletedStageProfitLoss >= 0 ? "+" : ""}
+                      {formatINR(displayCompany.totalCompletedStageProfitLoss)}
+                    </>
+                  }
+                  hint="Sum across all projects"
+                  valueClassName={
+                    displayCompany.totalCompletedStageProfitLoss >= 0
+                      ? "text-success"
+                      : "text-destructive"
+                  }
+                />
+                <MetricTile
+                  label="Projects with stage loss"
+                  value={displayCompany.stageLossProjects}
+                  hint="At least one completed stage over budget"
+                  valueClassName={
+                    displayCompany.stageLossProjects > 0 ? "text-destructive" : undefined
+                  }
+                />
+                <MetricTile
+                  label="Over stage budget"
+                  value={displayCompany.overbudgetProjects}
+                  hint="Spend exceeds planned construction pot"
+                  valueClassName={
+                    displayCompany.overbudgetProjects > 0 ? "text-destructive" : undefined
+                  }
+                />
+              </div>
+            </DashboardSection>
+          </section>
+        )}
+
+        {isLoading && (
+          <section className="space-y-6">
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+          </section>
+        )}
+
         {showAllProjects && !isLoading && projects.length > 0 && (
           <section>
-            <Card className="section-card">
+            <Card className="section-card border-border">
               <CardHeader>
-                <CardTitle>Profit &amp; Loss by Project</CardTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle>Projects</CardTitle>
+                  <Layers className="h-4 w-4 text-muted-foreground" />
+                </div>
                 <CardDescription>
-                  Realized profit (collected − spent) and forecast profit (contract − projected cost at completion)
+                  Plan, cash, and completed-stage results per project — open a row for full detail.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0 sm:p-6 sm:pt-0">
-                <ScrollTable className="table-scroll-hint px-4 pb-4 sm:px-6 sm:pb-6" minWidth="min-w-[56rem]">
-                <TooltipProvider delayDuration={200}>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Project</TableHead>
-                      <TableHead className="text-right">Contract</TableHead>
-                      <TableHead className="text-right">Spent</TableHead>
-                      <TableHead className="text-right">Received</TableHead>
-                      <TableHead className="text-right">Progress</TableHead>
-                      <TableHead className="text-right">Realized</TableHead>
-                      <TableHead className="text-right">Forecast</TableHead>
-                      <TableHead>PM</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {projects.map((project, index) => (
-                      <TableRow key={project.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2.5 min-w-[12rem]">
-                            <ProjectMilestoneLink
-                              projectId={project.id}
-                              hasStageLoss={project.has_stage_loss}
-                            />
-                            <Link
-                              href={`/projects/${project.id}`}
-                              className="truncate text-foreground hover:text-primary hover:underline underline-offset-4"
+                <ScrollTable
+                  className="table-scroll-hint px-4 pb-4 sm:px-6 sm:pb-6"
+                  minWidth="min-w-[64rem]"
+                >
+                  <TooltipProvider delayDuration={200}>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Project</TableHead>
+                          <TableHead className="text-right">Contract</TableHead>
+                          <TableHead className="text-right">Received</TableHead>
+                          <TableHead className="text-right">Spent</TableHead>
+                          <TableHead className="text-right">Cash balance</TableHead>
+                          <TableHead className="text-right">Stage P/L</TableHead>
+                          <TableHead>Health</TableHead>
+                          <TableHead>PM</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {projects.map((project, index) => (
+                          <TableRow key={project.id}>
+                            <TableCell className="font-medium">
+                              <div className="flex min-w-[12rem] items-center gap-2.5">
+                                <ProjectMilestoneLink
+                                  projectId={project.id}
+                                  hasStageLoss={project.has_stage_loss}
+                                />
+                                <Link
+                                  href={`/projects/${project.id}`}
+                                  className="truncate text-foreground underline-offset-4 hover:text-primary hover:underline"
+                                >
+                                  {project.name || `Project ${index + 1}`}
+                                </Link>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatINR(project.contract_value)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              <span className="text-success">
+                                {formatINR(project.total_received)}
+                              </span>
+                              <span className="block text-[10px] text-muted-foreground">
+                                {project.received_percent}%
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums text-destructive">
+                              {formatINR(project.total_expenses)}
+                              <span className="block text-[10px] text-muted-foreground">
+                                {project.budget_usage_percent}% of stage budget
+                              </span>
+                            </TableCell>
+                            <TableCell
+                              className={cn(
+                                "text-right font-medium tabular-nums",
+                                project.cash_balance >= 0
+                                  ? "text-success"
+                                  : "text-destructive",
+                              )}
                             >
-                              {project.name || `Project ${index + 1}`}
-                            </Link>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatINR(project.contract_value)}
-                        </TableCell>
-                        <TableCell className="text-right text-destructive">
-                          {formatINR(project.total_expenses)}
-                        </TableCell>
-                        <TableCell className="text-right text-green-500">
-                          {formatINR(project.total_received)}
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {project.progress}%
-                        </TableCell>
-                        <TableCell
-                          className={cn(
-                            "text-right font-medium",
-                            project.realized_profit >= 0 ? "text-green-500" : "text-destructive",
-                          )}
-                        >
-                          {project.realized_profit >= 0 ? "+" : ""}
-                          {formatINR(project.realized_profit)}
-                        </TableCell>
-                        <TableCell
-                          className={cn(
-                            "text-right font-semibold",
-                            project.forecast_profit >= 0 ? "text-green-500" : "text-destructive",
-                          )}
-                        >
-                          {project.forecast_profit >= 0 ? "+" : ""}
-                          {formatINR(project.forecast_profit)}
-                          <span className="block text-[10px] font-normal text-muted-foreground">
-                            {project.forecast_margin_percent}% margin
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {project.pm_label}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="capitalize">
-                            {project.status.replace("-", " ")}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    <TableRow className="bg-muted/40 font-semibold">
-                      <TableCell>Total</TableCell>
-                      <TableCell className="text-right">
-                        {formatINR(
-                          projects.reduce((sum, p) => sum + p.contract_value, 0),
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right text-destructive">
-                        {formatINR(
-                          projects.reduce((sum, p) => sum + p.total_expenses, 0),
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right text-green-500">
-                        {formatINR(
-                          projects.reduce((sum, p) => sum + p.total_received, 0),
-                        )}
-                      </TableCell>
-                      <TableCell />
-                      <TableCell
-                        className={cn(
-                          "text-right",
-                          projects.reduce((sum, p) => sum + p.realized_profit, 0) >= 0
-                            ? "text-green-500"
-                            : "text-destructive",
-                        )}
-                      >
-                        {(() => {
-                          const total = projects.reduce((sum, p) => sum + p.realized_profit, 0)
-                          return `${total >= 0 ? "+" : ""}${formatINR(total)}`
-                        })()}
-                      </TableCell>
-                      <TableCell
-                        className={cn(
-                          "text-right",
-                          projects.reduce((sum, p) => sum + p.forecast_profit, 0) >= 0
-                            ? "text-green-500"
-                            : "text-destructive",
-                        )}
-                      >
-                        {(() => {
-                          const total = projects.reduce((sum, p) => sum + p.forecast_profit, 0)
-                          return `${total >= 0 ? "+" : ""}${formatINR(total)}`
-                        })()}
-                      </TableCell>
-                      <TableCell colSpan={2} />
-                    </TableRow>
-                  </TableBody>
-                </Table>
-                </TooltipProvider>
+                              {project.cash_balance >= 0 ? "+" : ""}
+                              {formatINR(project.cash_balance)}
+                            </TableCell>
+                            <TableCell
+                              className={cn(
+                                "text-right font-medium tabular-nums",
+                                project.completed_stage_profit_loss >= 0
+                                  ? "text-success"
+                                  : "text-destructive",
+                              )}
+                            >
+                              {project.completed_stage_profit_loss >= 0 ? "+" : ""}
+                              {formatINR(project.completed_stage_profit_loss)}
+                            </TableCell>
+                            <TableCell>
+                              <HealthBadge health={project.health} />
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {project.pm_label}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="capitalize">
+                                {project.status.replace("-", " ")}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow className="bg-muted/40 font-semibold">
+                          <TableCell>Portfolio total</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatINR(
+                              projects.reduce((sum, p) => sum + p.contract_value, 0),
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-success">
+                            {formatINR(
+                              projects.reduce((sum, p) => sum + p.total_received, 0),
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-destructive">
+                            {formatINR(
+                              projects.reduce((sum, p) => sum + p.total_expenses, 0),
+                            )}
+                          </TableCell>
+                          <TableCell
+                            className={cn(
+                              "text-right tabular-nums",
+                              projects.reduce((sum, p) => sum + p.cash_balance, 0) >= 0
+                                ? "text-success"
+                                : "text-destructive",
+                            )}
+                          >
+                            {(() => {
+                              const total = projects.reduce(
+                                (sum, p) => sum + p.cash_balance,
+                                0,
+                              )
+                              return `${total >= 0 ? "+" : ""}${formatINR(total)}`
+                            })()}
+                          </TableCell>
+                          <TableCell
+                            className={cn(
+                              "text-right tabular-nums",
+                              projects.reduce(
+                                (sum, p) => sum + p.completed_stage_profit_loss,
+                                0,
+                              ) >= 0
+                                ? "text-success"
+                                : "text-destructive",
+                            )}
+                          >
+                            {(() => {
+                              const total = projects.reduce(
+                                (sum, p) => sum + p.completed_stage_profit_loss,
+                                0,
+                              )
+                              return `${total >= 0 ? "+" : ""}${formatINR(total)}`
+                            })()}
+                          </TableCell>
+                          <TableCell colSpan={3} />
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TooltipProvider>
                 </ScrollTable>
               </CardContent>
             </Card>
@@ -338,205 +497,9 @@ export function AdminDashboard() {
         )}
 
         <section>
-          <div className={STATS_GRID_CLASS}>
-            {isLoading || !displayCompany ? (
-              <>
-                <StatCardSkeleton />
-                <StatCardSkeleton />
-                <StatCardSkeleton />
-                <StatCardSkeleton />
-              </>
-            ) : (
-              <>
-                <Card className="card-metric bg-card border-border">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total Projects
-                    </CardTitle>
-                    <Briefcase className="h-4 w-4 text-primary" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-semibold tabular-nums tracking-tight">{displayCompany.totalProjects}</div>
-                    <div className="flex items-center gap-2 mt-2 text-xs">
-                      <Badge variant="outline" className="text-green-500 border-green-500/30">
-                        {displayCompany.activeProjects} Active
-                      </Badge>
-                      <Badge variant="outline" className="text-muted-foreground">
-                        {displayCompany.completedProjects} Completed
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="card-metric bg-card border-border">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total Contract Value
-                    </CardTitle>
-                    <Building2 className="h-4 w-4 text-primary" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-semibold tabular-nums tracking-tight">
-                      {formatINR(displayCompany.totalContractValue)}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Across {scopeLabel}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card
-                  className={cn(
-                    "border-2",
-                    displayCompany.realizedProfit >= 0
-                      ? "bg-green-500/5 border-green-500/30"
-                      : "bg-destructive/5 border-destructive/30",
-                  )}
-                >
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Realized Profit
-                    </CardTitle>
-                    {displayCompany.realizedProfit >= 0 ? (
-                      <TrendingUp className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <TrendingDown className="h-4 w-4 text-destructive" />
-                    )}
-                  </CardHeader>
-                  <CardContent>
-                    <div
-                      className={cn(
-                        "text-2xl font-semibold tabular-nums tracking-tight",
-                        displayCompany.realizedProfit >= 0 ? "text-green-500" : "text-destructive",
-                      )}
-                    >
-                      {displayCompany.realizedProfit >= 0 ? "+" : ""}
-                      {formatINR(displayCompany.realizedProfit)}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Collected − spent so far (cash position)
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="card-metric bg-card border-border">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Forecast Profit
-                    </CardTitle>
-                    {displayCompany.forecastProfit >= displayCompany.expectedProfit ? (
-                      <TrendingUp className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <TrendingDown className="h-4 w-4 text-yellow-500" />
-                    )}
-                  </CardHeader>
-                  <CardContent>
-                    <div
-                      className={cn(
-                        "text-2xl font-semibold tabular-nums tracking-tight",
-                        displayCompany.forecastProfit >= 0 ? "text-green-500" : "text-destructive",
-                      )}
-                    >
-                      {displayCompany.forecastProfit >= 0 ? "+" : ""}
-                      {formatINR(displayCompany.forecastProfit)}
-                    </div>
-                    <div className="flex flex-col gap-0.5 mt-2 text-xs text-muted-foreground">
-                      <span>
-                        Forecast margin{" "}
-                        <span className="font-medium text-foreground">
-                          {displayCompany.forecastMarginPercent}%
-                        </span>
-                      </span>
-                      <span>
-                        Target at plan: {formatINR(displayCompany.expectedProfit)} (
-                        {displayCompany.weightedMarginPercent}%)
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-lg font-semibold tracking-tight text-foreground mb-4">
-            {showAllProjects ? "Company Cashflow" : "Project Cashflow"}
+          <h2 className="mb-4 text-lg font-semibold tracking-tight text-foreground">
+            Risk &amp; operations
           </h2>
-          <div className={STATS_GRID_3_CLASS}>
-            {isLoading || !displayCompany ? (
-              <>
-                <StatCardSkeleton />
-                <StatCardSkeleton />
-                <StatCardSkeleton />
-              </>
-            ) : (
-              <>
-                <Card
-                  className={cn(
-                    "border-2",
-                    displayCompany.currentCashflow >= 0
-                      ? "bg-green-500/5 border-green-500/30"
-                      : "bg-destructive/5 border-destructive/30"
-                  )}
-                >
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Current Cashflow
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div
-                      className={cn(
-                        "text-2xl font-semibold tabular-nums tracking-tight",
-                        displayCompany.currentCashflow >= 0
-                          ? "text-green-500"
-                          : "text-destructive",
-                      )}
-                    >
-                      {displayCompany.currentCashflow >= 0 ? "+" : ""}
-                      {formatINR(displayCompany.currentCashflow)}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Net cash position across {scopeLabel}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="card-metric bg-card border-border">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Pending Receivables
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-semibold tabular-nums tracking-tight text-green-500">
-                      {formatINR(displayCompany.totalReceivables)}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">Client payments due</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="card-metric bg-card border-border">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Pending Payables
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-semibold tabular-nums tracking-tight text-destructive">
-                      {formatINR(displayCompany.totalPayables)}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">Vendor payments due</p>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-lg font-semibold tracking-tight text-foreground mb-4">Risk Alerts</h2>
           <div className={STATS_GRID_3_CLASS}>
             {isLoading || !displayCompany ? (
               <>
@@ -549,39 +512,86 @@ export function AdminDashboard() {
                 <Card
                   className={cn(
                     "card-metric",
-                    displayCompany.overbudgetProjects > 0
-                      ? "bg-destructive/5 border-destructive/30"
-                      : "bg-card border-border",
+                    displayCompany.cashRiskProjects > 0
+                      ? "border-destructive/30 bg-destructive/5"
+                      : "border-border bg-card",
                   )}
                 >
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-4">
                       <div
                         className={cn(
-                          "p-3 rounded-lg",
-                          displayCompany.overbudgetProjects > 0 ? "bg-destructive/20" : "bg-muted"
+                          "rounded-lg p-3",
+                          displayCompany.cashRiskProjects > 0
+                            ? "bg-destructive/20"
+                            : "bg-muted",
                         )}
                       >
-                        <AlertCircle
+                        <Wallet
                           className={cn(
                             "h-6 w-6",
-                            displayCompany.overbudgetProjects > 0
+                            displayCompany.cashRiskProjects > 0
                               ? "text-destructive"
-                              : "text-muted-foreground"
+                              : "text-muted-foreground",
                           )}
                         />
                       </div>
                       <div>
                         <p
                           className={cn(
-                            "text-2xl font-bold",
-                            displayCompany.overbudgetProjects > 0 ? "text-destructive" : ""
+                            "text-2xl font-bold tabular-nums",
+                            displayCompany.cashRiskProjects > 0 && "text-destructive",
                           )}
                         >
-                          {displayCompany.overbudgetProjects}
+                          {displayCompany.cashRiskProjects}
                         </p>
-                        <p className="text-sm text-muted-foreground">
-                          {showAllProjects ? "Over Budget Projects" : "Over Budget"}
+                        <p className="text-sm text-muted-foreground">Cash risk projects</p>
+                        <p className="text-xs text-muted-foreground">Spent exceeds received</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card
+                  className={cn(
+                    "card-metric",
+                    displayCompany.collectionRiskProjects > 0
+                      ? "border-yellow-500/30 bg-yellow-500/5"
+                      : "border-border bg-card",
+                  )}
+                >
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={cn(
+                          "rounded-lg p-3",
+                          displayCompany.collectionRiskProjects > 0
+                            ? "bg-yellow-500/20"
+                            : "bg-muted",
+                        )}
+                      >
+                        <Target
+                          className={cn(
+                            "h-6 w-6",
+                            displayCompany.collectionRiskProjects > 0
+                              ? "text-yellow-600 dark:text-yellow-400"
+                              : "text-muted-foreground",
+                          )}
+                        />
+                      </div>
+                      <div>
+                        <p
+                          className={cn(
+                            "text-2xl font-bold tabular-nums",
+                            displayCompany.collectionRiskProjects > 0 &&
+                              "text-yellow-600 dark:text-yellow-400",
+                          )}
+                        >
+                          {displayCompany.collectionRiskProjects}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Collection gap</p>
+                        <p className="text-xs text-muted-foreground">
+                          Low collection vs spend pace
                         </p>
                       </div>
                     </div>
@@ -591,58 +601,69 @@ export function AdminDashboard() {
                 <Card
                   className={
                     displayCompany.cashflowWarnings > 0
-                      ? "bg-yellow-500/5 border-yellow-500/30"
-                      : "bg-card border-border"
+                      ? "border-yellow-500/30 bg-yellow-500/5"
+                      : "border-border bg-card"
                   }
                 >
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-4">
                       <div
                         className={cn(
-                          "p-3 rounded-lg",
-                          displayCompany.cashflowWarnings > 0 ? "bg-yellow-500/20" : "bg-muted"
+                          "rounded-lg p-3",
+                          displayCompany.cashflowWarnings > 0
+                            ? "bg-yellow-500/20"
+                            : "bg-muted",
                         )}
                       >
                         <AlertTriangle
                           className={cn(
                             "h-6 w-6",
                             displayCompany.cashflowWarnings > 0
-                              ? "text-yellow-500"
-                              : "text-muted-foreground"
+                              ? "text-yellow-600 dark:text-yellow-400"
+                              : "text-muted-foreground",
                           )}
                         />
                       </div>
                       <div>
                         <p
                           className={cn(
-                            "text-2xl font-bold",
-                            displayCompany.cashflowWarnings > 0 ? "text-yellow-500" : ""
+                            "text-2xl font-bold tabular-nums",
+                            displayCompany.cashflowWarnings > 0 &&
+                              "text-yellow-600 dark:text-yellow-400",
                           )}
                         >
                           {displayCompany.cashflowWarnings}
                         </p>
-                        <p className="text-sm text-muted-foreground">Cashflow Warnings</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="card-metric bg-card border-border">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 rounded-lg bg-muted">
-                        <Users className="h-6 w-6 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">
-                          {displayCompany.totalPMs} / {displayCompany.totalEngineers}
-                        </p>
-                        <p className="text-sm text-muted-foreground">PMs / Engineers</p>
+                        <p className="text-sm text-muted-foreground">Overdue vendor bills</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               </>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <div className={STATS_GRID_CLASS}>
+            {isLoading || !displayCompany ? (
+              <MetricSkeleton />
+            ) : (
+              <Card className="card-metric border-border bg-card">
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-4">
+                    <div className="rounded-lg bg-muted p-3">
+                      <Users className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold tabular-nums">
+                        {displayCompany.totalPMs} / {displayCompany.totalEngineers}
+                      </p>
+                      <p className="text-sm text-muted-foreground">PMs / site engineers</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </div>
         </section>

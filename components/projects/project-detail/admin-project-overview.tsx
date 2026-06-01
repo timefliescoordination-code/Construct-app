@@ -3,8 +3,6 @@
 import { useMemo } from "react"
 import { format, formatDistanceToNow } from "date-fns"
 import {
-  TrendingUp,
-  TrendingDown,
   CheckCircle2,
   Clock,
   AlertCircle,
@@ -26,15 +24,13 @@ import {
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { formatINR } from "@/lib/currency"
+import { calculateCompletionPercent, type MilestoneData } from "@/lib/financial-calculations"
+import { summarizeProjectFinancialLayers } from "@/lib/dashboard-financials"
 import {
-  calculateTotalContractValue,
-  calculateExpectedProfit,
-  calculateStageBudget,
-  calculateRemainingBudget,
-  calculateCompletionPercent,
-  calculateCurrentProfit,
-  type MilestoneData,
-} from "@/lib/financial-calculations"
+  DashboardSection,
+  HealthBadge,
+  MetricTile,
+} from "@/components/dashboard/financial-layers"
 
 interface Milestone {
   id?: string
@@ -81,24 +77,15 @@ interface AdminProjectOverviewProps {
   }
 }
 
-function profitPercent(value: number, contractValue: number) {
-  if (contractValue <= 0) return 0
-  return Math.round((value / contractValue) * 1000) / 10
-}
-
 function getStageStatusBadge(status?: string, completionPercent?: number) {
   if (status === "completed" || completionPercent === 100) {
     return (
-      <Badge className="bg-green-500/20 text-green-500 border-green-500/30 text-xs">
-        Completed
-      </Badge>
+      <Badge className="bg-success/15 text-success border-success/30 text-xs">Completed</Badge>
     )
   }
   if (status === "in-progress" || (completionPercent && completionPercent > 0)) {
     return (
-      <Badge className="bg-blue-500/20 text-blue-500 border-blue-500/30 text-xs">
-        In Progress
-      </Badge>
+      <Badge className="bg-primary/15 text-primary border-primary/30 text-xs">In Progress</Badge>
     )
   }
   return (
@@ -109,24 +96,6 @@ function getStageStatusBadge(status?: string, completionPercent?: number) {
 }
 
 export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps) {
-  const totalContractValue = calculateTotalContractValue(
-    projectData.originalContractValue,
-    projectData.additionalWorksApproved,
-  )
-  const expectedProfitAmount = calculateExpectedProfit(
-    totalContractValue,
-    projectData.expectedProfitPercent,
-  )
-  const totalStageBudget = calculateStageBudget(totalContractValue, expectedProfitAmount)
-  const remainingStageBudget = calculateRemainingBudget(totalStageBudget, projectData.totalExpenses)
-  const balanceToCollect = totalContractValue - projectData.totalClientPaymentsReceived
-  const actualProfitTillDate = calculateCurrentProfit(
-    projectData.totalClientPaymentsReceived,
-    projectData.totalExpenses,
-  )
-  const totalProfitCombined = expectedProfitAmount + Math.max(0, actualProfitTillDate)
-  const profitOnTrack = actualProfitTillDate >= 0 && remainingStageBudget >= 0
-
   const milestonesForCalc: MilestoneData[] = projectData.milestones.map((ms) => ({
     name: ms.name,
     expectedCostPercent: ms.expectedCostPercent,
@@ -142,6 +111,15 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
           : "pending"),
   }))
 
+  const financials = summarizeProjectFinancialLayers({
+    contractValue: projectData.originalContractValue,
+    additionalWorksApproved: projectData.additionalWorksApproved,
+    expectedMarginPercent: projectData.expectedProfitPercent,
+    totalExpenses: projectData.totalExpenses,
+    totalReceived: projectData.totalClientPaymentsReceived,
+    milestones: milestonesForCalc,
+  })
+
   const completionPercent = calculateCompletionPercent(milestonesForCalc)
 
   const stageRows = useMemo(() => {
@@ -149,26 +127,18 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
       const isCompleted =
         stage.status === "completed" || stage.actualCompletionPercent === 100
       const profitLoss = isCompleted ? stage.targetBudget - stage.actualExpenses : null
-
-      return {
-        ...stage,
-        profitLoss,
-        isCompleted,
-      }
+      return { ...stage, profitLoss, isCompleted }
     })
   }, [projectData.milestones])
-
-  const totalStageProfit = stageRows.reduce(
-    (sum, row) => sum + (row.profitLoss ?? 0),
-    0,
-  )
 
   const currentStage =
     projectData.milestones.find((ms) => ms.status === "in-progress") ??
     projectData.milestones.find(
       (ms) => ms.actualCompletionPercent > 0 && ms.actualCompletionPercent < 100,
     ) ??
-    projectData.milestones.find((ms) => ms.status !== "completed" && ms.actualCompletionPercent < 100)
+    projectData.milestones.find(
+      (ms) => ms.status !== "completed" && ms.actualCompletionPercent < 100,
+    )
 
   const currentStageIndex = currentStage
     ? projectData.milestones.findIndex((ms) => ms.name === currentStage.name)
@@ -177,10 +147,20 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
   const upcomingAlerts: AlertItem[] = useMemo(() => {
     const alerts: AlertItem[] = []
 
+    if (financials.cashBalance < 0) {
+      alerts.push({
+        id: "cash-negative",
+        title: "Cash balance negative",
+        subtitle: "Spent more than received from client",
+        dueLabel: "Review collections and spend",
+        tone: "danger",
+      })
+    }
+
     projectData.delayedClientPayments.slice(0, 2).forEach((payment, index) => {
       alerts.push({
         id: `client-${index}`,
-        title: "Next Payment Due",
+        title: "Payment due",
         subtitle: payment.milestone,
         amount: payment.amount,
         dueLabel:
@@ -194,198 +174,171 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
     if (projectData.pendingApprovals.length > 0) {
       alerts.push({
         id: "pm-approval",
-        title: "PM Approval Pending",
-        subtitle: `${projectData.pendingApprovals.length} expense(s) waiting`,
+        title: "Expense approval pending",
+        subtitle: `${projectData.pendingApprovals.length} item(s) waiting`,
         dueLabel: "Action required",
         tone: "warning",
       })
     }
 
-    const nextStage = projectData.milestones.find(
-      (ms) => ms.status === "pending" && ms.actualCompletionPercent === 0,
-    )
-    if (nextStage) {
+    if (financials.remainingStageBudget < 0) {
       alerts.push({
-        id: "next-milestone",
-        title: "Next Milestone",
-        subtitle: nextStage.name,
-        dueLabel: "Upcoming",
-        tone: "info",
+        id: "over-budget",
+        title: "Over stage budget",
+        subtitle: "Approved spend exceeds planned construction pot",
+        dueLabel: "Review expenses",
+        tone: "danger",
       })
     }
 
-    return alerts.slice(0, 3)
-  }, [projectData.delayedClientPayments, projectData.pendingApprovals, projectData.milestones])
+    return alerts.slice(0, 4)
+  }, [projectData, financials.cashBalance, financials.remainingStageBudget])
 
   return (
     <div className="space-y-6">
-      <Card className="dashboard-card border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Project Profit Overview</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Expected Profit
-              </p>
-              <p className="mt-2 text-2xl font-bold text-success">
-                {formatINR(expectedProfitAmount)}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {profitPercent(expectedProfitAmount, totalContractValue)}% of contract value
-              </p>
-            </div>
-            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Actual Profit (Till Date)
-              </p>
-              <p
-                className={cn(
-                  "mt-2 text-2xl font-bold",
-                  actualProfitTillDate >= 0 ? "text-success" : "text-destructive",
-                )}
-              >
-                {formatINR(actualProfitTillDate)}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {profitPercent(actualProfitTillDate, totalContractValue)}% of contract value
-              </p>
-              <p className="mt-1 text-[10px] text-muted-foreground">
-                Received − spent (cash position)
-              </p>
-            </div>
-            <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Total Profit (Expected + Actual)
-              </p>
-              <p className="mt-2 text-2xl font-bold text-success">
-                {formatINR(totalProfitCombined)}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {profitPercent(totalProfitCombined, totalContractValue)}% of contract value
-              </p>
-            </div>
-            <div
-              className={cn(
-                "rounded-xl border p-4",
-                profitOnTrack
-                  ? "border-success/30 bg-success/10"
-                  : "border-destructive/30 bg-destructive/10",
-              )}
-            >
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Profit Status
-              </p>
-              <div className="mt-2 flex items-center gap-2">
-                {profitOnTrack ? (
-                  <TrendingUp className="h-5 w-5 text-success" />
-                ) : (
-                  <TrendingDown className="h-5 w-5 text-destructive" />
-                )}
-                <p
-                  className={cn(
-                    "text-xl font-bold",
-                    profitOnTrack ? "text-success" : "text-destructive",
-                  )}
-                >
-                  {profitOnTrack ? "On Track" : "At Risk"}
-                </p>
-              </div>
-            </div>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+        <div>
+          <p className="text-sm font-medium text-foreground">Project financial health</p>
+          <p className="text-xs text-muted-foreground">
+            Plan, stage results, and cash are shown separately
+          </p>
+        </div>
+        <HealthBadge health={financials.health} />
+      </div>
 
-          <div className="grid gap-3 rounded-xl border border-border bg-muted/10 p-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div>
-              <p className="text-xs text-muted-foreground">Contract Value</p>
-              <p className="text-lg font-semibold">{formatINR(totalContractValue)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Cost (Till Date)</p>
-              <p className="text-lg font-semibold">{formatINR(projectData.totalExpenses)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Balance to Spend</p>
-              <p
-                className={cn(
-                  "text-lg font-semibold",
-                  remainingStageBudget >= 0 ? "text-foreground" : "text-destructive",
-                )}
-              >
-                {formatINR(remainingStageBudget)}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Balance to Collect</p>
-              <p className="text-lg font-semibold text-primary">{formatINR(balanceToCollect)}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <DashboardSection
+        layer="plan"
+        title="Contract & fixed profit (plan)"
+        description="Target margin is reserved at setup — not cash in hand until the job completes successfully."
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricTile
+            label="Total contract value"
+            value={formatINR(financials.totalContractValue)}
+            hint="Original contract + approved additional works"
+          />
+          <MetricTile
+            label="Fixed profit (reserved)"
+            value={formatINR(financials.plannedProfit)}
+            hint={`${projectData.expectedProfitPercent}% of contract — do not spend`}
+            valueClassName="text-success"
+          />
+          <MetricTile
+            label="Total stage budget"
+            value={formatINR(financials.totalStageBudget)}
+            hint="Maximum planned spend on construction"
+            valueClassName="text-primary"
+          />
+          <MetricTile
+            label="Remaining stage budget"
+            value={formatINR(financials.remainingStageBudget)}
+            hint={`${financials.budgetUsagePercent}% of stage budget used`}
+            valueClassName={
+              financials.remainingStageBudget >= 0 ? "text-foreground" : "text-destructive"
+            }
+          />
+        </div>
+      </DashboardSection>
+
+      <DashboardSection
+        layer="cash"
+        title="Cash position"
+        description="Based on payments actually received from the client — use this for day-to-day spending decisions."
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricTile
+            label="Received from client"
+            value={formatINR(projectData.totalClientPaymentsReceived)}
+            hint={`${financials.receivedPercent}% of contract collected`}
+            valueClassName="text-success"
+          />
+          <MetricTile
+            label="Spent (approved)"
+            value={formatINR(projectData.totalExpenses)}
+            hint="Approved site expenses to date"
+          />
+          <MetricTile
+            label="Cash balance"
+            value={formatINR(financials.cashBalance)}
+            hint="Received − spent (not project profit)"
+            valueClassName={
+              financials.cashBalance >= 0 ? "text-success" : "text-destructive"
+            }
+          />
+          <MetricTile
+            label="Balance to collect"
+            value={formatINR(financials.balanceToCollect)}
+            hint="Contract value still due from client"
+            valueClassName="text-primary"
+          />
+        </div>
+      </DashboardSection>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <Card className="dashboard-card border-border lg:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Stage Summary</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Profit or loss shown only for completed stages
-            </p>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="overflow-x-auto rounded-md border border-border text-sm">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="h-9">Stage</TableHead>
-                    <TableHead className="h-9 text-right">Profit / Loss</TableHead>
-                    <TableHead className="h-9 text-center">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stageRows.map((row) => (
-                    <TableRow key={row.name}>
-                      <TableCell className="py-2 font-medium">{row.name}</TableCell>
-                      <TableCell
-                        className={cn(
-                          "py-2 text-right font-medium",
-                          row.profitLoss === null
-                            ? "text-muted-foreground"
-                            : row.profitLoss >= 0
-                              ? "text-success"
-                              : "text-destructive",
-                        )}
-                      >
-                        {row.profitLoss !== null
-                          ? `${row.profitLoss >= 0 ? "+" : ""}${formatINR(row.profitLoss)}`
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="py-2 text-center">
-                        {getStageStatusBadge(row.status, row.actualCompletionPercent)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow className="bg-muted/30 font-semibold">
-                    <TableCell className="py-2">Total</TableCell>
+        <DashboardSection
+          layer="stage"
+          title="Stage summary"
+          description="Profit or loss only for completed stages — real result per phase."
+          className="lg:col-span-2"
+        >
+          <div className="overflow-x-auto rounded-md border border-border text-sm">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-9">Stage</TableHead>
+                  <TableHead className="h-9 text-right">Profit / Loss</TableHead>
+                  <TableHead className="h-9 text-center">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stageRows.map((row) => (
+                  <TableRow key={row.name}>
+                    <TableCell className="py-2 font-medium">{row.name}</TableCell>
                     <TableCell
                       className={cn(
-                        "py-2 text-right",
-                        totalStageProfit >= 0 ? "text-success" : "text-destructive",
+                        "py-2 text-right font-medium tabular-nums",
+                        row.profitLoss === null
+                          ? "text-muted-foreground"
+                          : row.profitLoss >= 0
+                            ? "text-success"
+                            : "text-destructive",
                       )}
                     >
-                      {totalStageProfit >= 0 ? "+" : ""}
-                      {formatINR(totalStageProfit)}
+                      {row.profitLoss !== null
+                        ? `${row.profitLoss >= 0 ? "+" : ""}${formatINR(row.profitLoss)}`
+                        : "—"}
                     </TableCell>
-                    <TableCell className="py-2" />
+                    <TableCell className="py-2 text-center">
+                      {getStageStatusBadge(row.status, row.actualCompletionPercent)}
+                    </TableCell>
                   </TableRow>
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+                <TableRow className="bg-muted/30 font-semibold">
+                  <TableCell className="py-2">Completed stages total</TableCell>
+                  <TableCell
+                    className={cn(
+                      "py-2 text-right tabular-nums",
+                      financials.completedStageProfitLoss >= 0
+                        ? "text-success"
+                        : "text-destructive",
+                    )}
+                  >
+                    {financials.completedStageProfitLoss >= 0 ? "+" : ""}
+                    {formatINR(financials.completedStageProfitLoss)}
+                  </TableCell>
+                  <TableCell className="py-2" />
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </DashboardSection>
 
         <Card className="dashboard-card border-border lg:col-span-3">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Current Stage Progress</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-base font-semibold">Current stage progress</CardTitle>
+              <Badge variant="outline" className="text-[10px] uppercase">Plan</Badge>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {currentStage ? (
@@ -397,19 +350,21 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
                       Overall progress {completionPercent}%
                     </p>
                   </div>
-                  <Badge className="bg-blue-500/20 text-blue-500 border-blue-500/30">
-                    In Progress
-                  </Badge>
+                  {getStageStatusBadge(currentStage.status, currentStage.actualCompletionPercent)}
                 </div>
                 <Progress value={currentStage.actualCompletionPercent} className="h-2" />
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-lg border border-border bg-muted/20 p-3">
-                    <p className="text-xs text-muted-foreground">Stage Budget</p>
-                    <p className="font-semibold">{formatINR(currentStage.targetBudget)}</p>
+                  <div className="rounded-lg border border-border bg-muted/30 p-3">
+                    <p className="text-xs text-muted-foreground">Stage budget</p>
+                    <p className="font-semibold tabular-nums">
+                      {formatINR(currentStage.targetBudget)}
+                    </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-muted/20 p-3">
-                    <p className="text-xs text-muted-foreground">Stage Spent</p>
-                    <p className="font-semibold">{formatINR(currentStage.actualExpenses)}</p>
+                  <div className="rounded-lg border border-border bg-muted/30 p-3">
+                    <p className="text-xs text-muted-foreground">Stage spent</p>
+                    <p className="font-semibold tabular-nums">
+                      {formatINR(currentStage.actualExpenses)}
+                    </p>
                   </div>
                 </div>
                 {(projectData.startDate || projectData.expectedCompletionDate) && (
@@ -423,7 +378,8 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
                     {projectData.expectedCompletionDate && (
                       <span className="inline-flex items-center gap-1">
                         <CalendarClock className="h-3.5 w-3.5" />
-                        Target {format(new Date(projectData.expectedCompletionDate), "MMM d, yyyy")}
+                        Target{" "}
+                        {format(new Date(projectData.expectedCompletionDate), "MMM d, yyyy")}
                       </span>
                     )}
                   </div>
@@ -434,13 +390,18 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
                       stage.status === "completed" || stage.actualCompletionPercent === 100
                     const isCurrent = index === currentStageIndex
                     return (
-                      <div key={stage.name} className="flex min-w-[72px] flex-col items-center gap-1">
+                      <div
+                        key={stage.name}
+                        className="flex min-w-[72px] flex-col items-center gap-1"
+                      >
                         <div
                           className={cn(
                             "flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold",
-                            isDone && "border-green-500/40 bg-green-500/15 text-green-500",
-                            isCurrent && "border-blue-500/40 bg-blue-500/15 text-blue-500",
-                            !isDone && !isCurrent && "border-border bg-muted/30 text-muted-foreground",
+                            isDone && "border-success/40 bg-success/15 text-success",
+                            isCurrent && "border-primary/40 bg-primary/15 text-primary",
+                            !isDone &&
+                              !isCurrent &&
+                              "border-border bg-muted/30 text-muted-foreground",
                           )}
                         >
                           {isDone ? (
@@ -472,7 +433,7 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="dashboard-card border-border">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Recent Activity</CardTitle>
+            <CardTitle className="text-base font-semibold">Recent activity</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {projectData.recentActivity.length === 0 ? (
@@ -481,12 +442,12 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
               projectData.recentActivity.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 p-3"
+                  className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 p-3"
                 >
                   <div className="flex min-w-0 items-start gap-3">
-                    <div className="mt-0.5 rounded-md bg-background p-2">
+                    <div className="mt-0.5 rounded-md bg-background p-2 border border-border">
                       {item.type === "payment_received" ? (
-                        <CreditCard className="h-4 w-4 text-green-500" />
+                        <CreditCard className="h-4 w-4 text-success" />
                       ) : (
                         <Receipt className="h-4 w-4 text-primary" />
                       )}
@@ -501,7 +462,7 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
                   </div>
                   <p
                     className={cn(
-                      "shrink-0 text-sm font-semibold",
+                      "shrink-0 text-sm font-semibold tabular-nums",
                       item.type === "payment_received" ? "text-success" : "text-foreground",
                     )}
                   >
@@ -516,15 +477,15 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
 
         <Card className="dashboard-card border-border">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Upcoming / Alerts</CardTitle>
+            <CardTitle className="text-base font-semibold">Alerts</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {upcomingAlerts.length === 0 ? (
-              <div className="flex items-center gap-3 rounded-lg border border-green-500/20 bg-green-500/5 p-4">
+              <div className="flex items-center gap-3 rounded-lg border border-success/25 bg-success/10 p-4">
                 <CheckCircle2 className="h-5 w-5 text-success" />
                 <div>
                   <p className="text-sm font-medium text-success">All clear</p>
-                  <p className="text-xs text-muted-foreground">No upcoming alerts right now</p>
+                  <p className="text-xs text-muted-foreground">No alerts right now</p>
                 </div>
               </div>
             ) : (
@@ -535,7 +496,7 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
                     "rounded-lg border p-3",
                     alert.tone === "danger" && "border-destructive/30 bg-destructive/5",
                     alert.tone === "warning" && "border-yellow-500/30 bg-yellow-500/5",
-                    alert.tone === "info" && "border-blue-500/30 bg-blue-500/5",
+                    alert.tone === "info" && "border-primary/30 bg-primary/5",
                   )}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -544,7 +505,9 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
                       <p className="text-xs text-muted-foreground">{alert.subtitle}</p>
                     </div>
                     {alert.amount !== undefined && (
-                      <p className="text-sm font-semibold">{formatINR(alert.amount)}</p>
+                      <p className="text-sm font-semibold tabular-nums">
+                        {formatINR(alert.amount)}
+                      </p>
                     )}
                   </div>
                   <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">

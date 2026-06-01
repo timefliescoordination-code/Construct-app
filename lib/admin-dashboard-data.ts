@@ -1,13 +1,23 @@
 import {
   calculateCompletionPercent,
+  calculateExpectedProfit,
   calculateForecastMarginPercent,
   calculateForecastProfit,
   calculatePlannedCompletionCost,
   calculateProjectedCompletionCost,
   calculateRealizedProfit,
+  calculateRemainingBudget,
+  calculateStageBudget,
   calculateTotalContractValue,
   type MilestoneData,
 } from "@/lib/financial-calculations"
+import {
+  deriveProjectHealth,
+  hasCompletedStageLoss,
+  percentOfContract,
+  sumCompletedStageProfitLoss,
+  type ProjectHealthStatus,
+} from "@/lib/dashboard-financials"
 import { getProjectPmLabel } from "@/lib/staff-labels"
 import type { Profile, ProjectStatus } from "@/lib/types/database"
 
@@ -22,25 +32,23 @@ export interface AdminProjectSummary {
   pending_payables: number
   cashflow_warnings: number
   progress: number
-  realized_profit: number
-  forecast_profit: number
-  forecast_margin_percent: number
-  expected_profit: number
+  /** Reserved margin at plan — not cash profit */
+  planned_profit: number
+  total_stage_budget: number
+  remaining_stage_budget: number
+  cash_balance: number
+  balance_to_collect: number
+  received_percent: number
+  budget_usage_percent: number
+  completed_stage_profit_loss: number
+  health: ProjectHealthStatus
   pm_label: string
   expected_margin_percent: number
   has_stage_loss: boolean
-}
-
-function projectHasStageLoss(
-  projectId: string,
-  milestones: MilestoneRow[],
-): boolean {
-  return milestones.some((row) => {
-    if (row.project_id !== projectId) return false
-    const actual = Number(row.actual_expenses)
-    const target = Number(row.target_budget)
-    return actual > 0 && actual > target
-  })
+  /** Legacy — kept for internal aggregates; not shown as primary KPI */
+  realized_profit: number
+  forecast_profit: number
+  forecast_margin_percent: number
 }
 
 export interface AdminCompanyMetrics {
@@ -49,18 +57,29 @@ export interface AdminCompanyMetrics {
   completedProjects: number
   onHoldProjects: number
   totalContractValue: number
+  totalPlannedProfit: number
   totalReceivables: number
   totalPayables: number
+  portfolioCashBalance: number
+  totalReceived: number
+  totalSpent: number
+  portfolioReceivedPercent: number
+  totalBalanceToCollect: number
+  totalCompletedStageProfitLoss: number
+  overbudgetProjects: number
+  cashRiskProjects: number
+  stageLossProjects: number
+  collectionRiskProjects: number
+  cashflowWarnings: number
+  totalPMs: number
+  totalEngineers: number
+  weightedMarginPercent: number
+  /** Legacy */
   currentCashflow: number
   expectedProfit: number
   realizedProfit: number
   forecastProfit: number
   forecastMarginPercent: number
-  overbudgetProjects: number
-  cashflowWarnings: number
-  totalPMs: number
-  totalEngineers: number
-  weightedMarginPercent: number
 }
 
 export interface AdminDashboardData {
@@ -153,12 +172,12 @@ export function buildAdminDashboardData(input: {
 }): AdminDashboardData {
   const expenseTotals = sumByProjectId(input.expenses)
   const receivedTotals = sumByProjectId(
-    input.clientPayments.filter((payment) => payment.status === "received")
+    input.clientPayments.filter((payment) => payment.status === "received"),
   )
   const receivableTotals = sumByProjectId(
     input.clientPayments.filter(
-      (payment) => payment.status === "pending" || payment.status === "overdue"
-    )
+      (payment) => payment.status === "pending" || payment.status === "overdue",
+    ),
   )
   const additionalWorkTotals = sumByProjectId(input.additionalWorks)
   const payableTotals = sumPayablesByProjectId(input.vendorPayments)
@@ -169,17 +188,38 @@ export function buildAdminDashboardData(input: {
     const additionalWorksApproved = additionalWorkTotals.get(project.id) ?? 0
     const totalContractValue = calculateTotalContractValue(
       Number(project.contract_value),
-      additionalWorksApproved
+      additionalWorksApproved,
     )
     const totalExpenses = expenseTotals.get(project.id) ?? 0
     const totalReceived = receivedTotals.get(project.id) ?? 0
     const milestones = milestonesByProject.get(project.id) ?? []
     const progress = calculateCompletionPercent(milestones)
     const marginPercent = Number(project.expected_margin_percent)
-    const expectedProfit = totalContractValue * (marginPercent / 100)
+    const plannedProfit = calculateExpectedProfit(
+      totalContractValue,
+      marginPercent,
+    )
+    const totalStageBudget = calculateStageBudget(totalContractValue, plannedProfit)
+    const remainingStageBudget = calculateRemainingBudget(totalStageBudget, totalExpenses)
+    const cashBalance = totalReceived - totalExpenses
+    const balanceToCollect = totalContractValue - totalReceived
+    const receivedPercent = percentOfContract(totalReceived, totalContractValue)
+    const budgetUsagePercent =
+      totalStageBudget > 0
+        ? Math.round((totalExpenses / totalStageBudget) * 1000) / 10
+        : 0
+    const completedStageProfitLoss = sumCompletedStageProfitLoss(milestones)
+    const health = deriveProjectHealth({
+      totalContractValue,
+      totalReceived,
+      totalExpenses,
+      remainingStageBudget,
+      milestones,
+    })
+
     const plannedCompletionCost = calculatePlannedCompletionCost(
       totalContractValue,
-      expectedProfit,
+      plannedProfit,
     )
     const projectedCompletionCost = calculateProjectedCompletionCost(
       totalExpenses,
@@ -207,13 +247,21 @@ export function buildAdminDashboardData(input: {
       pending_payables: payableTotals.get(project.id) ?? 0,
       cashflow_warnings: overdueTotals.get(project.id) ?? 0,
       progress,
+      planned_profit: plannedProfit,
+      total_stage_budget: totalStageBudget,
+      remaining_stage_budget: remainingStageBudget,
+      cash_balance: cashBalance,
+      balance_to_collect: balanceToCollect,
+      received_percent: receivedPercent,
+      budget_usage_percent: budgetUsagePercent,
+      completed_stage_profit_loss: completedStageProfitLoss,
+      health,
+      pm_label: getProjectPmLabel(project),
+      expected_margin_percent: marginPercent,
+      has_stage_loss: hasCompletedStageLoss(milestones),
       realized_profit: realizedProfit,
       forecast_profit: forecastProfit,
       forecast_margin_percent: forecastMarginPercent,
-      expected_profit: expectedProfit,
-      pm_label: getProjectPmLabel(project),
-      expected_margin_percent: marginPercent,
-      has_stage_loss: projectHasStageLoss(project.id, input.milestones),
     }
   })
 
@@ -241,11 +289,20 @@ export function aggregateAdminCompanyMetrics(
   staff: { totalPMs: number; totalEngineers: number; cashflowWarnings?: number },
 ): AdminCompanyMetrics {
   const totalContractValue = projects.reduce((sum, project) => sum + project.contract_value, 0)
-  const totalExpenses = projects.reduce((sum, project) => sum + project.total_expenses, 0)
-  const receivedPayments = projects.reduce((sum, project) => sum + project.total_received, 0)
+  const totalSpent = projects.reduce((sum, project) => sum + project.total_expenses, 0)
+  const totalReceived = projects.reduce((sum, project) => sum + project.total_received, 0)
+  const portfolioCashBalance = totalReceived - totalSpent
+  const totalPlannedProfit = projects.reduce((sum, project) => sum + project.planned_profit, 0)
+  const totalBalanceToCollect = projects.reduce(
+    (sum, project) => sum + project.balance_to_collect,
+    0,
+  )
+  const totalCompletedStageProfitLoss = projects.reduce(
+    (sum, project) => sum + project.completed_stage_profit_loss,
+    0,
+  )
   const realizedProfit = projects.reduce((sum, project) => sum + project.realized_profit, 0)
   const forecastProfit = projects.reduce((sum, project) => sum + project.forecast_profit, 0)
-  const expectedProfit = projects.reduce((sum, project) => sum + project.expected_profit, 0)
   const forecastMarginPercent = calculateForecastMarginPercent(forecastProfit, totalContractValue)
   const totalReceivables = projects.reduce(
     (sum, project) => sum + project.pending_receivables,
@@ -253,7 +310,8 @@ export function aggregateAdminCompanyMetrics(
   )
   const totalPayables = projects.reduce((sum, project) => sum + project.pending_payables, 0)
   const weightedMarginPercent =
-    totalContractValue > 0 ? Math.round((expectedProfit / totalContractValue) * 100) : 0
+    totalContractValue > 0 ? Math.round((totalPlannedProfit / totalContractValue) * 100) : 0
+  const portfolioReceivedPercent = percentOfContract(totalReceived, totalContractValue)
 
   return {
     totalProjects: projects.length,
@@ -261,19 +319,31 @@ export function aggregateAdminCompanyMetrics(
     completedProjects: projects.filter((project) => project.status === "completed").length,
     onHoldProjects: projects.filter((project) => project.status === "on-hold").length,
     totalContractValue,
+    totalPlannedProfit,
     totalReceivables,
     totalPayables,
-    currentCashflow: receivedPayments - totalExpenses,
-    expectedProfit,
-    realizedProfit,
-    forecastProfit,
-    forecastMarginPercent,
-    overbudgetProjects: projects.filter((project) => project.forecast_profit < 0).length,
+    portfolioCashBalance,
+    totalReceived,
+    totalSpent,
+    portfolioReceivedPercent,
+    totalBalanceToCollect,
+    totalCompletedStageProfitLoss,
+    overbudgetProjects: projects.filter((project) => project.remaining_stage_budget < 0).length,
+    cashRiskProjects: projects.filter((project) => project.health === "cash_risk").length,
+    stageLossProjects: projects.filter((project) => project.health === "stage_loss").length,
+    collectionRiskProjects: projects.filter(
+      (project) => project.health === "collection_risk",
+    ).length,
     cashflowWarnings:
       staff.cashflowWarnings ??
       projects.reduce((sum, project) => sum + project.cashflow_warnings, 0),
     totalPMs: staff.totalPMs,
     totalEngineers: staff.totalEngineers,
     weightedMarginPercent,
+    currentCashflow: portfolioCashBalance,
+    expectedProfit: totalPlannedProfit,
+    realizedProfit,
+    forecastProfit,
+    forecastMarginPercent,
   }
 }
