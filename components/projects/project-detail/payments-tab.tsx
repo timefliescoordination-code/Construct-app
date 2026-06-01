@@ -56,6 +56,7 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  Printer,
 } from "lucide-react"
 import { format } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
@@ -76,6 +77,7 @@ import {
   buildReceivedTimelineLines,
   projectTimelineFromProject,
 } from "@/lib/project-timeline"
+import { ClientPaymentsPrintSheet } from "@/components/projects/project-detail/client-payments-print"
 
 interface ClientPayment {
   id: string
@@ -530,6 +532,17 @@ export function PaymentsTab({
   const totalReceived = clientPayments
     .filter(p => p.status === 'received')
     .reduce((sum, p) => sum + Number(p.amount), 0)
+  const totalPendingClient = clientPayments
+    .filter((p) => p.status !== "received")
+    .reduce((sum, p) => sum + Number(p.amount), 0)
+
+  const handlePrintClientPayments = () => {
+    if (sortedClientPayments.length === 0) {
+      toast.error("No client payments to print.")
+      return
+    }
+    window.print()
+  }
   const totalPaid = vendorPayments.reduce((sum, p) => sum + Number(p.amount_paid), 0)
   const totalPending = vendorPayments.reduce((sum, p) => sum + Number(p.pending_amount || 0), 0)
   const netCashPosition = totalReceived - totalPaid - totalPending
@@ -547,7 +560,8 @@ export function PaymentsTab({
   }
 
   return (
-    <div className="space-y-6">
+    <>
+    <div className="space-y-6 print:hidden">
       {project ? <ProjectFinancialSummary project={project} /> : null}
 
       {/* Cashflow Summary */}
@@ -604,7 +618,19 @@ export function PaymentsTab({
             <ArrowDownLeft className="h-5 w-5 text-green-500" />
             Client Payments
           </CardTitle>
-          <Dialog open={isClientDialogOpen} onOpenChange={setIsClientDialogOpen}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={handlePrintClientPayments}
+              disabled={sortedClientPayments.length === 0}
+            >
+              <Printer className="h-4 w-4" />
+              Print / PDF
+            </Button>
+            <Dialog open={isClientDialogOpen} onOpenChange={setIsClientDialogOpen}>
             {canManageProjects && (
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-2">
@@ -698,6 +724,7 @@ export function PaymentsTab({
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border border-border">
@@ -1223,5 +1250,16 @@ export function PaymentsTab({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+
+    <ClientPaymentsPrintSheet
+      projectName={project?.name ?? "Project"}
+      clientName={project?.client_name ?? "—"}
+      siteAddress={project?.site_address}
+      contractValue={project ? Number(project.contract_value) : null}
+      payments={sortedClientPayments}
+      totalReceived={totalReceived}
+      totalPending={totalPendingClient}
+    />
+    </>
   )
 }
