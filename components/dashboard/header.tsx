@@ -15,7 +15,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { toast } from "sonner"
@@ -28,6 +28,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import { AppSidebar } from "@/components/layout/app-sidebar"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 const roleLabels: Record<string, string> = {
   admin: "Admin",
@@ -45,10 +47,11 @@ const roleColors: Record<string, string> = {
 interface DashboardHeaderProps {
   /** Optional extra badge count (e.g. PM pending approvals on dashboard). */
   notificationCount?: number
+  /** Hide app nav menu on mobile (project pages use their own sidebar). */
+  hideAppNav?: boolean
 }
 
-export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps) {
-  const pathname = usePathname()
+export function DashboardHeader({ notificationCount = 0, hideAppNav = false }: DashboardHeaderProps) {
   const router = useRouter()
   const { profile, isLoading, signOut, role, isAuthenticated } = useAuth()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
@@ -101,11 +104,6 @@ export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps)
     }
   }
 
-  const navItems = [
-    { href: getDashboardHome(), label: "Dashboard" },
-    { href: "/projects", label: "Projects" },
-  ]
-
   const handleSignOut = async () => {
     const { error } = await signOut()
     if (error) {
@@ -123,16 +121,6 @@ export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps)
       return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
     }
     return name.substring(0, 2).toUpperCase()
-  }
-
-  const isNavActive = (href: string) => {
-    if (href === "/projects") {
-      return pathname === "/projects" || pathname.startsWith("/projects/")
-    }
-    if (href === "/admin") {
-      return pathname === "/admin"
-    }
-    return pathname === href
   }
 
   const handleNotificationClick = async (notification: AppNotification) => {
@@ -163,15 +151,16 @@ export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pt-[env(safe-area-inset-top)]">
-      <div className="flex h-14 min-h-14 items-center justify-between gap-2 px-4 sm:h-16 md:px-6">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-4 md:gap-6">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/70 pt-[env(safe-area-inset-top)] shadow-sm">
+      <div className="mx-auto flex h-14 min-h-14 max-w-[1600px] items-center justify-between gap-2 px-4 sm:h-16 md:px-6">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+          {!hideAppNav && (
           <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
             <SheetTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="shrink-0 md:hidden"
+                className="shrink-0 lg:hidden"
                 aria-label="Open menu"
               >
                 <Menu className="h-5 w-5" />
@@ -179,69 +168,26 @@ export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps)
             </SheetTrigger>
             <SheetContent
               side="left"
-              className="flex h-full w-[min(100vw-2rem,20rem)] flex-col gap-0 p-0"
+              className="w-[min(100vw-2rem,18rem)] p-0"
             >
-              <SheetHeader className="border-b border-border px-4 py-4 text-left">
-                <SheetTitle className="text-base">VRA HOMES</SheetTitle>
-                <p className="text-xs text-muted-foreground font-normal">
-                  Build Unique One
-                </p>
+              <SheetHeader className="sr-only">
+                <SheetTitle>Navigation</SheetTitle>
               </SheetHeader>
-              <nav className="flex flex-col gap-1 p-3">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileNavOpen(false)}
-                    className={cn(
-                      "rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
-                      isNavActive(item.href)
-                        ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-muted",
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-                {role === "admin" && (
-                  <Link
-                    href="/admin/users"
-                    onClick={() => setMobileNavOpen(false)}
-                    className={cn(
-                      "rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
-                      pathname.startsWith("/admin/users")
-                        ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-muted",
-                    )}
-                  >
-                    User Management
-                  </Link>
-                )}
-              </nav>
-              {role && role !== "admin" && (
-                <div className="mt-auto border-t border-border p-4">
-                  <Badge variant="outline" className={cn("w-fit", roleColors[role] || "")}>
-                    {roleLabels[role] || role}
-                  </Badge>
-                </div>
-              )}
+              <AppSidebar
+                className="h-full w-full border-0"
+                onNavigate={() => setMobileNavOpen(false)}
+              />
             </SheetContent>
           </Sheet>
+          )}
 
-          <Link href={getDashboardHome()} className="flex min-w-0 items-center gap-2">
+          <Link href={getDashboardHome()} className="flex min-w-0 items-center gap-2 lg:hidden">
             <img
               src="/images/vra-logo.png"
               alt="VRA HOMES"
-              className="h-9 w-9 rounded-lg object-cover"
+              className="h-8 w-8 rounded-lg object-cover"
             />
-            <div className="hidden sm:flex flex-col">
-              <span className="font-bold text-foreground text-sm leading-tight">
-                VRA HOMES
-              </span>
-              <span className="text-[10px] text-muted-foreground leading-tight">
-                Build Unique One
-              </span>
-            </div>
+            <span className="truncate font-semibold text-sm">VRA HOMES</span>
           </Link>
 
           {isLoading ? (
@@ -249,42 +195,27 @@ export function DashboardHeader({ notificationCount = 0 }: DashboardHeaderProps)
               ...
             </Badge>
           ) : role === "admin" ? (
-            <Badge variant="outline" className="shrink-0 border-primary text-primary text-xs">
+            <Badge variant="outline" className="hidden shrink-0 border-primary text-primary text-xs lg:inline-flex">
               <Shield className="h-3 w-3 mr-1" />
               Admin
             </Badge>
           ) : role ? (
-            <Badge variant="outline" className={cn("hidden sm:inline-flex", roleColors[role] || "")}>
+            <Badge variant="outline" className={cn("hidden lg:inline-flex", roleColors[role] || "")}>
               {roleLabels[role] || role}
             </Badge>
           ) : null}
-
-          <nav className="hidden md:flex items-center gap-1">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                  isNavActive(item.href)
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-4">
-          <div className="relative hidden lg:block">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <div className="relative hidden xl:block">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search..."
-              className="w-64 pl-9 bg-secondary border-border"
+              className="w-56 pl-9 bg-background border-border"
             />
           </div>
+
+          <ThemeToggle />
 
           <DropdownMenu onOpenChange={(open) => open && void loadNotifications()}>
             <DropdownMenuTrigger asChild>

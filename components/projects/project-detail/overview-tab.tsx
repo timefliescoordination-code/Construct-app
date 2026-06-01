@@ -5,11 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { 
-  IndianRupee, 
   TrendingUp, 
   TrendingDown,
   AlertTriangle,
-  Calculator,
   Clock,
   CreditCard,
   FileWarning,
@@ -32,24 +30,33 @@ import {
   calculateTotalContractValue,
   calculateExpectedProfit,
   calculateStageBudget,
-  calculateRemainingBudget,
   calculateBudgetUsagePercent,
   calculateCurrentCashflow,
-  calculateCurrentProfit,
   calculateCompletionPercent,
-  analyzeCompletedStages,
   getOverbudgetStages,
   type MilestoneData
 } from "@/lib/financial-calculations"
+import { AdminProjectOverview } from "./admin-project-overview"
 
 const EXPENSE_LIST_PREVIEW_LIMIT = 15
 
 interface Milestone {
+  id?: string
   name: string
   expectedCostPercent: number
   actualCompletionPercent: number
+  status?: string
   targetBudget: number
   actualExpenses: number
+}
+
+interface ActivityItem {
+  id: string
+  type: "expense" | "payment_received" | "payment_due"
+  title: string
+  subtitle: string
+  amount: number
+  date: string
 }
 
 interface VendorPayable {
@@ -91,6 +98,9 @@ interface OverviewTabProps {
     delayedClientPayments: ClientPaymentDue[]
     pendingApprovals: ExpenseApprovalItem[]
     expenseApprovals: ExpenseApprovalItem[]
+    recentActivity?: ActivityItem[]
+    startDate?: string | null
+    expectedCompletionDate?: string | null
   }
   restrictFinancials?: boolean
   canApproveExpenses?: boolean
@@ -148,15 +158,8 @@ export function OverviewTab({
     actualCompletionPercent: ms.actualCompletionPercent,
     targetBudget: ms.targetBudget,
     actualExpenses: ms.actualExpenses,
-    status: ms.actualCompletionPercent === 100 ? "completed" : ms.actualCompletionPercent > 0 ? "in-progress" : "pending"
+    status: ms.status ?? (ms.actualCompletionPercent === 100 ? "completed" : ms.actualCompletionPercent > 0 ? "in-progress" : "pending")
   }))
-  
-  // Use centralized completed stages analysis
-  const completedStagesAnalysis = analyzeCompletedStages(milestonesForCalc)
-  const hasCompletedStages = completedStagesAnalysis.stages.length > 0
-  const completedStagesTargetTotal = completedStagesAnalysis.totalTargetBudget
-  const completedStagesExpensesTotal = completedStagesAnalysis.totalActualExpenses
-  const completedStagesProfit = completedStagesAnalysis.totalProfit
   
   // Use centralized overbudget check
   const overbudgetStages = getOverbudgetStages(milestonesForCalc)
@@ -222,12 +225,10 @@ export function OverviewTab({
       pendingInAttention
   
   // Use centralized calculations
-  const remainingStageBudget = calculateRemainingBudget(totalStageBudget, totalExpenses)
-  const currentProfit = calculateCurrentProfit(totalClientPaymentsReceived, totalExpenses)
-  const completionPercent = calculateCompletionPercent(milestonesForCalc)
   const stageBudgetUsagePercent = calculateBudgetUsagePercent(totalExpenses, totalStageBudget)
+  const completionPercent = calculateCompletionPercent(milestonesForCalc)
   
-  // Cashflow balance (same as currentProfit in this context)
+  // Cashflow balance
   const cashflowBalance = calculateCurrentCashflow(totalClientPaymentsReceived, totalExpenses)
   
   // Milestone counts
@@ -327,9 +328,28 @@ export function OverviewTab({
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        {/* SECTION 1: Hero Summary - 3 Cards */}
-        <div className={cn("grid gap-4", restrictFinancials ? "lg:grid-cols-2" : "lg:grid-cols-3")}>
-          {/* Card 1: Project Health (Large) */}
+        {!restrictFinancials && (
+          <AdminProjectOverview
+            projectData={{
+              originalContractValue: projectData.originalContractValue,
+              additionalWorksApproved: projectData.additionalWorksApproved,
+              expectedProfitPercent: projectData.expectedProfitPercent,
+              totalExpenses: projectData.totalExpenses,
+              totalClientPaymentsReceived: projectData.totalClientPaymentsReceived,
+              milestones: projectData.milestones,
+              unpaidVendorBills: projectData.unpaidVendorBills,
+              delayedClientPayments: projectData.delayedClientPayments,
+              pendingApprovals: projectData.pendingApprovals,
+              recentActivity: projectData.recentActivity ?? [],
+              startDate: projectData.startDate,
+              expectedCompletionDate: projectData.expectedCompletionDate,
+            }}
+          />
+        )}
+
+        {/* Engineer / simplified summary */}
+        {restrictFinancials && (
+        <div className={cn("grid gap-4", "lg:grid-cols-2")}>
           <Card className={cn(
             "lg:row-span-1",
             projectHealth.bgColor,
@@ -363,74 +383,12 @@ export function OverviewTab({
               </p>
               <div className="pt-2 border-t border-border/50">
                 <p className="text-xs text-muted-foreground">
-                  {restrictFinancials
-                    ? "Based on milestone progress"
-                    : "Based on budget usage, cashflow, and milestone progress"}
+                  Based on milestone progress
                 </p>
               </div>
             </CardContent>
           </Card>
 
-          {!restrictFinancials && (
-          <>
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <IndianRupee className="h-4 w-4" />
-                Project Finances
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Total Contract Value</span>
-                  <span className="text-lg font-bold">{formatINR(totalContractValue)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Total Stage Budget</span>
-                  <span className="text-lg font-bold text-primary">{formatINR(totalStageBudget)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Received</span>
-                  <span className="text-lg font-bold text-green-500">{formatINR(totalClientPaymentsReceived)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Spent (approved)</span>
-                  <span className="text-lg font-bold text-destructive">{formatINR(totalExpenses)}</span>
-                </div>
-                <div className="flex justify-between items-center border-t border-border/50 pt-2">
-                  <span className="text-sm text-muted-foreground">Remaining stage budget</span>
-                  <span className={cn(
-                    "text-lg font-bold",
-                    remainingStageBudget >= 0 ? "text-green-500" : "text-destructive",
-                  )}>
-                    {formatINR(remainingStageBudget)}
-                  </span>
-                </div>
-              </div>
-              <div className={cn(
-                "p-3 rounded-lg mt-2",
-                cashflowBalance >= 0 ? "bg-green-500/10" : "bg-destructive/10"
-              )}>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Cash balance (received − spent)</span>
-                  <span className={cn(
-                    "text-xl font-bold",
-                    cashflowBalance >= 0 ? "text-green-500" : "text-destructive"
-                  )}>
-                    {cashflowBalance >= 0 ? "+" : ""}{formatINR(cashflowBalance)}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stageBudgetUsagePercent}% of stage budget used
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-          </>
-          )}
-
-          {/* Card 3: Completion Progress */}
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -464,99 +422,6 @@ export function OverviewTab({
             </CardContent>
           </Card>
         </div>
-
-        {!restrictFinancials && (
-        <>
-        {/* Completed Stages Profit Analysis - Only shows when at least one stage is completed */}
-        {hasCompletedStages ? (
-          <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Calculator className="h-5 w-5 text-primary" />
-                Completed Stages Profit Analysis
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Completed Stages List */}
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                  Completed Stages ({completedStagesAnalysis.stages.length})
-                </p>
-                <div className="grid gap-2">
-                  {completedStagesAnalysis.stages.map((stage, index) => (
-                    <div 
-                      key={index}
-                      className="flex items-center justify-between p-2 bg-background rounded-lg text-sm"
-                    >
-                      <span className="font-medium">{stage.name}</span>
-                      <div className="flex items-center gap-4">
-                        <span className="text-muted-foreground">
-                          Target: {formatINR(stage.targetBudget)}
-                        </span>
-                        <span className="text-muted-foreground">
-                          Spent: {formatINR(stage.actualExpenses)}
-                        </span>
-                        <span className={cn(
-                          "font-medium",
-                          stage.profit >= 0 ? "text-green-500" : "text-destructive"
-                        )}>
-                          {stage.profit >= 0 ? "+" : ""}{formatINR(stage.profit)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Total Calculation */}
-              <div className="pt-3 border-t border-border">
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <div className="flex items-center gap-2 p-2 bg-background rounded-lg">
-                    <span className="text-muted-foreground">Total Target</span>
-                    <span className="font-bold">{formatINR(completedStagesTargetTotal)}</span>
-                  </div>
-                  <span className="text-muted-foreground text-lg">-</span>
-                  <div className="flex items-center gap-2 p-2 bg-background rounded-lg">
-                    <span className="text-muted-foreground">Total Spent</span>
-                    <span className="font-bold text-destructive">{formatINR(completedStagesExpensesTotal)}</span>
-                  </div>
-                  <span className="text-muted-foreground text-lg">=</span>
-                  <div className={cn(
-                    "flex items-center gap-2 p-3 rounded-lg",
-                    completedStagesProfit >= 0 ? "bg-green-500/20" : "bg-destructive/20"
-                  )}>
-                    <span className="text-muted-foreground">Stage Profit</span>
-                    <span className={cn(
-                      "font-bold text-lg",
-                      completedStagesProfit >= 0 ? "text-green-500" : "text-destructive"
-                    )}>
-                      {completedStagesProfit >= 0 ? "+" : ""}{formatINR(completedStagesProfit)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-xs text-muted-foreground">
-                Profit/loss calculated only for completed stages. Updates automatically when a stage reaches 100%.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="bg-muted/30 border-dashed">
-            <CardContent className="py-8">
-              <div className="flex flex-col items-center justify-center text-center">
-                <Calculator className="h-10 w-10 text-muted-foreground/50 mb-3" />
-                <p className="text-sm text-muted-foreground">
-                  Profit analysis will appear here once at least one stage is completed.
-                </p>
-                <p className="text-xs text-muted-foreground/70 mt-1">
-                  Complete stages to see target vs actual spending and profit calculations.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        </>
         )}
 
         {showExpenseApprovals && (

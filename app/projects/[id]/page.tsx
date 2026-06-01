@@ -27,8 +27,8 @@ export default async function ProjectDetailPage({
   const { id } = await params
 
   return (
-    <PageShell>
-      <DashboardHeader />
+    <PageShell hideAppSidebar>
+      <DashboardHeader hideAppNav />
       <Suspense fallback={<ProjectDetailFallback />}>
         <ProjectDetailContent projectId={id} />
       </Suspense>

@@ -2,7 +2,6 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { 
@@ -35,6 +34,11 @@ import { AdditionalWorksTab } from "./project-detail/additional-works-tab"
 import { ReportsTab } from "./project-detail/reports-tab"
 import { PhotosTab } from "./project-detail/photos-tab"
 import { ManpowerTab } from "./project-detail/manpower-tab"
+import {
+  ProjectSidebar,
+  ProjectSidebarMobileTrigger,
+  type ProjectSidebarTab,
+} from "./project-detail/project-sidebar"
 import { useProject, useDefaultProject, useProjectMetrics } from "@/lib/hooks/use-project-data"
 import { getApprovedAdditionalWorksTotal } from "@/lib/financial-calculations"
 import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
@@ -49,7 +53,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   PAGE_MAIN_CLASS,
   PAGE_STACK_CLASS,
-  TABS_LIST_RESPONSIVE_CLASS,
 } from "@/components/layout/page"
 import { cn } from "@/lib/utils"
 import { archiveProjectAction } from "@/lib/projects/actions"
@@ -64,6 +67,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 
 interface ProjectDetailContentProps {
   projectId: string
@@ -92,6 +101,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState("overview")
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
   const { role, canManageProjects } = useAuth()
@@ -160,6 +170,31 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       targetBudget: Number(ms.target_budget),
       actualExpenses: Number(ms.actual_expenses)
     }))
+
+    const recentActivity = [
+      ...project.expenses
+        .filter((exp) => exp.status === "approved")
+        .map((exp) => ({
+          id: `expense-${exp.id}`,
+          type: "expense" as const,
+          title: exp.category,
+          subtitle: exp.description,
+          amount: Number(exp.amount),
+          date: exp.expense_date,
+        })),
+      ...project.client_payments
+        .filter((cp) => cp.status === "received")
+        .map((cp) => ({
+          id: `payment-${cp.id}`,
+          type: "payment_received" as const,
+          title: "Payment Received",
+          subtitle: cp.stage_name || "Client payment",
+          amount: Number(cp.amount),
+          date: cp.received_date || cp.due_date || cp.created_at,
+        })),
+    ]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 8)
 
     // Create attention items from the data
     const unpaidVendorBills = project.vendor_payments
@@ -232,10 +267,13 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       delayedClientPayments,
       pendingApprovals,
       expenseApprovals,
+      recentActivity,
+      startDate: project.start_date,
+      expectedCompletionDate: project.expected_completion_date,
     }
   }, [project])
 
-  const tabs = useMemo(
+  const tabs = useMemo<ProjectSidebarTab[]>(
     () =>
       [
         { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -249,6 +287,13 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       ].filter((tab) => showFinancials || !ENGINEER_RESTRICTED_PROJECT_TABS.has(tab.id)),
     [showFinancials],
   )
+
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("tab", tabId)
+    router.replace(`/projects/${projectId}?${params.toString()}`, { scroll: false })
+  }
 
   useEffect(() => {
     const tabParam = searchParams.get("tab")
@@ -371,82 +416,186 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
     )
   }
 
-  return (
-    <main className={cn(PAGE_MAIN_CLASS, PAGE_STACK_CLASS)}>
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/projects">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-          </Button>
-          <span className="text-muted-foreground">Back to Projects</span>
-        </div>
-        
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-                {project.name}
-              </h1>
-              {getStatusBadge(project.status)}
-            </div>
-            <dl className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-              <div>
-                <dt className="sr-only">Client</dt>
-                <dd>
-                  <span className="text-foreground/70">Client: </span>
-                  {project.client_name}
-                </dd>
-              </div>
-              <div className="sm:col-span-2 lg:col-span-1">
-                <dt className="sr-only">Site</dt>
-                <dd className="break-words">{project.site_address}</dd>
-              </div>
-              <div>
-                <dt className="sr-only">PM</dt>
-                <dd>PM: {getProjectPmLabel(project)}</dd>
-              </div>
-              <div>
-                <dt className="sr-only">Site Engineer</dt>
-                <dd>Site Engineer: {getProjectEngineersLabel(project)}</dd>
-              </div>
-            </dl>
-          </div>
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case "overview":
+        return (
+          <OverviewTab
+            projectId={project.id}
+            projectData={calculatedData}
+            restrictFinancials={!showFinancials}
+            canApproveExpenses={canManageProjects}
+            onExpenseStatusChange={refreshProject}
+          />
+        )
+      case "expenses":
+        return (
+          <ExpensesTab
+            projectId={project.id}
+            project={project}
+            onProjectChange={refreshProject}
+          />
+        )
+      case "payments":
+        return showFinancials ? (
+          <PaymentsTab
+            projectId={project.id}
+            project={project}
+            onProjectChange={refreshProject}
+          />
+        ) : null
+      case "milestones":
+        return (
+          <MilestonesTab
+            projectId={project.id}
+            project={project}
+            onProjectChange={refreshProject}
+          />
+        )
+      case "manpower":
+        return (
+          <ManpowerTab
+            projectId={project.id}
+            projectStartDate={project.start_date}
+            projectMilestones={project.milestones.map((m) => ({
+              id: m.id,
+              name: m.name,
+            }))}
+            readOnly={!canEditManpower}
+          />
+        )
+      case "additional-works":
+        return showFinancials ? (
+          <AdditionalWorksTab
+            projectId={project.id}
+            project={project}
+            onProjectChange={refreshProject}
+          />
+        ) : null
+      case "reports":
+        return showFinancials ? (
+          <ReportsTab projectId={project.id} project={project} />
+        ) : null
+      case "photos":
+        return <PhotosTab projectId={project.id} projectName={project.name} />
+      default:
+        return null
+    }
+  }
 
-          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
-            {canManageProjects && (
-              <>
-                <Button variant="outline" className="w-full gap-2 sm:w-auto" asChild>
-                  <Link href={`/projects/${project.id}/edit`}>
-                    <Edit className="h-4 w-4" />
-                    Edit Project
+  return (
+    <>
+      <div className="flex min-h-[calc(100vh-4rem)]">
+        <ProjectSidebar
+          tabs={tabs}
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          projectId={project.id}
+          canManageProjects={canManageProjects}
+          className="hidden lg:flex"
+        />
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="border-b border-border bg-background/95 px-4 py-4 md:px-6">
+            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4">
+              <div className="flex items-center gap-2">
+                <ProjectSidebarMobileTrigger onClick={() => setSidebarOpen(true)} />
+                <Button variant="ghost" size="icon" asChild>
+                  <Link href="/projects">
+                    <ArrowLeft className="h-5 w-5" />
                   </Link>
                 </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem>Export Project Data</DropdownMenuItem>
-                    <DropdownMenuItem>Generate Report</DropdownMenuItem>
-                    <DropdownMenuItem>Share Project</DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      disabled={project.status === "archived"}
-                      onClick={() => setArchiveDialogOpen(true)}
-                    >
-                      Archive Project
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            )}
+                <span className="text-sm text-muted-foreground">Back to Projects</span>
+              </div>
+
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                      {project.name}
+                    </h1>
+                    {getStatusBadge(project.status)}
+                  </div>
+                  <dl className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
+                    <div>
+                      <dt className="sr-only">Client</dt>
+                      <dd>
+                        <span className="text-foreground/70">Client: </span>
+                        {project.client_name}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="sr-only">PM</dt>
+                      <dd>PM: {getProjectPmLabel(project)}</dd>
+                    </div>
+                    <div>
+                      <dt className="sr-only">Site Engineer</dt>
+                      <dd>Site Engineer: {getProjectEngineersLabel(project)}</dd>
+                    </div>
+                    <div className="sm:col-span-2 xl:col-span-1">
+                      <dt className="sr-only">Site</dt>
+                      <dd className="break-words">{project.site_address}</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
+                  {canManageProjects && (
+                    <>
+                      <Button variant="outline" className="w-full gap-2 sm:w-auto" asChild>
+                        <Link href={`/projects/${project.id}/edit`}>
+                          <Edit className="h-4 w-4" />
+                          Edit Project
+                        </Link>
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="icon">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem>Export Project Data</DropdownMenuItem>
+                          <DropdownMenuItem>Generate Report</DropdownMenuItem>
+                          <DropdownMenuItem>Share Project</DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            disabled={project.status === "archived"}
+                            onClick={() => setArchiveDialogOpen(true)}
+                          >
+                            Archive Project
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 px-4 py-5 md:px-6">
+            <div className="mx-auto w-full max-w-[1600px]">{renderTabContent()}</div>
           </div>
         </div>
       </div>
+
+      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <SheetContent side="left" className="w-[min(100vw-2rem,18rem)] p-0">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Project navigation</SheetTitle>
+          </SheetHeader>
+          <ProjectSidebar
+            tabs={tabs}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            projectId={project.id}
+            canManageProjects={canManageProjects}
+            className="h-full w-full border-0"
+            onNavigate={() => setSidebarOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
 
       <AlertDialog
         open={archiveDialogOpen}
@@ -484,90 +633,6 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-6">
-        <TabsList className={TABS_LIST_RESPONSIVE_CLASS}>
-          {tabs.map((tab) => (
-            <TabsTrigger 
-              key={tab.id}
-              value={tab.id}
-              className="gap-1.5 px-2.5 py-1.5 text-xs sm:gap-2 sm:px-3 sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              <tab.icon className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">{tab.label}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        <TabsContent value="overview" className="mt-6">
-          <OverviewTab
-            projectId={project.id}
-            projectData={calculatedData}
-            restrictFinancials={!showFinancials}
-            canApproveExpenses={canManageProjects}
-            onExpenseStatusChange={refreshProject}
-          />
-        </TabsContent>
-
-        <TabsContent value="expenses" className="mt-6">
-          <ExpensesTab
-            projectId={project.id}
-            project={project}
-            onProjectChange={refreshProject}
-          />
-        </TabsContent>
-
-        {showFinancials && (
-          <TabsContent value="payments" className="mt-6">
-            <PaymentsTab
-              projectId={project.id}
-              project={project}
-              onProjectChange={refreshProject}
-            />
-          </TabsContent>
-        )}
-
-        <TabsContent value="milestones" className="mt-6">
-          <MilestonesTab
-            projectId={project.id}
-            project={project}
-            onProjectChange={refreshProject}
-          />
-        </TabsContent>
-
-        <TabsContent value="manpower" className="mt-6">
-          <ManpowerTab
-            projectId={project.id}
-            projectStartDate={project.start_date}
-            projectMilestones={project.milestones.map((m) => ({
-              id: m.id,
-              name: m.name,
-            }))}
-            readOnly={!canEditManpower}
-          />
-        </TabsContent>
-
-        {showFinancials && (
-          <TabsContent value="additional-works" className="mt-6">
-            <AdditionalWorksTab
-              projectId={project.id}
-              project={project}
-              onProjectChange={refreshProject}
-            />
-          </TabsContent>
-        )}
-
-        {showFinancials && (
-          <TabsContent value="reports" className="mt-6">
-            <ReportsTab projectId={project.id} project={project} />
-          </TabsContent>
-        )}
-
-        <TabsContent value="photos" className="mt-6">
-          <PhotosTab projectId={project.id} projectName={project.name} />
-        </TabsContent>
-      </Tabs>
-    </main>
+    </>
   )
 }

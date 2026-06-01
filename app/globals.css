@@ -3,7 +3,50 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Light theme (default) — clean dashboard UI */
 :root {
+  --background: oklch(0.97 0.006 260);
+  --foreground: oklch(0.22 0.02 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.02 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.02 260);
+  --primary: oklch(0.52 0.19 250);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.95 0.008 260);
+  --secondary-foreground: oklch(0.35 0.02 260);
+  --muted: oklch(0.95 0.006 260);
+  --muted-foreground: oklch(0.52 0.015 260);
+  --accent: oklch(0.94 0.02 250);
+  --accent-foreground: oklch(0.28 0.04 250);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.78 0.16 75);
+  --warning-foreground: oklch(0.25 0.04 75);
+  --success: oklch(0.58 0.17 145);
+  --success-foreground: oklch(0.99 0 0);
+  --border: oklch(0.90 0.008 260);
+  --input: oklch(0.92 0.008 260);
+  --ring: oklch(0.52 0.19 250);
+  --chart-1: oklch(0.52 0.19 250);
+  --chart-2: oklch(0.58 0.17 145);
+  --chart-3: oklch(0.78 0.16 75);
+  --chart-4: oklch(0.55 0.22 25);
+  --chart-5: oklch(0.55 0.15 280);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.995 0.003 260);
+  --sidebar-foreground: oklch(0.28 0.02 260);
+  --sidebar-primary: oklch(0.52 0.19 250);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.95 0.012 250);
+  --sidebar-accent-foreground: oklch(0.28 0.04 250);
+  --sidebar-border: oklch(0.91 0.008 260);
+  --sidebar-ring: oklch(0.52 0.19 250);
+  --shadow-card: 0 1px 3px oklch(0.22 0.02 260 / 0.06), 0 1px 2px oklch(0.22 0.02 260 / 0.04);
+}
+
+/* Dark theme */
+.dark {
   --background: oklch(0.11 0.01 260);
   --foreground: oklch(0.98 0 0);
   --card: oklch(0.15 0.01 260);
@@ -16,7 +59,7 @@
   --secondary-foreground: oklch(0.85 0 0);
   --muted: oklch(0.22 0.01 260);
   --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.62 0.18 250);
+  --accent: oklch(0.24 0.02 250);
   --accent-foreground: oklch(0.98 0 0);
   --destructive: oklch(0.58 0.22 25);
   --destructive-foreground: oklch(0.98 0 0);
@@ -32,7 +75,6 @@
   --chart-3: oklch(0.75 0.18 60);
   --chart-4: oklch(0.58 0.22 25);
   --chart-5: oklch(0.55 0.15 280);
-  --radius: 0.5rem;
   --sidebar: oklch(0.13 0.01 260);
   --sidebar-foreground: oklch(0.98 0 0);
   --sidebar-primary: oklch(0.62 0.18 250);
@@ -41,41 +83,7 @@
   --sidebar-accent-foreground: oklch(0.98 0 0);
   --sidebar-border: oklch(0.25 0.01 260);
   --sidebar-ring: oklch(0.62 0.18 250);
-}
-
-.dark {
-  --background: oklch(0.11 0.01 260);
-  --foreground: oklch(0.98 0 0);
-  --card: oklch(0.15 0.01 260);
-  --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.15 0.01 260);
-  --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.62 0.18 250);
-  --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.20 0.01 260);
-  --secondary-foreground: oklch(0.85 0 0);
-  --muted: oklch(0.22 0.01 260);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.62 0.18 250);
-  --accent-foreground: oklch(0.98 0 0);
-  --destructive: oklch(0.58 0.22 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.25 0.01 260);
-  --input: oklch(0.20 0.01 260);
-  --ring: oklch(0.62 0.18 250);
-  --chart-1: oklch(0.62 0.18 250);
-  --chart-2: oklch(0.65 0.20 145);
-  --chart-3: oklch(0.75 0.18 60);
-  --chart-4: oklch(0.58 0.22 25);
-  --chart-5: oklch(0.55 0.15 280);
-  --sidebar: oklch(0.13 0.01 260);
-  --sidebar-foreground: oklch(0.98 0 0);
-  --sidebar-primary: oklch(0.62 0.18 250);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.20 0.01 260);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.25 0.01 260);
-  --sidebar-ring: oklch(0.62 0.18 250);
+  --shadow-card: 0 1px 3px oklch(0 0 0 / 0.25);
 }
 
 @theme inline {
@@ -137,9 +145,9 @@
 }
 
 @layer components {
-  /* Compact KPI cards — avoids default Card gap-6 / py-6 padding */
   .card-metric {
-    @apply gap-0 py-0 shadow-sm;
+    @apply gap-0 border-border bg-card py-0;
+    box-shadow: var(--shadow-card);
   }
   .card-metric [data-slot="card-header"] {
     @apply pt-6;
@@ -147,11 +155,18 @@
   .card-metric [data-slot="card-content"] {
     @apply pb-6;
   }
-  /* Section cards (tables, charts) */
   .section-card {
-    @apply bg-card border-border shadow-sm;
+    @apply rounded-xl border-border bg-card;
+    box-shadow: var(--shadow-card);
   }
-  /* Hint that tables scroll horizontally on small screens */
+  .dashboard-card {
+    @apply rounded-xl border border-border bg-card;
+    box-shadow: var(--shadow-card);
+  }
+  .dashboard-stat {
+    @apply rounded-xl border border-border bg-card p-4;
+    box-shadow: var(--shadow-card);
+  }
   .table-scroll-hint {
     @apply relative;
   }

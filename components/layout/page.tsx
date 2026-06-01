@@ -1,9 +1,10 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { AppSidebar } from "@/components/layout/app-sidebar"
 
 /** Standard authenticated page content width and padding */
 export const PAGE_MAIN_CLASS =
-  "container mx-auto max-w-7xl px-4 py-5 sm:py-6 md:px-6 lg:px-8 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+  "mx-auto w-full max-w-[1600px] px-4 py-5 sm:py-6 md:px-6 lg:px-8 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
 
 /** Vertical rhythm between major page blocks */
 export const PAGE_STACK_CLASS = "flex flex-col gap-6 sm:gap-8"
@@ -33,12 +34,20 @@ export const STATS_GRID_3_CLASS =
 export function PageShell({
   children,
   className,
+  hideAppSidebar = false,
 }: {
   children: React.ReactNode
   className?: string
+  /** Project detail uses its own sidebar */
+  hideAppSidebar?: boolean
 }) {
   return (
-    <div className={cn("min-h-screen bg-background", className)}>{children}</div>
+    <div className={cn("min-h-screen bg-background", className)}>
+      <div className="flex min-h-screen">
+        {!hideAppSidebar && <AppSidebar className="hidden lg:flex" />}
+        <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+      </div>
+    </div>
   )
 }
 

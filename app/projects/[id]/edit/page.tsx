@@ -10,8 +10,8 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
   const { id } = await params
 
   return (
-    <PageShell>
-      <DashboardHeader />
+    <PageShell hideAppSidebar>
+      <DashboardHeader hideAppNav />
       <EditProjectContent projectId={id} />
     </PageShell>
   )
