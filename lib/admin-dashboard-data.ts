@@ -126,7 +126,6 @@ type ExpenseRow = {
   expense_date: string
   status?: string
 }
-type ManpowerWeekRow = { project_id: string; start_date: string }
 type AmountRow = { project_id: string; amount: number }
 type ClientPaymentRow = {
   project_id: string
@@ -202,7 +201,6 @@ export function buildAdminDashboardData(input: {
   milestones: MilestoneRow[]
   expenses: ExpenseRow[]
   allExpenseDates: ExpenseRow[]
-  manpowerWeeks: ManpowerWeekRow[]
   clientPayments: ClientPaymentRow[]
   additionalWorks: AmountRow[]
   vendorPayments: VendorPaymentRow[]
@@ -234,12 +232,6 @@ export function buildAdminDashboardData(input: {
     input.allExpenseDates.map((row) => ({
       project_id: row.project_id,
       value: row.expense_date,
-    })),
-  )
-  const manpowerStartsByProject = groupStringsByProject(
-    input.manpowerWeeks.map((row) => ({
-      project_id: row.project_id,
-      value: row.start_date,
     })),
   )
   const paymentDatesByProject = groupStringsByProject(
@@ -320,7 +312,6 @@ export function buildAdminDashboardData(input: {
       expenses: (allExpenseDatesByProject.get(project.id) ?? []).map(
         (expense_date) => ({ expense_date }),
       ),
-      manpowerWeekStarts: manpowerStartsByProject.get(project.id) ?? [],
     })
 
     return {

@@ -40,7 +40,6 @@ import {
   type ProjectSidebarTab,
 } from "./project-detail/project-sidebar"
 import { useProject, useDefaultProject, useProjectMetrics } from "@/lib/hooks/use-project-data"
-import { useProjectManpowerWeekStarts } from "@/lib/hooks/use-project-manpower-starts"
 import { projectIdleFromProject } from "@/lib/project-idle"
 import { ProjectIdleBadge } from "@/components/projects/project-idle-badge"
 import { getApprovedAdditionalWorksTotal } from "@/lib/financial-calculations"
@@ -133,10 +132,6 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   const project = isLegacyDefaultId ? defaultProject : specificProject
   const isLoading = isLegacyDefaultId ? defaultLoading : specificLoading
   const loadError = isLegacyDefaultId ? defaultError : specificError
-  const { weekStarts: manpowerWeekStarts } = useProjectManpowerWeekStarts(
-    project?.id ?? null,
-  )
-
   const projectIdle = useMemo(() => {
     if (!project) return null
     return projectIdleFromProject({
@@ -145,9 +140,8 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       expenses: project.expenses.map((exp) => ({
         expense_date: exp.expense_date,
       })),
-      manpowerWeekStarts,
     })
-  }, [project, manpowerWeekStarts])
+  }, [project])
   const refreshProject = () => {
     if (isLegacyDefaultId) {
       void mutateDefaultProject()

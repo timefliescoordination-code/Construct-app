@@ -45,7 +45,6 @@ export async function GET() {
       milestonesResult,
       expensesResult,
       allExpensesResult,
-      manpowerWeeksResult,
       clientPaymentsResult,
       additionalWorksResult,
       vendorPaymentsResult,
@@ -67,7 +66,6 @@ export async function GET() {
         .select("project_id, amount, expense_date, status")
         .eq("status", "approved"),
       supabase.from("expenses").select("project_id, expense_date"),
-      supabase.from("manpower_weeks").select("project_id, start_date"),
       supabase
         .from("client_payments")
         .select("project_id, amount, status, received_date"),
@@ -88,7 +86,6 @@ export async function GET() {
       milestonesResult.error ??
       expensesResult.error ??
       allExpensesResult.error ??
-      manpowerWeeksResult.error ??
       clientPaymentsResult.error ??
       additionalWorksResult.error ??
       vendorPaymentsResult.error ??
@@ -111,10 +108,6 @@ export async function GET() {
       expenses: filterRowsByActiveProjects(expensesResult.data ?? [], activeIds),
       allExpenseDates: filterRowsByActiveProjects(
         allExpensesResult.data ?? [],
-        activeIds,
-      ),
-      manpowerWeeks: filterRowsByActiveProjects(
-        manpowerWeeksResult.data ?? [],
         activeIds,
       ),
       clientPayments: filterRowsByActiveProjects(clientPaymentsResult.data ?? [], activeIds),

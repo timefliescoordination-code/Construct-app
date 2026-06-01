@@ -5,15 +5,11 @@ export const DEFAULT_IDLE_THRESHOLD_DAYS = 10
 
 export type IdleBand = "active" | "slow" | "idle" | "critical"
 
-export type ProjectIdleReason = "expenses" | "manpower_start"
-
 export interface ProjectIdleInput {
   startDate?: string | null
   status?: string | null
-  /** Any expense status counts as site activity. */
+  /** Any expense status counts as site activity. Manpower is not used for idle. */
   expenses?: { expense_date: string }[]
-  /** Manpower week start dates — only used for start → first-entry gap (not between weeks). */
-  manpowerWeekStarts?: string[]
   now?: Date
   idleThresholdDays?: number
 }
@@ -27,7 +23,6 @@ export interface ProjectIdleStatus {
   label: string
   detail: string
   lastExpenseDate: Date | null
-  reasons: ProjectIdleReason[]
 }
 
 export const IDLE_BAND_LABELS: Record<IdleBand, string> = {
@@ -93,7 +88,6 @@ export function deriveProjectIdleStatus(input: ProjectIdleInput): ProjectIdleSta
           ? "Project completed"
           : "Project archived",
       lastExpenseDate: null,
-      reasons: [],
     }
   }
 
@@ -109,44 +103,15 @@ export function deriveProjectIdleStatus(input: ProjectIdleInput): ProjectIdleSta
     expenseIdleDays = Math.max(0, differenceInCalendarDays(now, start))
   }
 
-  const expenseIdle = expenseIdleDays > threshold
-
-  const weekStarts = (input.manpowerWeekStarts ?? [])
-    .map((iso) => parseDate(iso))
-    .filter((d): d is Date => d !== null)
-    .sort((a, b) => a.getTime() - b.getTime())
-
-  const firstManpowerWeek = weekStarts[0] ?? null
-  let manpowerIdleDays = 0
-  let manpowerIdle = false
-  if (!firstManpowerWeek && start) {
-    manpowerIdleDays = Math.max(0, differenceInCalendarDays(now, start))
-    manpowerIdle = manpowerIdleDays > threshold
-  }
-
-  const isIdle = expenseIdle || manpowerIdle
-  const idleDays = Math.max(
-    expenseIdle ? expenseIdleDays : 0,
-    manpowerIdle ? manpowerIdleDays : 0,
-  )
-  const band = isIdle ? idleBandForDays(idleDays, threshold) : "active"
-  const friendlyDuration = isIdle
-    ? formatFriendlyIdleDuration(idleDays)
-    : formatFriendlyIdleDuration(expenseIdleDays)
-
-  const reasons: ProjectIdleReason[] = []
-  if (expenseIdle) reasons.push("expenses")
-  if (manpowerIdle) reasons.push("manpower_start")
+  const isIdle = expenseIdleDays > threshold
+  const band = isIdle ? idleBandForDays(expenseIdleDays, threshold) : "active"
+  const friendlyDuration = formatFriendlyIdleDuration(expenseIdleDays)
 
   let detail: string
-  if (expenseIdle && manpowerIdle) {
-    detail = `No expenses for ${formatFriendlyIdleDuration(expenseIdleDays)} · No manpower logged since project start (${formatFriendlyIdleDuration(manpowerIdleDays)})`
-  } else if (expenseIdle) {
+  if (isIdle) {
     detail = lastExpenseDate
       ? `No expenses for ${formatFriendlyIdleDuration(expenseIdleDays)} (last entry ${lastExpenseDate.toISOString().slice(0, 10)})`
       : `No expenses since project start (${formatFriendlyIdleDuration(expenseIdleDays)})`
-  } else if (manpowerIdle) {
-    detail = `No manpower logged since project start (${formatFriendlyIdleDuration(manpowerIdleDays)})`
   } else if (lastExpenseDate) {
     const since = differenceInCalendarDays(now, lastExpenseDate)
     detail =
@@ -166,12 +131,11 @@ export function deriveProjectIdleStatus(input: ProjectIdleInput): ProjectIdleSta
   return {
     band,
     isIdle,
-    days: isIdle ? idleDays : expenseIdleDays,
+    days: expenseIdleDays,
     friendlyDuration,
     label,
     detail,
     lastExpenseDate,
-    reasons,
   }
 }
 
@@ -179,12 +143,10 @@ export function projectIdleFromProject(project: {
   start_date?: string | null
   status?: string | null
   expenses?: { expense_date: string }[]
-  manpowerWeekStarts?: string[]
 }): ProjectIdleStatus {
   return deriveProjectIdleStatus({
     startDate: project.start_date,
     status: project.status,
     expenses: project.expenses,
-    manpowerWeekStarts: project.manpowerWeekStarts,
   })
 }

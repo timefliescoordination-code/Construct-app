@@ -50,7 +50,6 @@ import { useProjectDetailsList } from "@/lib/hooks/use-project-data"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
 import { deriveProjectIdleStatus, projectIdleFromProject } from "@/lib/project-idle"
-import { useProjectManpowerWeekStarts } from "@/lib/hooks/use-project-manpower-starts"
 import { ProjectIdleBadge } from "@/components/projects/project-idle-badge"
 import { createExpenseAction } from "@/lib/projects/tab-actions"
 import { canEnterManpowerData } from "@/lib/permissions"
@@ -135,10 +134,7 @@ function mapExpenseRow(
   }
 }
 
-function buildViewFromProject(
-  project: ProjectWithDetails,
-  manpowerWeekStarts: string[] = [],
-): EngineerDashboardView {
+function buildViewFromProject(project: ProjectWithDetails): EngineerDashboardView {
   const today = new Date()
   const expenses = project.expenses ?? []
   const milestoneRows = project.milestones ?? []
@@ -181,7 +177,6 @@ function buildViewFromProject(
       start_date: project.start_date,
       status: project.status,
       expenses: expenses.map((exp) => ({ expense_date: exp.expense_date })),
-      manpowerWeekStarts,
     }),
   }
 }
@@ -274,13 +269,6 @@ export function EngineerDashboard() {
     return SHOW_ALL_PROJECTS
   }, [assignedProjects, selectedProjectId])
 
-  const singleProjectIdForManpower =
-    effectiveProjectId !== SHOW_ALL_PROJECTS ? effectiveProjectId : null
-
-  const { weekStarts: manpowerWeekStarts } = useProjectManpowerWeekStarts(
-    singleProjectIdForManpower,
-  )
-
   useEffect(() => {
     if (!assignedProjects.length) return
     if (assignedProjects.length === 1) {
@@ -322,8 +310,8 @@ export function EngineerDashboard() {
       return buildViewFromAllProjects(assignedProjects)
     }
 
-    return buildViewFromProject(project, manpowerWeekStarts)
-  }, [assignedProjects, effectiveProjectId, manpowerWeekStarts])
+    return buildViewFromProject(project)
+  }, [assignedProjects, effectiveProjectId])
 
   function handleProjectChange(projectId: string) {
     setSelectedProjectId(projectId)
