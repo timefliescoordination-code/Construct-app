@@ -6,6 +6,7 @@ import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import { calculateMilestoneCompletionFromExpenses } from '@/lib/financial-calculations'
 import { expensesByMilestoneId } from '@/lib/project-tab-hydration'
 import { notifyExpenseStatusChange } from '@/lib/notifications'
+import { resolveExpenseStatusForRole } from '@/lib/permissions'
 import type {
   AdditionalWorkStatus,
   Expense,
@@ -132,6 +133,8 @@ export async function createExpenseAction(input: {
     return { ok: false, error: 'You do not have permission to add expenses.' }
   }
 
+  const expenseStatus = resolveExpenseStatusForRole(session.role, input.status)
+
   const { data, error } = await session.supabase
     .from('expenses')
     .insert({
@@ -145,7 +148,7 @@ export async function createExpenseAction(input: {
       expense_date: input.expenseDate,
       labour_team_id:
         input.category === 'Labour' ? input.labourTeamId ?? null : null,
-      status: input.status ?? 'pending',
+      status: expenseStatus,
       entered_by: session.userId,
     })
     .select('*')
@@ -155,7 +158,7 @@ export async function createExpenseAction(input: {
     return { ok: false, error: getSupabaseErrorMessage(error) }
   }
 
-  if ((input.status ?? 'pending') === 'approved') {
+  if (expenseStatus === 'approved') {
     await syncProjectMilestoneMetrics(session.supabase, input.projectId)
   }
 
@@ -199,7 +202,7 @@ export async function bulkCreateExpensesAction(input: {
     bill_number: row.billNumber,
     expense_date: row.expenseDate,
     labour_team_id: row.category === 'Labour' ? row.labourTeamId ?? null : null,
-    status: row.status ?? 'pending',
+    status: resolveExpenseStatusForRole(session.role, row.status),
     entered_by: session.userId,
   }))
 
@@ -219,7 +222,7 @@ export async function bulkCreateExpensesAction(input: {
 
     created += data?.length ?? 0
   }
-  const anyApproved = input.rows.some((r) => (r.status ?? 'pending') === 'approved')
+  const anyApproved = payload.some((row) => row.status === 'approved')
   if (anyApproved) {
     await syncProjectMilestoneMetrics(session.supabase, input.projectId)
   }

@@ -7,6 +7,7 @@ import {
   getProjectAccessScope,
   NO_ASSIGNED_PROJECT_MESSAGE,
 } from '@/lib/project-access'
+import { stripProjectFinancialsForEngineer } from '@/lib/permissions'
 
 export const PROJECT_LIST_SELECT = `
   *,
@@ -83,9 +84,21 @@ function shouldRetryWithBasicSelect(error: { code?: string; message?: string }):
   )
 }
 
+function applyRoleProjectVisibility(
+  project: ProjectWithDetails,
+  role: string | undefined,
+): ProjectWithDetails {
+  if (role === 'engineer') {
+    return stripProjectFinancialsForEngineer(project)
+  }
+  return project
+}
+
 export async function listProjectsForApi(options?: { includeArchived?: boolean }) {
   const supabase = await createClient()
   const includeArchived = options?.includeArchived ?? false
+
+  const access = await getProjectAccessScope(supabase)
 
   const {
     data: { user },
@@ -135,10 +148,11 @@ export async function listProjectsForApi(options?: { includeArchived?: boolean }
 
   const enriched = rows.map((project) => {
     const base = enrichProjectWithMilestoneMetrics(project as ProjectWithDetails)
-    return {
+    const withLabour = {
       ...base,
       labour_workers_today: labourByProject.get(project.id as string) ?? 0,
     }
+    return applyRoleProjectVisibility(withLabour, access?.role)
   })
 
   return { data: enriched, error: null }
@@ -146,6 +160,7 @@ export async function listProjectsForApi(options?: { includeArchived?: boolean }
 
 export async function getProjectByIdForApi(projectId: string) {
   const supabase = await createClient()
+  const access = await getProjectAccessScope(supabase)
 
   const {
     data: { user },
@@ -188,11 +203,13 @@ export async function getProjectByIdForApi(projectId: string) {
     todayIso,
   )
 
+  const enriched = {
+    ...enrichProjectWithMilestoneMetrics(data as ProjectWithDetails),
+    labour_workers_today: labourWorkersToday,
+  }
+
   return {
-    data: {
-      ...enrichProjectWithMilestoneMetrics(data as ProjectWithDetails),
-      labour_workers_today: labourWorkersToday,
-    },
+    data: applyRoleProjectVisibility(enriched, access?.role),
     error: null,
   }
 }

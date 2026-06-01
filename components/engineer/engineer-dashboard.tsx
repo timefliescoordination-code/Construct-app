@@ -45,10 +45,13 @@ import {
 import { formatINR } from "@/lib/currency"
 import { format, isSameDay, parseISO } from "date-fns"
 import { cn } from "@/lib/utils"
-import { useProjectDetailsList, useLabourTypes } from "@/lib/hooks/use-project-data"
+import Link from "next/link"
+import { useProjectDetailsList } from "@/lib/hooks/use-project-data"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
 import { createExpenseAction } from "@/lib/projects/tab-actions"
+import { canEnterManpowerData } from "@/lib/permissions"
+import { useAuth } from "@/lib/hooks/use-auth"
 import { toast } from "sonner"
 import { DashboardHeader } from "@/components/dashboard/header"
 import { MetricCard } from "@/components/layout/metric-card"
@@ -220,8 +223,9 @@ function buildViewFromAllProjects(projects: ProjectWithDetails[]): EngineerDashb
 }
 
 export function EngineerDashboard() {
+  const { role } = useAuth()
+  const canUseManpower = canEnterManpowerData(role)
   const { projects: assignedProjects, isLoading, error, mutate } = useProjectDetailsList()
-  const { labourTypes } = useLabourTypes()
   const [selectedProjectId, setSelectedProjectId] = useState(SHOW_ALL_PROJECTS)
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false)
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false)
@@ -375,7 +379,7 @@ export function EngineerDashboard() {
       <PageMain>
         <PageHeader
           title="Site Dashboard"
-          description={format(new Date(), "EEEE, dd MMMM yyyy")}
+          description="Log site expenses and manpower — payments and budgets are managed by your PM."
         >
           <Select value={effectiveProjectId} onValueChange={handleProjectChange}>
             <SelectTrigger className="w-full sm:w-[220px] bg-secondary border-border">
@@ -684,34 +688,40 @@ export function EngineerDashboard() {
             {engineerData.showAll ? (
               <Card>
                 <CardContent className="pt-6 text-sm text-muted-foreground">
-                  Select a single project to view labour types and milestone progress for that site.
+                  Select a single project to open site tools, milestones, and manpower for that site.
                 </CardContent>
               </Card>
             ) : (
               <>
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">Labour Types</CardTitle>
-                  <Button size="sm" variant="outline" className="gap-1">
-                    <Plus className="h-3 w-3" />
-                    Add
+            {engineerData.activeProject && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Site tools</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-2">
+                  <Button variant="outline" className="w-full justify-start" asChild>
+                    <Link href={`/projects/${engineerData.activeProject.id}?tab=expenses`}>
+                      <Receipt className="h-4 w-4 mr-2" />
+                      All expenses &amp; bills
+                    </Link>
                   </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {labourTypes.map((type) => (
-                    <div key={type.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                      <div>
-                        <p className="font-medium">{type.name}</p>
-                        <p className="text-xs text-muted-foreground">Default: {formatINR(Number(type.default_wage))}/day</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                  {canUseManpower && (
+                    <Button variant="outline" className="w-full justify-start" asChild>
+                      <Link href={`/projects/${engineerData.activeProject.id}?tab=manpower`}>
+                        <Users className="h-4 w-4 mr-2" />
+                        Manpower log
+                      </Link>
+                    </Button>
+                  )}
+                  <Button variant="outline" className="w-full justify-start" asChild>
+                    <Link href={`/projects/${engineerData.activeProject.id}?tab=milestones`}>
+                      <Building2 className="h-4 w-4 mr-2" />
+                      Milestones (view only)
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Milestones Progress */}
             <Card>
