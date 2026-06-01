@@ -52,7 +52,7 @@ export async function GET() {
       supabase
         .from("projects")
         .select(
-          "id, name, status, contract_value, expected_margin_percent, pm:profiles!pm_id(full_name, email)"
+          "id, name, status, contract_value, expected_margin_percent, start_date, expected_completion_date, pm:profiles!pm_id(full_name, email)"
         )
         .order("created_at", { ascending: false }),
       supabase
@@ -60,8 +60,13 @@ export async function GET() {
         .select(
           "project_id, name, expected_cost_percent, actual_completion_percent, target_budget, actual_expenses, status"
         ),
-      supabase.from("expenses").select("project_id, amount").eq("status", "approved"),
-      supabase.from("client_payments").select("project_id, amount, status"),
+      supabase
+        .from("expenses")
+        .select("project_id, amount, expense_date")
+        .eq("status", "approved"),
+      supabase
+        .from("client_payments")
+        .select("project_id, amount, status, received_date"),
       supabase
         .from("additional_works")
         .select("project_id, amount")

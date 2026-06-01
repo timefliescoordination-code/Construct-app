@@ -29,6 +29,12 @@ import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { formatINR } from "@/lib/currency"
+import { TimelineHintLines } from "@/components/dashboard/financial-layers"
+import {
+  buildRemainingBudgetTimelineLines,
+  buildSpentTimelineLines,
+  deriveProjectTimeline,
+} from "@/lib/project-timeline"
 import {
   getApprovedAdditionalWorksTotal,
   summarizeProjectFinancials,
@@ -253,6 +259,24 @@ export function ReportsTab({ projectId: propProjectId, project }: ReportsTabProp
   const remainingStageBudget =
     projectFinances?.remainingStageBudget ?? totalStageBudget - totalExpenses
 
+  const timeline = project
+    ? deriveProjectTimeline({
+        startDate: project.start_date,
+        expectedCompletionDate: project.expected_completion_date,
+        expenseDates: expenses
+          .filter((exp) => exp.status === "approved")
+          .map((exp) => exp.expense_date),
+        paymentReceivedDates: (project.client_payments ?? [])
+          .filter((p) => p.status === "received")
+          .map((p) => p.received_date || p.due_date || p.created_at)
+          .filter(Boolean) as string[],
+      })
+    : null
+  const spentTimelineLines = timeline ? buildSpentTimelineLines(timeline) : []
+  const remainingTimelineLines = timeline
+    ? buildRemainingBudgetTimelineLines(timeline)
+    : []
+
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
@@ -285,6 +309,7 @@ export function ReportsTab({ projectId: propProjectId, project }: ReportsTabProp
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{formatINR(totalExpenses)}</div>
+            <TimelineHintLines lines={spentTimelineLines} />
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
@@ -297,6 +322,7 @@ export function ReportsTab({ projectId: propProjectId, project }: ReportsTabProp
             <div className={`text-2xl font-bold ${remainingStageBudget >= 0 ? 'text-green-500' : 'text-destructive'}`}>
               {formatINR(remainingStageBudget)}
             </div>
+            <TimelineHintLines lines={remainingTimelineLines} />
           </CardContent>
         </Card>
       </div>

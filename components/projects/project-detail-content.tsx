@@ -255,6 +255,15 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
 
     const pendingApprovals = expenseApprovals.filter((exp) => exp.status === 'pending')
 
+    const expenseDates = project.expenses
+      .filter((exp) => exp.status === "approved")
+      .map((exp) => exp.expense_date)
+
+    const paymentReceivedDates = project.client_payments
+      .filter((cp) => cp.status === "received")
+      .map((cp) => cp.received_date || cp.due_date || cp.created_at)
+      .filter(Boolean) as string[]
+
     return {
       originalContractValue: Number(project.contract_value),
       expectedProfitPercent: Number(project.expected_margin_percent),
@@ -270,6 +279,8 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       recentActivity,
       startDate: project.start_date,
       expectedCompletionDate: project.expected_completion_date,
+      expenseDates,
+      paymentReceivedDates,
     }
   }, [project])
 

@@ -256,12 +256,26 @@ export function AdminDashboard() {
                   label="Received from clients"
                   value={formatINR(displayCompany.totalReceived)}
                   hint={`${displayCompany.portfolioReceivedPercent}% of contract collected`}
+                  timelineLines={
+                    showAllProjects
+                      ? displayCompany.portfolioSpentTimelineLines.filter((line) =>
+                          line.toLowerCase().includes("payment"),
+                        )
+                      : selectedProject?.spent_timeline_lines.filter((line) =>
+                          line.toLowerCase().includes("payment"),
+                        )
+                  }
                   valueClassName="text-success"
                 />
                 <MetricTile
                   label="Spent (approved)"
                   value={formatINR(displayCompany.totalSpent)}
                   hint="Approved expenses across portfolio"
+                  timelineLines={
+                    showAllProjects
+                      ? displayCompany.portfolioSpentTimelineLines
+                      : selectedProject?.spent_timeline_lines
+                  }
                 />
                 <MetricTile
                   label="Portfolio cash balance"
@@ -397,6 +411,13 @@ export function AdminDashboard() {
                               <span className="block text-[10px] text-muted-foreground">
                                 {project.budget_usage_percent}% of stage budget
                               </span>
+                              {project.spent_timeline_lines.length > 0 ? (
+                                <ul className="mt-1 space-y-0.5 text-left text-[10px] font-normal text-muted-foreground">
+                                  {project.spent_timeline_lines.map((line) => (
+                                    <li key={line}>{line}</li>
+                                  ))}
+                                </ul>
+                              ) : null}
                             </TableCell>
                             <TableCell
                               className={cn(

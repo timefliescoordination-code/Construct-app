@@ -18,6 +18,12 @@ import {
   sumCompletedStageProfitLoss,
   type ProjectHealthStatus,
 } from "@/lib/dashboard-financials"
+import {
+  buildPortfolioSpentTimelineLines,
+  buildSpentTimelineLines,
+  deriveProjectTimeline,
+  type ProjectTimelineContext,
+} from "@/lib/project-timeline"
 import { getProjectPmLabel } from "@/lib/staff-labels"
 import type { Profile, ProjectStatus } from "@/lib/types/database"
 
@@ -45,6 +51,7 @@ export interface AdminProjectSummary {
   pm_label: string
   expected_margin_percent: number
   has_stage_loss: boolean
+  spent_timeline_lines: string[]
   /** Legacy — kept for internal aggregates; not shown as primary KPI */
   realized_profit: number
   forecast_profit: number
@@ -74,6 +81,7 @@ export interface AdminCompanyMetrics {
   totalPMs: number
   totalEngineers: number
   weightedMarginPercent: number
+  portfolioSpentTimelineLines: string[]
   /** Legacy */
   currentCashflow: number
   expectedProfit: number
@@ -95,6 +103,8 @@ type ProjectRow = {
   status: ProjectStatus
   contract_value: number
   expected_margin_percent: number
+  start_date?: string | null
+  expected_completion_date?: string | null
   pm?: { full_name: string | null; email: string } | null
 }
 
@@ -108,8 +118,14 @@ type MilestoneRow = {
   status: "pending" | "in-progress" | "completed"
 }
 
+type ExpenseRow = { project_id: string; amount: number; expense_date: string }
 type AmountRow = { project_id: string; amount: number }
-type ClientPaymentRow = { project_id: string; amount: number; status: string }
+type ClientPaymentRow = {
+  project_id: string
+  amount: number
+  status: string
+  received_date?: string | null
+}
 type VendorPaymentRow = {
   project_id: string
   pending_amount: number
@@ -144,6 +160,18 @@ function countOverdueByProjectId(rows: VendorPaymentRow[]): Map<string, number> 
   return totals
 }
 
+function groupStringsByProject(
+  rows: { project_id: string; value: string }[],
+): Map<string, string[]> {
+  const grouped = new Map<string, string[]>()
+  for (const row of rows) {
+    const list = grouped.get(row.project_id) ?? []
+    list.push(row.value)
+    grouped.set(row.project_id, list)
+  }
+  return grouped
+}
+
 function groupMilestonesByProject(rows: MilestoneRow[]): Map<string, MilestoneData[]> {
   const grouped = new Map<string, MilestoneData[]>()
   for (const row of rows) {
@@ -164,7 +192,7 @@ function groupMilestonesByProject(rows: MilestoneRow[]): Map<string, MilestoneDa
 export function buildAdminDashboardData(input: {
   projects: ProjectRow[]
   milestones: MilestoneRow[]
-  expenses: AmountRow[]
+  expenses: ExpenseRow[]
   clientPayments: ClientPaymentRow[]
   additionalWorks: AmountRow[]
   vendorPayments: VendorPaymentRow[]
@@ -183,6 +211,22 @@ export function buildAdminDashboardData(input: {
   const payableTotals = sumPayablesByProjectId(input.vendorPayments)
   const overdueTotals = countOverdueByProjectId(input.vendorPayments)
   const milestonesByProject = groupMilestonesByProject(input.milestones)
+  const expenseDatesByProject = groupStringsByProject(
+    input.expenses.map((row) => ({
+      project_id: row.project_id,
+      value: row.expense_date,
+    })),
+  )
+  const paymentDatesByProject = groupStringsByProject(
+    input.clientPayments
+      .filter((row) => row.status === "received" && row.received_date)
+      .map((row) => ({
+        project_id: row.project_id,
+        value: row.received_date as string,
+      })),
+  )
+
+  const projectTimelines: ProjectTimelineContext[] = []
 
   const projects: AdminProjectSummary[] = input.projects.map((project) => {
     const additionalWorksApproved = additionalWorkTotals.get(project.id) ?? 0
@@ -236,6 +280,15 @@ export function buildAdminDashboardData(input: {
       totalContractValue,
     )
 
+    const timeline = deriveProjectTimeline({
+      startDate: project.start_date,
+      expectedCompletionDate: project.expected_completion_date,
+      expenseDates: expenseDatesByProject.get(project.id) ?? [],
+      paymentReceivedDates: paymentDatesByProject.get(project.id) ?? [],
+    })
+    projectTimelines.push(timeline)
+    const spent_timeline_lines = buildSpentTimelineLines(timeline)
+
     return {
       id: project.id,
       name: project.name,
@@ -259,6 +312,7 @@ export function buildAdminDashboardData(input: {
       pm_label: getProjectPmLabel(project),
       expected_margin_percent: marginPercent,
       has_stage_loss: hasCompletedStageLoss(milestones),
+      spent_timeline_lines,
       realized_profit: realizedProfit,
       forecast_profit: forecastProfit,
       forecast_margin_percent: forecastMarginPercent,
@@ -274,6 +328,7 @@ export function buildAdminDashboardData(input: {
     cashflowWarnings: input.vendorPayments.filter(
       (payment) => payment.status === "overdue",
     ).length,
+    projectTimelines,
   })
 
   return {
@@ -286,7 +341,12 @@ export function buildAdminDashboardData(input: {
 
 export function aggregateAdminCompanyMetrics(
   projects: AdminProjectSummary[],
-  staff: { totalPMs: number; totalEngineers: number; cashflowWarnings?: number },
+  staff: {
+    totalPMs: number
+    totalEngineers: number
+    cashflowWarnings?: number
+    projectTimelines?: ProjectTimelineContext[]
+  },
 ): AdminCompanyMetrics {
   const totalContractValue = projects.reduce((sum, project) => sum + project.contract_value, 0)
   const totalSpent = projects.reduce((sum, project) => sum + project.total_expenses, 0)
@@ -312,6 +372,9 @@ export function aggregateAdminCompanyMetrics(
   const weightedMarginPercent =
     totalContractValue > 0 ? Math.round((totalPlannedProfit / totalContractValue) * 100) : 0
   const portfolioReceivedPercent = percentOfContract(totalReceived, totalContractValue)
+  const portfolioSpentTimelineLines = buildPortfolioSpentTimelineLines({
+    projectTimelines: staff.projectTimelines ?? [],
+  })
 
   return {
     totalProjects: projects.length,
@@ -340,6 +403,7 @@ export function aggregateAdminCompanyMetrics(
     totalPMs: staff.totalPMs,
     totalEngineers: staff.totalEngineers,
     weightedMarginPercent,
+    portfolioSpentTimelineLines,
     currentCashflow: portfolioCashBalance,
     expectedProfit: totalPlannedProfit,
     realizedProfit,

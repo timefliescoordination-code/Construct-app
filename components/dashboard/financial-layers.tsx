@@ -77,12 +77,15 @@ export function MetricTile({
   label,
   value,
   hint,
+  timelineLines,
   valueClassName,
   className,
 }: {
   label: string
   value: ReactNode
   hint?: string
+  /** Extra timeline context (months spent, last payment, months left). */
+  timelineLines?: string[]
   valueClassName?: string
   className?: string
 }) {
@@ -100,7 +103,35 @@ export function MetricTile({
         {value}
       </div>
       {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
+      {timelineLines && timelineLines.length > 0 ? (
+        <ul className="mt-1.5 space-y-0.5 border-t border-border/60 pt-1.5">
+          {timelineLines.map((line) => (
+            <li key={line} className="text-xs text-muted-foreground">
+              {line}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
+  )
+}
+
+export function TimelineHintLines({
+  lines,
+  className,
+}: {
+  lines: string[]
+  className?: string
+}) {
+  if (lines.length === 0) return null
+  return (
+    <ul className={cn("mt-1.5 space-y-0.5", className)}>
+      {lines.map((line) => (
+        <li key={line} className="text-[11px] text-muted-foreground">
+          {line}
+        </li>
+      ))}
+    </ul>
   )
 }
 

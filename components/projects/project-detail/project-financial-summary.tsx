@@ -2,11 +2,18 @@
 
 import { useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
+import { TimelineHintLines } from "@/components/dashboard/financial-layers"
 import { formatINR } from "@/lib/currency"
 import {
   getApprovedAdditionalWorksTotal,
   summarizeProjectFinancials,
 } from "@/lib/financial-calculations"
+import {
+  buildReceivedTimelineLines,
+  buildRemainingBudgetTimelineLines,
+  buildSpentTimelineLines,
+  projectTimelineFromProject,
+} from "@/lib/project-timeline"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { cn } from "@/lib/utils"
 
@@ -36,7 +43,27 @@ export function ProjectFinancialSummary({
     })
   }, [project])
 
+  const timeline = useMemo(() => projectTimelineFromProject(project), [project])
+  const spentTimelineLines = useMemo(
+    () => buildSpentTimelineLines(timeline),
+    [timeline],
+  )
+  const receivedTimelineLines = useMemo(() => {
+    const received = project.client_payments
+      .filter((p) => p.status === "received")
+      .reduce((sum, p) => sum + Number(p.amount), 0)
+    if (received <= 0) return []
+    return buildReceivedTimelineLines(timeline)
+  }, [project.client_payments, timeline])
+  const remainingTimelineLines = useMemo(
+    () => buildRemainingBudgetTimelineLines(timeline),
+    [timeline],
+  )
+
   const totalExpenses = finances.totalExpenses
+  const totalReceived = project.client_payments
+    .filter((p) => p.status === "received")
+    .reduce((sum, p) => sum + Number(p.amount), 0)
 
   return (
     <Card className={cn("section-card border-border", className)}>
@@ -67,6 +94,7 @@ export function ProjectFinancialSummary({
           <p className="text-[11px] text-muted-foreground mt-0.5">
             {finances.stageBudgetUsagePercent}% of stage budget
           </p>
+          <TimelineHintLines lines={spentTimelineLines} />
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Remaining stage budget</p>
@@ -80,7 +108,17 @@ export function ProjectFinancialSummary({
           >
             {formatINR(finances.remainingStageBudget)}
           </p>
+          <TimelineHintLines lines={remainingTimelineLines} />
         </div>
+        {totalReceived > 0 ? (
+          <div className="sm:col-span-2 lg:col-span-4 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+            <p className="text-xs text-muted-foreground">Client payments received</p>
+            <p className="text-sm font-semibold tabular-nums text-success">
+              {formatINR(totalReceived)}
+            </p>
+            <TimelineHintLines lines={receivedTimelineLines} />
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   )

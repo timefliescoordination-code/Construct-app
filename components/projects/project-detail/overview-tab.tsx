@@ -101,6 +101,8 @@ interface OverviewTabProps {
     recentActivity?: ActivityItem[]
     startDate?: string | null
     expectedCompletionDate?: string | null
+    expenseDates?: string[]
+    paymentReceivedDates?: string[]
   }
   restrictFinancials?: boolean
   canApproveExpenses?: boolean
@@ -343,6 +345,8 @@ export function OverviewTab({
               recentActivity: projectData.recentActivity ?? [],
               startDate: projectData.startDate,
               expectedCompletionDate: projectData.expectedCompletionDate,
+              expenseDates: projectData.expenseDates,
+              paymentReceivedDates: projectData.paymentReceivedDates,
             }}
           />
         )}

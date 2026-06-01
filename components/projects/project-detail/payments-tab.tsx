@@ -71,6 +71,11 @@ import {
   deleteVendorPaymentAction,
 } from "@/lib/projects/tab-actions"
 import { ProjectFinancialSummary } from "@/components/projects/project-detail/project-financial-summary"
+import { TimelineHintLines } from "@/components/dashboard/financial-layers"
+import {
+  buildReceivedTimelineLines,
+  projectTimelineFromProject,
+} from "@/lib/project-timeline"
 
 interface ClientPayment {
   id: string
@@ -529,6 +534,10 @@ export function PaymentsTab({
   const totalPending = vendorPayments.reduce((sum, p) => sum + Number(p.pending_amount || 0), 0)
   const netCashPosition = totalReceived - totalPaid - totalPending
 
+  const receivedTimelineLines = project
+    ? buildReceivedTimelineLines(projectTimelineFromProject(project))
+    : []
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -551,6 +560,7 @@ export function PaymentsTab({
           <CardContent>
             <div className="text-2xl font-bold text-green-500">Rs {totalReceived.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">From client</p>
+            <TimelineHintLines lines={receivedTimelineLines} />
           </CardContent>
         </Card>
         <Card className="bg-card border-border">

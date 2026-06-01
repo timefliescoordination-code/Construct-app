@@ -31,6 +31,12 @@ import {
   HealthBadge,
   MetricTile,
 } from "@/components/dashboard/financial-layers"
+import {
+  buildReceivedTimelineLines,
+  buildRemainingBudgetTimelineLines,
+  buildSpentTimelineLines,
+  deriveProjectTimeline,
+} from "@/lib/project-timeline"
 
 interface Milestone {
   id?: string
@@ -74,6 +80,8 @@ interface AdminProjectOverviewProps {
     recentActivity: ActivityItem[]
     startDate?: string | null
     expectedCompletionDate?: string | null
+    expenseDates?: string[]
+    paymentReceivedDates?: string[]
   }
 }
 
@@ -119,6 +127,35 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
     totalReceived: projectData.totalClientPaymentsReceived,
     milestones: milestonesForCalc,
   })
+
+  const timeline = useMemo(
+    () =>
+      deriveProjectTimeline({
+        startDate: projectData.startDate,
+        expectedCompletionDate: projectData.expectedCompletionDate,
+        expenseDates: projectData.expenseDates,
+        paymentReceivedDates: projectData.paymentReceivedDates,
+      }),
+    [
+      projectData.startDate,
+      projectData.expectedCompletionDate,
+      projectData.expenseDates,
+      projectData.paymentReceivedDates,
+    ],
+  )
+
+  const spentTimelineLines = useMemo(
+    () => buildSpentTimelineLines(timeline),
+    [timeline],
+  )
+  const receivedTimelineLines = useMemo(
+    () => buildReceivedTimelineLines(timeline),
+    [timeline],
+  )
+  const remainingBudgetTimelineLines = useMemo(
+    () => buildRemainingBudgetTimelineLines(timeline),
+    [timeline],
+  )
 
   const completionPercent = calculateCompletionPercent(milestonesForCalc)
 
@@ -233,6 +270,7 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
             label="Remaining stage budget"
             value={formatINR(financials.remainingStageBudget)}
             hint={`${financials.budgetUsagePercent}% of stage budget used`}
+            timelineLines={remainingBudgetTimelineLines}
             valueClassName={
               financials.remainingStageBudget >= 0 ? "text-foreground" : "text-destructive"
             }
@@ -250,12 +288,14 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
             label="Received from client"
             value={formatINR(projectData.totalClientPaymentsReceived)}
             hint={`${financials.receivedPercent}% of contract collected`}
+            timelineLines={receivedTimelineLines}
             valueClassName="text-success"
           />
           <MetricTile
             label="Spent (approved)"
             value={formatINR(projectData.totalExpenses)}
             hint="Approved site expenses to date"
+            timelineLines={spentTimelineLines}
           />
           <MetricTile
             label="Cash balance"
