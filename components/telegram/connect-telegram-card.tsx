@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, useTransition } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, MessageCircle, Copy, Check, ExternalLink, Smartphone } from "lucide-react"
+import { Loader2, MessageCircle, Copy, Check, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 import {
   createTelegramLinkCodeAction,
@@ -43,7 +43,7 @@ export function ConnectTelegramCard() {
       setExpiresAt(result.expiresAt)
       setIsLinked(result.isLinked)
       setBotUsername(result.botUsername)
-      toast.success("Code ready — open Telegram and send the message below")
+      toast.success("Code ready — paste it in Telegram")
     })
   }
 
@@ -69,12 +69,9 @@ export function ConnectTelegramCard() {
     return (
       <Card className="border-border bg-card">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <MessageCircle className="h-5 w-5 text-primary" />
-            Telegram expenses (site engineers)
-          </CardTitle>
+          <CardTitle className="text-base font-medium">Not available</CardTitle>
           <CardDescription>
-            Not active yet. Admin must add TELEGRAM_BOT_TOKEN in Vercel, then redeploy.
+            Telegram is not configured on the server yet. Ask your admin to enable it.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -87,97 +84,66 @@ export function ConnectTelegramCard() {
       : null
 
   return (
-    <Card className="border-2 border-primary/20 bg-card">
+    <Card className="border-border bg-card">
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Smartphone className="h-5 w-5 text-primary" />
-            Connect Telegram (log expenses from phone)
+          <CardTitle className="flex items-center gap-2 text-base font-medium">
+            <MessageCircle className="h-4 w-4 text-muted-foreground" />
+            Connection
           </CardTitle>
           {isLinked ? (
-            <Badge className="bg-success/15 text-success border-success/30">Connected</Badge>
+            <Badge variant="outline" className="text-success border-success/30">
+              Connected
+            </Badge>
           ) : (
-            <Badge variant="outline">Not connected yet</Badge>
+            <Badge variant="outline" className="text-muted-foreground">
+              Not connected
+            </Badge>
           )}
         </div>
         <CardDescription>
-          Do this once. After that, engineers can send expenses in Telegram without opening
-          this website every time.
+          One-time setup. After linking, log expenses in Telegram without signing in here
+          each time.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
-          <p className="font-medium text-foreground">Where engineers find this</p>
-          <p className="mt-1 text-muted-foreground">
-            Website login → <strong>Engineer dashboard</strong> → this card at the top.
-            Share your app link and their email/password (or how they usually sign in).
-          </p>
-        </div>
-
-        <ol className="space-y-3 text-sm">
-          <li className="flex gap-3">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-              1
-            </span>
-            <span>
-              Install <strong>Telegram</strong> on the phone (App Store / Play Store) if not
-              already installed.
-            </span>
+        <ol className="list-decimal space-y-2 pl-4 text-sm text-muted-foreground">
+          <li>
+            Open the bot
+            {botUsername && botUsername !== "YourBot" ? (
+              <>
+                {" "}
+                (<span className="font-mono text-foreground">@{botUsername}</span>)
+              </>
+            ) : null}
           </li>
-          <li className="flex gap-3">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-              2
-            </span>
-            <span>
-              Tap the button below to open the <strong>VRA expense bot</strong>
-              {botUsername && botUsername !== "YourBot" ? (
-                <>
-                  {" "}
-                  (<span className="font-mono">@{botUsername}</span>)
-                </>
-              ) : null}
-              .
-            </span>
-          </li>
-          <li className="flex gap-3">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-              3
-            </span>
-            <span>
-              On this page, tap <strong>Get link code</strong>, then in Telegram tap{" "}
-              <strong>Copy message</strong> and send it in the bot chat (or type the code
-              only).
-            </span>
+          <li>Tap <strong className="text-foreground">Get link code</strong> below</li>
+          <li>
+            In Telegram, send the copied message or paste only the 6-character code
           </li>
         </ol>
 
         {botLink ? (
-          <Button type="button" className="w-full gap-2" asChild>
+          <Button type="button" variant="outline" size="sm" className="gap-2" asChild>
             <a href={botLink} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-4 w-4" />
               Open Telegram bot
             </a>
           </Button>
-        ) : (
-          <p className="text-xs text-destructive">
-            Set NEXT_PUBLIC_TELEGRAM_BOT_USERNAME in Vercel so the Open bot button appears.
-          </p>
-        )}
+        ) : null}
 
         {code ? (
-          <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Step 3 — send this in Telegram
-            </p>
-            <p className="font-mono text-lg font-bold tracking-wide">{linkMessage}</p>
+          <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+            <p className="text-xs text-muted-foreground">Send in Telegram</p>
+            <p className="font-mono text-base font-semibold tracking-wide">{linkMessage}</p>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="default" size="sm" onClick={copyTelegramMessage}>
+              <Button type="button" size="sm" onClick={copyTelegramMessage}>
                 {copiedMessage ? (
                   <Check className="mr-2 h-4 w-4" />
                 ) : (
                   <Copy className="mr-2 h-4 w-4" />
                 )}
-                Copy message for Telegram
+                Copy message
               </Button>
               <Button type="button" variant="outline" size="sm" onClick={copyCode}>
                 {copiedCode ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -186,8 +152,7 @@ export function ConnectTelegramCard() {
             </div>
             {expiresAt ? (
               <p className="text-xs text-muted-foreground">
-                Code expires {new Date(expiresAt).toLocaleString()} — generate a new one if
-                needed.
+                Expires {new Date(expiresAt).toLocaleString()}
               </p>
             ) : null}
           </div>
@@ -196,17 +161,17 @@ export function ConnectTelegramCard() {
         <Button
           type="button"
           variant={code ? "outline" : "default"}
-          className="w-full"
+          size="sm"
           onClick={generateCode}
           disabled={isPending}
         >
           {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          {code ? "Get a new code" : "Get link code"}
+          {code ? "New code" : "Get link code"}
         </Button>
 
         {isLinked ? (
-          <p className="text-center text-xs text-success">
-            This account is connected. To log an expense in Telegram, send /expense or e.g.{" "}
+          <p className="text-xs text-muted-foreground">
+            Daily use: open Telegram and send <span className="font-mono">/expense</span> or{" "}
             <span className="font-mono">2500 Materials Cement bags</span>
           </p>
         ) : null}

@@ -12,8 +12,8 @@ Share this with site engineers. No technical knowledge needed.
 
 1. Open the construction app in the phone browser (or computer once).
 2. **Log in** with the email/password your office gave you.
-3. You should land on the **Engineer** page (hard hat / site dashboard).
-4. At the top you will see **“Connect Telegram (log expenses from phone)”**.
+3. In the **left sidebar**, under **Integrations**, tap **Telegram**.
+4. Follow the steps on that page to link your phone (one time).
 
 If they see Admin or PM screen, their account role may be wrong — ask admin to set role to **engineer** and assign them to a project.
 

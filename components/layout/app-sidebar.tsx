@@ -7,6 +7,7 @@ import {
   FolderKanban,
   Users,
   HelpCircle,
+  MessageCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/use-auth"
@@ -39,12 +40,44 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
       : []),
   ]
 
+  const canUseTelegram =
+    role === "engineer" || role === "pm" || role === "admin"
+
+  const integrationItems = canUseTelegram
+    ? [{ href: "/integrations/telegram", label: "Telegram", icon: MessageCircle }]
+    : []
+
   const isActive = (href: string) => {
     if (href === "/projects") {
       return pathname === "/projects" || pathname.startsWith("/projects/")
     }
     if (href === "/admin") return pathname === "/admin"
     return pathname.startsWith(href)
+  }
+
+  const renderNavLink = (item: {
+    href: string
+    label: string
+    icon: typeof LayoutDashboard
+  }) => {
+    const Icon = item.icon
+    const active = isActive(item.href)
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={onNavigate}
+        className={cn(
+          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+          active
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        )}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        <span>{item.label}</span>
+      </Link>
+    )
   }
 
   return (
@@ -72,26 +105,15 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
         <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           Main
         </p>
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const active = isActive(item.href)
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              className={cn(
-                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-                active
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{item.label}</span>
-            </Link>
-          )
-        })}
+        {navItems.map(renderNavLink)}
+        {integrationItems.length > 0 ? (
+          <>
+            <p className="px-3 pb-2 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Integrations
+            </p>
+            {integrationItems.map(renderNavLink)}
+          </>
+        ) : null}
       </nav>
 
       <div className="border-t border-sidebar-border p-3">
