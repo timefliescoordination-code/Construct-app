@@ -66,12 +66,27 @@ import {
 const SHOW_ALL_PROJECTS = "all"
 const ENGINEER_PROJECT_STORAGE_KEY = "engineer-dashboard-project"
 
-function parseExpenseDate(value: string): Date {
-  const trimmed = value.trim()
+function parseExpenseDate(value: string | null | undefined): Date {
+  const trimmed = String(value ?? "").trim()
+  if (!trimmed) return new Date(0)
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     return parseISO(trimmed)
   }
-  return new Date(trimmed)
+  const parsed = new Date(trimmed)
+  return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed
+}
+
+function expenseDateMs(value: string | null | undefined): number {
+  return parseExpenseDate(value).getTime()
+}
+
+function isExpenseToday(
+  expenseDate: string | null | undefined,
+  today: Date,
+): boolean {
+  const trimmed = String(expenseDate ?? "").trim()
+  if (!trimmed) return false
+  return isSameDay(parseExpenseDate(trimmed), today)
 }
 
 type EngineerExpenseRow = {
@@ -106,12 +121,12 @@ function mapExpenseRow(
 ): EngineerExpenseRow {
   return {
     id: exp.id,
-    time: exp.expense_date,
-    category: exp.category,
-    description: exp.description,
-    vendor: exp.vendor_name || "N/A",
-    amount: Number(exp.amount),
-    status: exp.status,
+    time: exp.expense_date ?? "",
+    category: exp.category ?? "Uncategorized",
+    description: exp.description ?? "",
+    vendor: exp.vendor_name?.trim() || "N/A",
+    amount: Number(exp.amount) || 0,
+    status: exp.status ?? "pending",
     projectName,
   }
 }
@@ -129,20 +144,12 @@ function buildViewFromProject(project: ProjectWithDetails): EngineerDashboardVie
   }))
 
   const todayExpenses = expenses
-    .filter((exp) => isSameDay(parseExpenseDate(exp.expense_date), today))
-    .sort(
-      (a, b) =>
-        parseExpenseDate(b.expense_date).getTime() -
-        parseExpenseDate(a.expense_date).getTime(),
-    )
+    .filter((exp) => isExpenseToday(exp.expense_date, today))
+    .sort((a, b) => expenseDateMs(b.expense_date) - expenseDateMs(a.expense_date))
     .map((exp) => mapExpenseRow(exp))
 
   const allExpenses = [...expenses]
-    .sort(
-      (a, b) =>
-        parseExpenseDate(b.expense_date).getTime() -
-        parseExpenseDate(a.expense_date).getTime(),
-    )
+    .sort((a, b) => expenseDateMs(b.expense_date) - expenseDateMs(a.expense_date))
     .map((exp) => mapExpenseRow(exp))
 
   const pendingCount = expenses.filter((exp) => exp.status === "pending").length
@@ -153,8 +160,8 @@ function buildViewFromProject(project: ProjectWithDetails): EngineerDashboardVie
   return {
     showAll: false,
     activeProject: project,
-    projectName: project.name,
-    siteAddress: project.site_address,
+    projectName: project.name ?? "Unnamed project",
+    siteAddress: project.site_address ?? "",
     currentMilestone,
     milestones,
     todayExpenses,
@@ -168,27 +175,18 @@ function buildViewFromProject(project: ProjectWithDetails): EngineerDashboardVie
 
 function buildViewFromAllProjects(projects: ProjectWithDetails[]): EngineerDashboardView {
   const today = new Date()
-  const todayExpenses = projects
-    .flatMap((project) =>
-      (project.expenses ?? [])
-        .filter((exp) => isSameDay(parseExpenseDate(exp.expense_date), today))
-        .map((exp) => mapExpenseRow(exp, project.name)),
-    )
-    .sort(
-      (a, b) =>
-        parseExpenseDate(b.expense_date).getTime() -
-        parseExpenseDate(a.expense_date).getTime(),
-    )
+  const todayExpenses = projects.flatMap((project) =>
+    (project.expenses ?? [])
+      .filter((exp) => isExpenseToday(exp.expense_date, today))
+      .sort((a, b) => expenseDateMs(b.expense_date) - expenseDateMs(a.expense_date))
+      .map((exp) => mapExpenseRow(exp, project.name ?? "Unnamed project")),
+  )
 
-  const allExpenses = projects
-    .flatMap((project) =>
-      (project.expenses ?? []).map((exp) => mapExpenseRow(exp, project.name)),
-    )
-    .sort(
-      (a, b) =>
-        parseExpenseDate(b.expense_date).getTime() -
-        parseExpenseDate(a.expense_date).getTime(),
-    )
+  const allExpenses = projects.flatMap((project) =>
+    [...(project.expenses ?? [])]
+      .sort((a, b) => expenseDateMs(b.expense_date) - expenseDateMs(a.expense_date))
+      .map((exp) => mapExpenseRow(exp, project.name ?? "Unnamed project")),
+  )
 
   const pendingCount = projects.reduce(
     (sum, project) =>
@@ -305,7 +303,7 @@ export function EngineerDashboard() {
     if (!project) return
 
     const amount = parseFloat(expenseForm.amount)
-    if (!expenseForm.category || !expenseForm.description.trim()) {
+    if (!expenseForm.category || !expenseForm.description?.trim()) {
       toast.error("Category and description are required.")
       return
     }
@@ -321,7 +319,7 @@ export function EngineerDashboard() {
       category: expenseForm.category,
       description: expenseForm.description.trim(),
       amount,
-      vendorName: expenseForm.vendor.trim() || null,
+      vendorName: expenseForm.vendor?.trim() || null,
       billNumber: null,
       expenseDate: format(new Date(), "yyyy-MM-dd"),
       status: "pending",
@@ -658,7 +656,9 @@ export function EngineerDashboard() {
                             className="border-border"
                           >
                             <TableCell className="text-muted-foreground">
-                              {format(parseExpenseDate(expense.time), "dd MMM")}
+                              {expense.time
+                                ? format(parseExpenseDate(expense.time), "dd MMM")
+                                : "—"}
                             </TableCell>
                             {engineerData.showAll && (
                               <TableCell className="text-muted-foreground">
