@@ -33,6 +33,7 @@ import { useProject, useProjectMetrics } from "@/lib/hooks/use-project-data"
 import { updateProjectAction } from "@/lib/projects/actions"
 import { StaffAssignmentFields } from "@/components/projects/staff-assignment-fields"
 import { useStaffProfiles } from "@/lib/hooks/use-staff-profiles"
+import { profileNameForClientAutofill } from "@/lib/staff-labels"
 import {
   calculateProjectMetrics,
   getApprovedAdditionalWorksTotal,
@@ -176,8 +177,11 @@ export function EditProjectContent({ projectId }: EditProjectContentProps) {
       if (!prev) return prev
       const next = { ...prev, customer_id: customerId }
       const customer = customers.find((c) => c.id === customerId)
-      if (customer?.full_name?.trim()) {
-        next.client_name = customer.full_name
+      const suggestedName = customer
+        ? profileNameForClientAutofill(customer)
+        : null
+      if (suggestedName && !prev.client_name.trim()) {
+        next.client_name = suggestedName
       }
       return next
     })

@@ -41,7 +41,11 @@ import {
 } from "./project-detail/project-sidebar"
 import { useProject, useDefaultProject, useProjectMetrics } from "@/lib/hooks/use-project-data"
 import { getApprovedAdditionalWorksTotal } from "@/lib/financial-calculations"
-import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
+import {
+  getProjectPmLabel,
+  getProjectEngineersLabel,
+  getProjectClientDisplayName,
+} from "@/lib/staff-labels"
 import { useAuth } from "@/lib/hooks/use-auth"
 import {
   canEnterManpowerData,
@@ -532,7 +536,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
                       <dt className="sr-only">Client</dt>
                       <dd>
                         <span className="text-foreground/70">Client: </span>
-                        {project.client_name}
+                        {getProjectClientDisplayName(project)}
                       </dd>
                     </div>
                     <div>

@@ -26,7 +26,12 @@ import { calculateFormSummary } from "@/lib/financial-calculations"
 import { createProjectAction } from "@/lib/projects/actions"
 import { toast } from "sonner"
 import { useStaffProfiles } from "@/lib/hooks/use-staff-profiles"
-import { PM_NOT_CREATED, SITE_ENGINEER_NOT_CREATED, CUSTOMER_NOT_CREATED } from "@/lib/staff-labels"
+import {
+  PM_NOT_CREATED,
+  SITE_ENGINEER_NOT_CREATED,
+  CUSTOMER_NOT_CREATED,
+  profileNameForClientAutofill,
+} from "@/lib/staff-labels"
 
 type ProjectType = "boq" | "contract"
 
@@ -66,8 +71,9 @@ export function CreateProjectForm() {
     setAssignedCustomer(customerId)
     const customer = customers.find((c) => c.id === customerId)
     if (customer) {
-      if (customer.full_name?.trim()) {
-        setClientName(customer.full_name)
+      const suggestedName = profileNameForClientAutofill(customer)
+      if (suggestedName && !clientName.trim()) {
+        setClientName(suggestedName)
       }
       if (customer.phone?.trim()) {
         setPhone(customer.phone)

@@ -78,6 +78,7 @@ import {
   projectTimelineFromProject,
 } from "@/lib/project-timeline"
 import { ClientPaymentsPrintSheet } from "@/components/projects/project-detail/client-payments-print"
+import { getProjectClientDisplayName } from "@/lib/staff-labels"
 
 interface ClientPayment {
   id: string
@@ -1253,7 +1254,7 @@ export function PaymentsTab({
 
     <ClientPaymentsPrintSheet
       projectName={project?.name ?? "Project"}
-      clientName={project?.client_name ?? "—"}
+      clientName={getProjectClientDisplayName(project ?? {})}
       siteAddress={project?.site_address}
       contractValue={project ? Number(project.contract_value) : null}
       payments={sortedClientPayments}
