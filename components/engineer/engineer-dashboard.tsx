@@ -59,6 +59,7 @@ import {
   PageShell,
   STATS_GRID_CLASS,
 } from "@/components/layout/page"
+import { ConnectTelegramCard } from "@/components/telegram/connect-telegram-card"
 
 export function EngineerDashboard() {
   const { project, isLoading, error } = useDefaultProject()
@@ -208,6 +209,8 @@ export function EngineerDashboard() {
             valueClassName={engineerData.pendingCount > 0 ? "text-yellow-500" : undefined}
           />
         </div>
+
+        <ConnectTelegramCard />
 
         {/* Main Content Grid */}
         <div className={CONTENT_SIDEBAR_GRID_CLASS}>
