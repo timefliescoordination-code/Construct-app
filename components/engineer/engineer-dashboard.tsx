@@ -45,10 +45,12 @@ import {
   Loader2
 } from "lucide-react"
 import { formatINR } from "@/lib/currency"
-import { format } from "date-fns"
+import { format, isSameDay, parseISO } from "date-fns"
 import { cn } from "@/lib/utils"
 import { useDefaultProject, useLabourTypes } from "@/lib/hooks/use-project-data"
 import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
+import { createExpenseAction } from "@/lib/projects/tab-actions"
+import { toast } from "sonner"
 import { DashboardHeader } from "@/components/dashboard/header"
 import { MetricCard } from "@/components/layout/metric-card"
 import {
@@ -59,10 +61,19 @@ import {
   PageShell,
   STATS_GRID_CLASS,
 } from "@/components/layout/page"
+function parseExpenseDate(value: string): Date {
+  const trimmed = value.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return parseISO(trimmed)
+  }
+  return new Date(trimmed)
+}
+
 export function EngineerDashboard() {
-  const { project, isLoading, error } = useDefaultProject()
+  const { project, isLoading, error, mutate } = useDefaultProject()
   const { labourTypes } = useLabourTypes()
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false)
+  const [isSubmittingExpense, setIsSubmittingExpense] = useState(false)
   const [expenseForm, setExpenseForm] = useState({
     category: '',
     description: '',
@@ -75,6 +86,7 @@ export function EngineerDashboard() {
   const engineerData = useMemo(() => {
     if (!project) return null
 
+    const today = new Date()
     const currentMilestone = project.milestones.find(ms => ms.status === 'in-progress')
     const milestones = project.milestones.map(ms => ({
       id: ms.id,
@@ -82,9 +94,13 @@ export function EngineerDashboard() {
       status: ms.status
     }))
 
-    // Today's expenses (simplified - show recent expenses)
     const todayExpenses = project.expenses
-      .slice(0, 8)
+      .filter((exp) => isSameDay(parseExpenseDate(exp.expense_date), today))
+      .sort(
+        (a, b) =>
+          parseExpenseDate(b.expense_date).getTime() -
+          parseExpenseDate(a.expense_date).getTime(),
+      )
       .map(exp => ({
         id: exp.id,
         time: exp.expense_date,
@@ -98,10 +114,11 @@ export function EngineerDashboard() {
     const totalTodayExpenses = todayExpenses
       .reduce((sum, exp) => sum + exp.amount, 0)
 
-    const pendingCount = todayExpenses.filter(exp => exp.status === 'pending').length
-    
-    // Unique vendors
-    const activeVendors = new Set(project.expenses.map(e => e.vendor_name)).size
+    const pendingCount = project.expenses.filter(exp => exp.status === 'pending').length
+
+    const activeVendors = new Set(
+      todayExpenses.map((exp) => exp.vendor).filter((name) => name !== 'N/A'),
+    ).size
 
     return {
       projectName: project.name,
@@ -111,10 +128,54 @@ export function EngineerDashboard() {
       todayExpenses,
       totalTodayExpenses,
       pendingCount,
-      labourCount: 28, // Could be calculated from labour_entries
+      labourCount: project.labour_workers_today ?? 0,
       activeVendors
     }
   }, [project])
+
+  async function handleSubmitExpense() {
+    if (!project) return
+
+    const amount = parseFloat(expenseForm.amount)
+    if (!expenseForm.category || !expenseForm.description.trim()) {
+      toast.error("Category and description are required.")
+      return
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a valid amount greater than zero.")
+      return
+    }
+
+    setIsSubmittingExpense(true)
+    const result = await createExpenseAction({
+      projectId: project.id,
+      milestoneId: expenseForm.milestoneId || null,
+      category: expenseForm.category,
+      description: expenseForm.description.trim(),
+      amount,
+      vendorName: expenseForm.vendor.trim() || null,
+      billNumber: null,
+      expenseDate: format(new Date(), "yyyy-MM-dd"),
+      status: "pending",
+    })
+    setIsSubmittingExpense(false)
+
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+
+    toast.success("Expense submitted for approval.")
+    setIsAddExpenseOpen(false)
+    setExpenseForm({
+      category: "",
+      description: "",
+      amount: "",
+      vendor: "",
+      milestoneId: "",
+    })
+    void mutate()
+  }
 
   if (isLoading) {
     return (
@@ -167,7 +228,7 @@ export function EngineerDashboard() {
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Current Stage:</span>
               <Badge variant="default" className="font-semibold">
-                {engineerData.currentMilestone?.name || "Foundation"}
+                {engineerData.currentMilestone?.name ?? "No active stage"}
               </Badge>
             </div>
           </div>
@@ -298,11 +359,25 @@ export function EngineerDashboard() {
                       </div>
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setIsAddExpenseOpen(false)}>
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsAddExpenseOpen(false)}
+                        disabled={isSubmittingExpense}
+                      >
                         Cancel
                       </Button>
-                      <Button onClick={() => setIsAddExpenseOpen(false)}>
-                        Submit for Approval
+                      <Button
+                        onClick={() => void handleSubmitExpense()}
+                        disabled={isSubmittingExpense}
+                      >
+                        {isSubmittingExpense ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Submitting…
+                          </>
+                        ) : (
+                          "Submit for Approval"
+                        )}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -313,7 +388,7 @@ export function EngineerDashboard() {
                 <Card>
                   <CardContent className="pt-6">
                     {engineerData.todayExpenses.length === 0 ? (
-                      <p className="text-center py-8 text-muted-foreground">No expenses recorded yet</p>
+                      <p className="text-center py-8 text-muted-foreground">No expenses recorded today</p>
                     ) : (
                       <Table>
                         <TableHeader>
@@ -370,7 +445,13 @@ export function EngineerDashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {project.expenses.map((expense) => (
+                        {[...project.expenses]
+                          .sort(
+                            (a, b) =>
+                              parseExpenseDate(b.expense_date).getTime() -
+                              parseExpenseDate(a.expense_date).getTime(),
+                          )
+                          .map((expense) => (
                           <TableRow key={expense.id} className="border-border">
                             <TableCell className="text-muted-foreground">
                               {format(new Date(expense.expense_date), "dd MMM")}

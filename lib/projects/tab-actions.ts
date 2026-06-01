@@ -51,6 +51,9 @@ function revalidateProject(projectId: string) {
   revalidatePath('/projects')
   revalidatePath('/admin')
   revalidatePath('/pm')
+  revalidatePath('/engineer')
+  revalidatePath('/api/projects/default')
+  revalidatePath(`/api/projects/${projectId}`)
 }
 
 function canEnterExpenses(role: UserRole) {

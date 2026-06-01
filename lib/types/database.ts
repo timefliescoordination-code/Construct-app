@@ -229,6 +229,8 @@ export interface ProjectWithDetails extends Project {
   pm?: Profile | null
   customer?: Profile | null
   project_engineers?: ProjectEngineerAssignment[]
+  /** Sum of labour_entries.count for the server’s current calendar day (engineer dashboard). */
+  labour_workers_today?: number
 }
 
 // Summary types for dashboard views

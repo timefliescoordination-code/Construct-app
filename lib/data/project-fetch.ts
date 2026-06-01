@@ -39,6 +39,22 @@ export const PROJECT_DETAIL_SELECT_BASIC = `
   additional_works(*)
 `
 
+async function getLabourWorkersCountForDate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  dateIso: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('labour_entries')
+    .select('count')
+    .eq('project_id', projectId)
+    .eq('entry_date', dateIso)
+
+  if (error || !data?.length) return 0
+
+  return data.reduce((sum, row) => sum + Number(row.count), 0)
+}
+
 function shouldRetryWithBasicSelect(error: { code?: string; message?: string }): boolean {
   const message = error.message ?? ''
   return (
@@ -136,8 +152,18 @@ export async function getProjectByIdForApi(projectId: string) {
     )
   }
 
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const labourWorkersToday = await getLabourWorkersCountForDate(
+    supabase,
+    projectId,
+    todayIso,
+  )
+
   return {
-    data: enrichProjectWithMilestoneMetrics(data as ProjectWithDetails),
+    data: {
+      ...enrichProjectWithMilestoneMetrics(data as ProjectWithDetails),
+      labour_workers_today: labourWorkersToday,
+    },
     error: null,
   }
 }
