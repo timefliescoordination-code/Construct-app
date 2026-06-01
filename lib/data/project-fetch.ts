@@ -108,8 +108,17 @@ export async function listProjectsForApi(options?: { includeArchived?: boolean }
     return { data: null, error: getSupabaseErrorMessage(error) }
   }
 
-  const enriched = (data ?? []).map((project) =>
-    enrichProjectWithMilestoneMetrics(project as ProjectWithDetails),
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const enriched = await Promise.all(
+    (data ?? []).map(async (project) => {
+      const base = enrichProjectWithMilestoneMetrics(project as ProjectWithDetails)
+      const labour_workers_today = await getLabourWorkersCountForDate(
+        supabase,
+        project.id,
+        todayIso,
+      )
+      return { ...base, labour_workers_today }
+    }),
   )
 
   return { data: enriched, error: null }

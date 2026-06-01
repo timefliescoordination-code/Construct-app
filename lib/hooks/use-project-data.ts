@@ -144,6 +144,25 @@ export function useProjects(options?: { includeArchived?: boolean }) {
   }
 }
 
+/** Full project rows (expenses, milestones, etc.) for dashboards that need detail per site. */
+export function useProjectDetailsList(options?: { includeArchived?: boolean }) {
+  const includeArchived = options?.includeArchived ?? false
+  const swrKey = includeArchived ? 'project-details-all' : 'project-details'
+
+  const { data, error, isLoading, mutate } = useSWR(
+    swrKey,
+    () => fetchProjects(includeArchived),
+    swrDefaults,
+  )
+
+  return {
+    projects: (data ?? []).map((project) => enrichProjectWithMilestoneMetrics(project)),
+    isLoading,
+    error,
+    mutate,
+  }
+}
+
 // Hook: Get single project with all details
 export function useProject(projectId: string | null) {
   const { data, error, isLoading, mutate } = useSWR(

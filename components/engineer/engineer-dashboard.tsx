@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -32,7 +32,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { 
-  HardHat, 
   Plus,
   Receipt,
   CheckCircle2,
@@ -41,13 +40,13 @@ import {
   Users,
   Truck,
   History,
-  ArrowRight,
   Loader2
 } from "lucide-react"
 import { formatINR } from "@/lib/currency"
 import { format, isSameDay, parseISO } from "date-fns"
 import { cn } from "@/lib/utils"
-import { useDefaultProject, useLabourTypes } from "@/lib/hooks/use-project-data"
+import { useProjectDetailsList, useLabourTypes } from "@/lib/hooks/use-project-data"
+import type { ProjectWithDetails } from "@/lib/types/database"
 import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
 import { createExpenseAction } from "@/lib/projects/tab-actions"
 import { toast } from "sonner"
@@ -61,6 +60,9 @@ import {
   PageShell,
   STATS_GRID_CLASS,
 } from "@/components/layout/page"
+const SHOW_ALL_PROJECTS = "all"
+const ENGINEER_PROJECT_STORAGE_KEY = "engineer-dashboard-project"
+
 function parseExpenseDate(value: string): Date {
   const trimmed = value.trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
@@ -69,9 +71,156 @@ function parseExpenseDate(value: string): Date {
   return new Date(trimmed)
 }
 
+type EngineerExpenseRow = {
+  id: string
+  time: string
+  category: string
+  description: string
+  vendor: string
+  amount: number
+  status: string
+  projectName?: string
+}
+
+type EngineerDashboardView = {
+  showAll: boolean
+  activeProject: ProjectWithDetails | null
+  projectName: string
+  siteAddress: string
+  currentMilestone: ProjectWithDetails["milestones"][number] | null
+  milestones: { id: string; name: string; status: string }[]
+  todayExpenses: EngineerExpenseRow[]
+  allExpenses: EngineerExpenseRow[]
+  totalTodayExpenses: number
+  pendingCount: number
+  labourCount: number
+  activeVendors: number
+}
+
+function mapExpenseRow(
+  exp: ProjectWithDetails["expenses"][number],
+  projectName?: string,
+): EngineerExpenseRow {
+  return {
+    id: exp.id,
+    time: exp.expense_date,
+    category: exp.category,
+    description: exp.description,
+    vendor: exp.vendor_name || "N/A",
+    amount: Number(exp.amount),
+    status: exp.status,
+    projectName,
+  }
+}
+
+function buildViewFromProject(project: ProjectWithDetails): EngineerDashboardView {
+  const today = new Date()
+  const currentMilestone =
+    project.milestones.find((ms) => ms.status === "in-progress") ?? null
+  const milestones = project.milestones.map((ms) => ({
+    id: ms.id,
+    name: ms.name,
+    status: ms.status,
+  }))
+
+  const todayExpenses = project.expenses
+    .filter((exp) => isSameDay(parseExpenseDate(exp.expense_date), today))
+    .sort(
+      (a, b) =>
+        parseExpenseDate(b.expense_date).getTime() -
+        parseExpenseDate(a.expense_date).getTime(),
+    )
+    .map((exp) => mapExpenseRow(exp))
+
+  const allExpenses = [...project.expenses]
+    .sort(
+      (a, b) =>
+        parseExpenseDate(b.expense_date).getTime() -
+        parseExpenseDate(a.expense_date).getTime(),
+    )
+    .map((exp) => mapExpenseRow(exp))
+
+  const pendingCount = project.expenses.filter((exp) => exp.status === "pending").length
+  const activeVendors = new Set(
+    todayExpenses.map((exp) => exp.vendor).filter((name) => name !== "N/A"),
+  ).size
+
+  return {
+    showAll: false,
+    activeProject: project,
+    projectName: project.name,
+    siteAddress: project.site_address,
+    currentMilestone,
+    milestones,
+    todayExpenses,
+    allExpenses,
+    totalTodayExpenses: todayExpenses.reduce((sum, exp) => sum + exp.amount, 0),
+    pendingCount,
+    labourCount: project.labour_workers_today ?? 0,
+    activeVendors,
+  }
+}
+
+function buildViewFromAllProjects(projects: ProjectWithDetails[]): EngineerDashboardView {
+  const today = new Date()
+  const todayExpenses = projects
+    .flatMap((project) =>
+      project.expenses
+        .filter((exp) => isSameDay(parseExpenseDate(exp.expense_date), today))
+        .map((exp) => mapExpenseRow(exp, project.name)),
+    )
+    .sort(
+      (a, b) =>
+        parseExpenseDate(b.expense_date).getTime() -
+        parseExpenseDate(a.expense_date).getTime(),
+    )
+
+  const allExpenses = projects
+    .flatMap((project) =>
+      project.expenses.map((exp) => mapExpenseRow(exp, project.name)),
+    )
+    .sort(
+      (a, b) =>
+        parseExpenseDate(b.expense_date).getTime() -
+        parseExpenseDate(a.expense_date).getTime(),
+    )
+
+  const pendingCount = projects.reduce(
+    (sum, project) =>
+      sum + project.expenses.filter((exp) => exp.status === "pending").length,
+    0,
+  )
+
+  const activeVendors = new Set(
+    todayExpenses.map((exp) => exp.vendor).filter((name) => name !== "N/A"),
+  ).size
+
+  const labourCount = projects.reduce(
+    (sum, project) => sum + (project.labour_workers_today ?? 0),
+    0,
+  )
+
+  const count = projects.length
+  return {
+    showAll: true,
+    activeProject: null,
+    projectName: `All sites (${count})`,
+    siteAddress: `${count} assigned project${count === 1 ? "" : "s"}`,
+    currentMilestone: null,
+    milestones: [],
+    todayExpenses,
+    allExpenses,
+    totalTodayExpenses: todayExpenses.reduce((sum, exp) => sum + exp.amount, 0),
+    pendingCount,
+    labourCount,
+    activeVendors,
+  }
+}
+
 export function EngineerDashboard() {
-  const { project, isLoading, error, mutate } = useDefaultProject()
+  const { projects: assignedProjects, isLoading, error, mutate } = useProjectDetailsList()
   const { labourTypes } = useLabourTypes()
+  const [selectedProjectId, setSelectedProjectId] = useState(SHOW_ALL_PROJECTS)
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false)
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false)
   const [expenseForm, setExpenseForm] = useState({
@@ -82,58 +231,59 @@ export function EngineerDashboard() {
     milestoneId: ''
   })
 
-  // Calculate engineer-specific data from project
-  const engineerData = useMemo(() => {
-    if (!project) return null
+  const hasInitializedProject = useRef(false)
 
-    const today = new Date()
-    const currentMilestone = project.milestones.find(ms => ms.status === 'in-progress')
-    const milestones = project.milestones.map(ms => ({
-      id: ms.id,
-      name: ms.name,
-      status: ms.status
-    }))
+  useEffect(() => {
+    if (!assignedProjects.length || hasInitializedProject.current) return
+    hasInitializedProject.current = true
 
-    const todayExpenses = project.expenses
-      .filter((exp) => isSameDay(parseExpenseDate(exp.expense_date), today))
-      .sort(
-        (a, b) =>
-          parseExpenseDate(b.expense_date).getTime() -
-          parseExpenseDate(a.expense_date).getTime(),
-      )
-      .map(exp => ({
-        id: exp.id,
-        time: exp.expense_date,
-        category: exp.category,
-        description: exp.description,
-        vendor: exp.vendor_name || 'N/A',
-        amount: Number(exp.amount),
-        status: exp.status
-      }))
-
-    const totalTodayExpenses = todayExpenses
-      .reduce((sum, exp) => sum + exp.amount, 0)
-
-    const pendingCount = project.expenses.filter(exp => exp.status === 'pending').length
-
-    const activeVendors = new Set(
-      todayExpenses.map((exp) => exp.vendor).filter((name) => name !== 'N/A'),
-    ).size
-
-    return {
-      projectName: project.name,
-      siteAddress: project.site_address,
-      currentMilestone,
-      milestones,
-      todayExpenses,
-      totalTodayExpenses,
-      pendingCount,
-      labourCount: project.labour_workers_today ?? 0,
-      activeVendors
+    if (assignedProjects.length === 1) {
+      setSelectedProjectId(assignedProjects[0].id)
+      return
     }
-  }, [project])
+
+    try {
+      const stored = localStorage.getItem(ENGINEER_PROJECT_STORAGE_KEY)
+      if (
+        stored === SHOW_ALL_PROJECTS ||
+        assignedProjects.some((project) => project.id === stored)
+      ) {
+        setSelectedProjectId(stored ?? SHOW_ALL_PROJECTS)
+        return
+      }
+    } catch {
+      // ignore storage errors
+    }
+
+    setSelectedProjectId(SHOW_ALL_PROJECTS)
+  }, [assignedProjects])
+
+  const engineerData = useMemo((): EngineerDashboardView | null => {
+    if (!assignedProjects.length) return null
+
+    if (selectedProjectId === SHOW_ALL_PROJECTS) {
+      return buildViewFromAllProjects(assignedProjects)
+    }
+
+    const project = assignedProjects.find((p) => p.id === selectedProjectId)
+    if (!project) {
+      return buildViewFromAllProjects(assignedProjects)
+    }
+
+    return buildViewFromProject(project)
+  }, [assignedProjects, selectedProjectId])
+
+  function handleProjectChange(projectId: string) {
+    setSelectedProjectId(projectId)
+    try {
+      localStorage.setItem(ENGINEER_PROJECT_STORAGE_KEY, projectId)
+    } catch {
+      // ignore storage errors
+    }
+  }
 
   async function handleSubmitExpense() {
+    const project = engineerData?.activeProject
     if (!project) return
 
     const amount = parseFloat(expenseForm.amount)
@@ -191,7 +341,7 @@ export function EngineerDashboard() {
     )
   }
 
-  if (error || !project || !engineerData) {
+  if (error || !assignedProjects.length || !engineerData) {
     const message =
       error instanceof Error ? error.message : NO_ASSIGNED_PROJECT_MESSAGE
     return (
@@ -213,11 +363,27 @@ export function EngineerDashboard() {
           title="Site Dashboard"
           description={format(new Date(), "EEEE, dd MMMM yyyy")}
         >
-          <div className="text-right">
-            <p className="text-sm font-medium text-foreground">{engineerData.projectName}</p>
-            <p className="text-sm text-muted-foreground">{engineerData.siteAddress}</p>
-          </div>
+          <Select value={selectedProjectId} onValueChange={handleProjectChange}>
+            <SelectTrigger className="w-full sm:w-[220px] bg-secondary border-border">
+              <SelectValue placeholder="Select project" />
+            </SelectTrigger>
+            <SelectContent>
+              {assignedProjects.length > 1 && (
+                <SelectItem value={SHOW_ALL_PROJECTS}>Show all</SelectItem>
+              )}
+              {assignedProjects.map((project, index) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name || `Project ${index + 1}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </PageHeader>
+
+        <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm">
+          <p className="font-medium text-foreground">{engineerData.projectName}</p>
+          <p className="text-muted-foreground">{engineerData.siteAddress}</p>
+        </div>
 
         {/* Current Stage - Compact Inline Display */}
         <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/50 p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -228,14 +394,12 @@ export function EngineerDashboard() {
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Current Stage:</span>
               <Badge variant="default" className="font-semibold">
-                {engineerData.currentMilestone?.name ?? "No active stage"}
+                {engineerData.showAll
+                  ? "Varies by site"
+                  : engineerData.currentMilestone?.name ?? "No active stage"}
               </Badge>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="gap-1">
-            <ArrowRight className="h-3 w-3" />
-            Change
-          </Button>
         </div>
 
         {/* Quick Stats - NO budget/profit info for engineer */}
@@ -284,7 +448,15 @@ export function EngineerDashboard() {
                 </TabsList>
                 <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
                   <DialogTrigger asChild>
-                    <Button className="gap-2">
+                    <Button
+                      className="gap-2"
+                      disabled={engineerData.showAll}
+                      title={
+                        engineerData.showAll
+                          ? "Select a single project to add an expense"
+                          : undefined
+                      }
+                    >
                       <Plus className="h-4 w-4" />
                       Add Expense
                     </Button>
@@ -393,6 +565,7 @@ export function EngineerDashboard() {
                       <Table>
                         <TableHeader>
                           <TableRow className="border-border">
+                            {engineerData.showAll && <TableHead>Project</TableHead>}
                             <TableHead>Category</TableHead>
                             <TableHead>Description</TableHead>
                             <TableHead>Vendor</TableHead>
@@ -402,7 +575,15 @@ export function EngineerDashboard() {
                         </TableHeader>
                         <TableBody>
                           {engineerData.todayExpenses.map((expense) => (
-                            <TableRow key={expense.id} className="border-border">
+                            <TableRow
+                              key={`${expense.projectName ?? "single"}-${expense.id}`}
+                              className="border-border"
+                            >
+                              {engineerData.showAll && (
+                                <TableCell className="text-muted-foreground">
+                                  {expense.projectName}
+                                </TableCell>
+                              )}
                               <TableCell>
                                 <Badge variant="outline">{expense.category}</Badge>
                               </TableCell>
@@ -438,6 +619,7 @@ export function EngineerDashboard() {
                       <TableHeader>
                         <TableRow className="border-border">
                           <TableHead>Date</TableHead>
+                          {engineerData.showAll && <TableHead>Project</TableHead>}
                           <TableHead>Category</TableHead>
                           <TableHead>Description</TableHead>
                           <TableHead className="text-right">Amount</TableHead>
@@ -445,22 +627,24 @@ export function EngineerDashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {[...project.expenses]
-                          .sort(
-                            (a, b) =>
-                              parseExpenseDate(b.expense_date).getTime() -
-                              parseExpenseDate(a.expense_date).getTime(),
-                          )
-                          .map((expense) => (
-                          <TableRow key={expense.id} className="border-border">
+                        {engineerData.allExpenses.map((expense) => (
+                          <TableRow
+                            key={`${expense.projectName ?? "single"}-${expense.id}`}
+                            className="border-border"
+                          >
                             <TableCell className="text-muted-foreground">
-                              {format(new Date(expense.expense_date), "dd MMM")}
+                              {format(parseExpenseDate(expense.time), "dd MMM")}
                             </TableCell>
+                            {engineerData.showAll && (
+                              <TableCell className="text-muted-foreground">
+                                {expense.projectName}
+                              </TableCell>
+                            )}
                             <TableCell>
                               <Badge variant="outline">{expense.category}</Badge>
                             </TableCell>
                             <TableCell className="font-medium">{expense.description}</TableCell>
-                            <TableCell className="text-right">{formatINR(Number(expense.amount))}</TableCell>
+                            <TableCell className="text-right">{formatINR(expense.amount)}</TableCell>
                             <TableCell className="text-right">
                               {expense.status === "approved" ? (
                                 <Badge className="bg-green-500/20 text-green-500 border-green-500/30">
@@ -483,6 +667,14 @@ export function EngineerDashboard() {
           </div>
 
           <div className="min-w-0 space-y-6">
+            {engineerData.showAll ? (
+              <Card>
+                <CardContent className="pt-6 text-sm text-muted-foreground">
+                  Select a single project to view labour types and milestone progress for that site.
+                </CardContent>
+              </Card>
+            ) : (
+              <>
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -543,6 +735,8 @@ export function EngineerDashboard() {
                 </div>
               </CardContent>
             </Card>
+              </>
+            )}
           </div>
         </div>
       </PageMain>
