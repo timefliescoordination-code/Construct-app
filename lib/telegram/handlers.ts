@@ -315,9 +315,22 @@ async function handleMessage(message: TelegramMessage) {
       await sendMainMenu(chatId, `Welcome back, ${linked.fullName}.`)
     } else {
       const bot = getTelegramBotUsername()
+      const botLabel =
+        bot === 'YourBot'
+          ? 'VRA Homes expense bot'
+          : `VRA Homes expense bot (@${bot})`
       await sendTelegramMessage(
         chatId,
-        `VRA Homes expense bot (@${bot}).\n\nLink once with a code from the Engineer dashboard, then log expenses here.\n\n/link YOUR_CODE`,
+        [
+          botLabel,
+          '',
+          'To connect your app account:',
+          '1. Sign in on the web app → Engineer dashboard → Connect Telegram',
+          '2. Tap "Generate code" (6 letters/numbers, e.g. A3F92B)',
+          '3. Send here: /link A3F92B  (use your real code, not the word "CODE")',
+          '',
+          'You can also send the 6-character code alone.',
+        ].join('\n'),
       )
     }
     return
@@ -326,7 +339,16 @@ async function handleMessage(message: TelegramMessage) {
   if (text.startsWith('/link')) {
     const code = text.replace(/^\/link\s*/i, '').trim()
     if (!code) {
-      await sendTelegramMessage(chatId, 'Usage: /link AB12CD')
+      await sendTelegramMessage(
+        chatId,
+        [
+          'Send your link code from the Engineer dashboard.',
+          '',
+          'Example: /link A3F92B',
+          '',
+          'Or send only the 6-character code (e.g. A3F92B).',
+        ].join('\n'),
+      )
       return
     }
     await handleLinkCode(chatId, telegramUserId, code, message.from?.username)
@@ -429,7 +451,10 @@ async function handleMessage(message: TelegramMessage) {
     if (/^[A-Z0-9]{6}$/i.test(text)) {
       await handleLinkCode(chatId, telegramUserId, text, message.from?.username)
     } else {
-      await sendTelegramMessage(chatId, 'Send /link YOUR_CODE from the app.')
+      await sendTelegramMessage(
+        chatId,
+        'Not linked yet. Generate a code in the app (Engineer → Connect Telegram), then send /link followed by that code.',
+      )
     }
     return
   }
