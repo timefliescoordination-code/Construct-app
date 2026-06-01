@@ -41,6 +41,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Loader2 } from "lucide-react"
 import { ScrollTable } from "@/components/layout/scroll-table"
+import { ProjectIdleBadge } from "@/components/projects/project-idle-badge"
+import type { ProjectIdleStatus } from "@/lib/project-idle"
 
 export interface Project {
   id: string
@@ -52,6 +54,7 @@ export interface Project {
   profitLoss: number
   progress: number
   status: DbProjectStatus
+  idle?: ProjectIdleStatus
 }
 
 interface ProjectTableProps {
@@ -97,7 +100,7 @@ export function ProjectTable({
     router.refresh()
   }
   const showFinancials = canViewProjectFinancials(role)
-  const columnCount = showFinancials ? 9 : 6
+  const columnCount = showFinancials ? 10 : 7
   const SortableHeader = ({ field, children }: { field: keyof Project; children: React.ReactNode }) => (
     <Button
       variant="ghost"
@@ -143,6 +146,7 @@ export function ProjectTable({
             <TableHead className="text-muted-foreground">
               <SortableHeader field="progress">Progress %</SortableHeader>
             </TableHead>
+            <TableHead className="text-muted-foreground">Site activity</TableHead>
             <TableHead className="text-muted-foreground">
               <SortableHeader field="status">Status</SortableHeader>
             </TableHead>
@@ -215,6 +219,13 @@ export function ProjectTable({
                         {project.progress}%
                       </span>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {project.idle ? (
+                      <ProjectIdleBadge idle={project.idle} />
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge 

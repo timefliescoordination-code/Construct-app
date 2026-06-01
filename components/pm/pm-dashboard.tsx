@@ -48,12 +48,15 @@ import {
 } from "@/components/layout/page"
 import { ScrollTable } from "@/components/layout/scroll-table"
 import { toast } from "sonner"
+import { projectIdleFromProject } from "@/lib/project-idle"
+import { ProjectIdleBadge } from "@/components/projects/project-idle-badge"
 
 interface PmProjectRow {
   id: string
   name: string
   client_name: string
   site_address: string
+  start_date: string | null
   status: string
   contract_value: number
   additional_works_value: number
@@ -93,6 +96,7 @@ function mapApiProject(project: ProjectWithDetails): PmProjectRow {
     name: project.name,
     client_name: project.client_name,
     site_address: project.site_address,
+    start_date: project.start_date,
     status: project.status,
     contract_value: Number(project.contract_value),
     additional_works_value: Number(project.additional_works_value),
@@ -426,6 +430,7 @@ export function PMDashboard() {
                       <TableRow className="border-border">
                         <TableHead>Project</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Site activity</TableHead>
                         <TableHead>Progress</TableHead>
                         <TableHead className="text-right">
                           Total Contract Value
@@ -436,6 +441,13 @@ export function PMDashboard() {
                     <TableBody>
                       {projects.map((project) => {
                         const completion = projectCompletionPercent(project)
+                        const idle = projectIdleFromProject({
+                          start_date: project.start_date,
+                          status: project.status,
+                          expenses: project.expenses.map((e) => ({
+                            expense_date: e.expense_date,
+                          })),
+                        })
 
                         return (
                           <TableRow key={project.id} className="border-border">
@@ -457,6 +469,9 @@ export function PMDashboard() {
                               >
                                 {project.status}
                               </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <ProjectIdleBadge idle={idle} />
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">

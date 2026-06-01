@@ -41,6 +41,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useAdminDashboard } from "@/lib/hooks/use-admin-dashboard"
+import { ProjectIdleBadge } from "@/components/projects/project-idle-badge"
 import { PM_NOT_CREATED } from "@/lib/staff-labels"
 import { DashboardHeader } from "@/components/dashboard/header"
 import {
@@ -374,6 +375,7 @@ export function AdminDashboard() {
                           <TableHead className="text-right">Cash balance</TableHead>
                           <TableHead className="text-right">Stage P/L</TableHead>
                           <TableHead>Health</TableHead>
+                          <TableHead>Site activity</TableHead>
                           <TableHead>PM</TableHead>
                           <TableHead>Status</TableHead>
                         </TableRow>
@@ -443,6 +445,9 @@ export function AdminDashboard() {
                             </TableCell>
                             <TableCell>
                               <HealthBadge health={project.health} />
+                            </TableCell>
+                            <TableCell>
+                              <ProjectIdleBadge idle={project.idle} />
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {project.pm_label}

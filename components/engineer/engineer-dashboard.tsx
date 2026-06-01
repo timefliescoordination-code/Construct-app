@@ -49,6 +49,9 @@ import Link from "next/link"
 import { useProjectDetailsList } from "@/lib/hooks/use-project-data"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
+import { deriveProjectIdleStatus, projectIdleFromProject } from "@/lib/project-idle"
+import { useProjectManpowerWeekStarts } from "@/lib/hooks/use-project-manpower-starts"
+import { ProjectIdleBadge } from "@/components/projects/project-idle-badge"
 import { createExpenseAction } from "@/lib/projects/tab-actions"
 import { canEnterManpowerData } from "@/lib/permissions"
 import { useAuth } from "@/lib/hooks/use-auth"
@@ -113,6 +116,7 @@ type EngineerDashboardView = {
   pendingCount: number
   labourCount: number
   activeVendors: number
+  idle: ReturnType<typeof projectIdleFromProject>
 }
 
 function mapExpenseRow(
@@ -131,7 +135,10 @@ function mapExpenseRow(
   }
 }
 
-function buildViewFromProject(project: ProjectWithDetails): EngineerDashboardView {
+function buildViewFromProject(
+  project: ProjectWithDetails,
+  manpowerWeekStarts: string[] = [],
+): EngineerDashboardView {
   const today = new Date()
   const expenses = project.expenses ?? []
   const milestoneRows = project.milestones ?? []
@@ -170,6 +177,12 @@ function buildViewFromProject(project: ProjectWithDetails): EngineerDashboardVie
     pendingCount,
     labourCount: project.labour_workers_today ?? 0,
     activeVendors,
+    idle: projectIdleFromProject({
+      start_date: project.start_date,
+      status: project.status,
+      expenses: expenses.map((exp) => ({ expense_date: exp.expense_date })),
+      manpowerWeekStarts,
+    }),
   }
 }
 
@@ -204,6 +217,21 @@ function buildViewFromAllProjects(projects: ProjectWithDetails[]): EngineerDashb
   )
 
   const count = projects.length
+  const idlePerProject = projects.map((project) =>
+    projectIdleFromProject({
+      start_date: project.start_date,
+      status: project.status,
+      expenses: (project.expenses ?? []).map((exp) => ({
+        expense_date: exp.expense_date,
+      })),
+    }),
+  )
+  const idle = idlePerProject.reduce(
+    (worst, current) =>
+      current.isIdle && current.days > worst.days ? current : worst,
+    idlePerProject[0] ?? deriveProjectIdleStatus({ status: "active" }),
+  )
+
   return {
     showAll: true,
     activeProject: null,
@@ -217,6 +245,7 @@ function buildViewFromAllProjects(projects: ProjectWithDetails[]): EngineerDashb
     pendingCount,
     labourCount,
     activeVendors,
+    idle,
   }
 }
 
@@ -244,6 +273,13 @@ export function EngineerDashboard() {
     }
     return SHOW_ALL_PROJECTS
   }, [assignedProjects, selectedProjectId])
+
+  const singleProjectIdForManpower =
+    effectiveProjectId !== SHOW_ALL_PROJECTS ? effectiveProjectId : null
+
+  const { weekStarts: manpowerWeekStarts } = useProjectManpowerWeekStarts(
+    singleProjectIdForManpower,
+  )
 
   useEffect(() => {
     if (!assignedProjects.length) return
@@ -286,8 +322,8 @@ export function EngineerDashboard() {
       return buildViewFromAllProjects(assignedProjects)
     }
 
-    return buildViewFromProject(project)
-  }, [assignedProjects, effectiveProjectId])
+    return buildViewFromProject(project, manpowerWeekStarts)
+  }, [assignedProjects, effectiveProjectId, manpowerWeekStarts])
 
   function handleProjectChange(projectId: string) {
     setSelectedProjectId(projectId)
@@ -404,8 +440,18 @@ export function EngineerDashboard() {
         </PageHeader>
 
         <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm">
-          <p className="font-medium text-foreground">{engineerData.projectName}</p>
-          <p className="text-muted-foreground">{engineerData.siteAddress}</p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="font-medium text-foreground">{engineerData.projectName}</p>
+              <p className="text-muted-foreground">{engineerData.siteAddress}</p>
+            </div>
+            {engineerData.idle.label !== "—" ? (
+              <ProjectIdleBadge idle={engineerData.idle} />
+            ) : null}
+          </div>
+          {engineerData.idle.isIdle ? (
+            <p className="mt-2 text-xs text-muted-foreground">{engineerData.idle.detail}</p>
+          ) : null}
         </div>
 
         {/* Current Stage - Compact Inline Display */}

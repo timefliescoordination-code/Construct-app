@@ -19,6 +19,7 @@ import {
 } from "@/lib/financial-calculations"
 import { enrichProjectWithMilestoneMetrics } from "@/lib/project-tab-hydration"
 import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
+import { projectIdleFromProject } from "@/lib/project-idle"
 import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
 
 async function fetchFromApi<T>(path: string): Promise<T> {
@@ -118,6 +119,14 @@ export function useProjects(options?: { includeArchived?: boolean }) {
     const progress = calculateCompletionPercent(milestonesForCalc)
     const profitLoss = calculateProjectedProfit(totalContractValue, totalExpenses)
     
+    const idle = projectIdleFromProject({
+      start_date: project.start_date,
+      status: project.status,
+      expenses: (project.expenses ?? []).map((e: Expense) => ({
+        expense_date: e.expense_date,
+      })),
+    })
+
     return {
       id: project.id,
       name: project.name,
@@ -133,6 +142,7 @@ export function useProjects(options?: { includeArchived?: boolean }) {
       expected_completion_date: project.expected_completion_date,
       pm_label: getProjectPmLabel(project),
       site_engineers_label: getProjectEngineersLabel(project),
+      idle,
     }
   })
   

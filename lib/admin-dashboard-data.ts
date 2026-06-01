@@ -25,6 +25,7 @@ import {
   type ProjectTimelineContext,
 } from "@/lib/project-timeline"
 import { getProjectPmLabel } from "@/lib/staff-labels"
+import { deriveProjectIdleStatus, type ProjectIdleStatus } from "@/lib/project-idle"
 import type { Profile, ProjectStatus } from "@/lib/types/database"
 
 export interface AdminProjectSummary {
@@ -52,6 +53,7 @@ export interface AdminProjectSummary {
   expected_margin_percent: number
   has_stage_loss: boolean
   spent_timeline_lines: string[]
+  idle: ProjectIdleStatus
   /** Legacy — kept for internal aggregates; not shown as primary KPI */
   realized_profit: number
   forecast_profit: number
@@ -118,7 +120,13 @@ type MilestoneRow = {
   status: "pending" | "in-progress" | "completed"
 }
 
-type ExpenseRow = { project_id: string; amount: number; expense_date: string }
+type ExpenseRow = {
+  project_id: string
+  amount: number
+  expense_date: string
+  status?: string
+}
+type ManpowerWeekRow = { project_id: string; start_date: string }
 type AmountRow = { project_id: string; amount: number }
 type ClientPaymentRow = {
   project_id: string
@@ -193,12 +201,17 @@ export function buildAdminDashboardData(input: {
   projects: ProjectRow[]
   milestones: MilestoneRow[]
   expenses: ExpenseRow[]
+  allExpenseDates: ExpenseRow[]
+  manpowerWeeks: ManpowerWeekRow[]
   clientPayments: ClientPaymentRow[]
   additionalWorks: AmountRow[]
   vendorPayments: VendorPaymentRow[]
   staffProfiles: Pick<Profile, "id" | "email" | "full_name" | "role">[]
 }): AdminDashboardData {
-  const expenseTotals = sumByProjectId(input.expenses)
+  const approvedExpenses = input.expenses.filter(
+    (row) => !row.status || row.status === "approved",
+  )
+  const expenseTotals = sumByProjectId(approvedExpenses)
   const receivedTotals = sumByProjectId(
     input.clientPayments.filter((payment) => payment.status === "received"),
   )
@@ -212,9 +225,21 @@ export function buildAdminDashboardData(input: {
   const overdueTotals = countOverdueByProjectId(input.vendorPayments)
   const milestonesByProject = groupMilestonesByProject(input.milestones)
   const expenseDatesByProject = groupStringsByProject(
-    input.expenses.map((row) => ({
+    approvedExpenses.map((row) => ({
       project_id: row.project_id,
       value: row.expense_date,
+    })),
+  )
+  const allExpenseDatesByProject = groupStringsByProject(
+    input.allExpenseDates.map((row) => ({
+      project_id: row.project_id,
+      value: row.expense_date,
+    })),
+  )
+  const manpowerStartsByProject = groupStringsByProject(
+    input.manpowerWeeks.map((row) => ({
+      project_id: row.project_id,
+      value: row.start_date,
     })),
   )
   const paymentDatesByProject = groupStringsByProject(
@@ -289,6 +314,15 @@ export function buildAdminDashboardData(input: {
     projectTimelines.push(timeline)
     const spent_timeline_lines = buildSpentTimelineLines(timeline)
 
+    const idle = deriveProjectIdleStatus({
+      startDate: project.start_date,
+      status: project.status,
+      expenses: (allExpenseDatesByProject.get(project.id) ?? []).map(
+        (expense_date) => ({ expense_date }),
+      ),
+      manpowerWeekStarts: manpowerStartsByProject.get(project.id) ?? [],
+    })
+
     return {
       id: project.id,
       name: project.name,
@@ -313,6 +347,7 @@ export function buildAdminDashboardData(input: {
       expected_margin_percent: marginPercent,
       has_stage_loss: hasCompletedStageLoss(milestones),
       spent_timeline_lines,
+      idle,
       realized_profit: realizedProfit,
       forecast_profit: forecastProfit,
       forecast_margin_percent: forecastMarginPercent,

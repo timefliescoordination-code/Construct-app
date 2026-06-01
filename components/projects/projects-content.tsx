@@ -41,6 +41,7 @@ export function ProjectsContent() {
       profitLoss: p.profit_loss,
       progress: p.progress,
       status: isDbProjectStatus(p.status) ? p.status : "active",
+      idle: p.idle,
     }))
   }, [dbProjects])
 

@@ -37,6 +37,8 @@ import {
   type MilestoneData
 } from "@/lib/financial-calculations"
 import { AdminProjectOverview } from "./admin-project-overview"
+import { ProjectIdleBadge } from "@/components/projects/project-idle-badge"
+import type { ProjectIdleStatus } from "@/lib/project-idle"
 
 const EXPENSE_LIST_PREVIEW_LIMIT = 15
 
@@ -103,6 +105,7 @@ interface OverviewTabProps {
     expectedCompletionDate?: string | null
     expenseDates?: string[]
     paymentReceivedDates?: string[]
+    idleStatus?: ProjectIdleStatus | null
   }
   restrictFinancials?: boolean
   canApproveExpenses?: boolean
@@ -327,9 +330,26 @@ export function OverviewTab({
 
 
 
+  const idleStatus = projectData.idleStatus
+
   return (
     <TooltipProvider>
       <div className="space-y-6">
+        {idleStatus && idleStatus.label !== "—" ? (
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Site activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <ProjectIdleBadge idle={idleStatus} showTooltip={false} />
+              <p className="text-sm text-muted-foreground">{idleStatus.detail}</p>
+            </CardContent>
+          </Card>
+        ) : null}
+
         {!restrictFinancials && (
           <AdminProjectOverview
             projectData={{

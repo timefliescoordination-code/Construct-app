@@ -40,6 +40,9 @@ import {
   type ProjectSidebarTab,
 } from "./project-detail/project-sidebar"
 import { useProject, useDefaultProject, useProjectMetrics } from "@/lib/hooks/use-project-data"
+import { useProjectManpowerWeekStarts } from "@/lib/hooks/use-project-manpower-starts"
+import { projectIdleFromProject } from "@/lib/project-idle"
+import { ProjectIdleBadge } from "@/components/projects/project-idle-badge"
 import { getApprovedAdditionalWorksTotal } from "@/lib/financial-calculations"
 import {
   getProjectPmLabel,
@@ -130,6 +133,21 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   const project = isLegacyDefaultId ? defaultProject : specificProject
   const isLoading = isLegacyDefaultId ? defaultLoading : specificLoading
   const loadError = isLegacyDefaultId ? defaultError : specificError
+  const { weekStarts: manpowerWeekStarts } = useProjectManpowerWeekStarts(
+    project?.id ?? null,
+  )
+
+  const projectIdle = useMemo(() => {
+    if (!project) return null
+    return projectIdleFromProject({
+      start_date: project.start_date,
+      status: project.status,
+      expenses: project.expenses.map((exp) => ({
+        expense_date: exp.expense_date,
+      })),
+      manpowerWeekStarts,
+    })
+  }, [project, manpowerWeekStarts])
   const refreshProject = () => {
     if (isLegacyDefaultId) {
       void mutateDefaultProject()
@@ -285,8 +303,9 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       expectedCompletionDate: project.expected_completion_date,
       expenseDates,
       paymentReceivedDates,
+      idleStatus: projectIdle,
     }
-  }, [project])
+  }, [project, projectIdle])
 
   const tabs = useMemo<ProjectSidebarTab[]>(
     () =>
@@ -551,6 +570,15 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
                       <dt className="sr-only">Site</dt>
                       <dd className="break-words">{project.site_address}</dd>
                     </div>
+                    {projectIdle && (
+                      <div>
+                        <dt className="sr-only">Site activity</dt>
+                        <dd className="flex flex-wrap items-center gap-2">
+                          <span className="text-foreground/70">Site activity: </span>
+                          <ProjectIdleBadge idle={projectIdle} />
+                        </dd>
+                      </div>
+                    )}
                   </dl>
                 </div>
 
