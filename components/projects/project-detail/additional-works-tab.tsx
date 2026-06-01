@@ -305,6 +305,11 @@ export function AdditionalWorksTab({
     }
   }
 
+  const totalAdditionalWorksAmount = additionalWorks.reduce(
+    (sum, work) => sum + Number(work.amount || 0),
+    0,
+  )
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -476,6 +481,15 @@ export function AdditionalWorksTab({
                       )}
                     </TableRow>
                   ))}
+                  <TableRow className="border-border bg-muted/30 hover:bg-muted/40">
+                    <TableCell className="font-semibold">Total</TableCell>
+                    <TableCell className="font-semibold whitespace-nowrap">
+                      ₹ {totalAdditionalWorksAmount.toLocaleString("en-IN")}
+                    </TableCell>
+                    <TableCell />
+                    <TableCell />
+                    {canManageProjects && <TableCell />}
+                  </TableRow>
                 </TableBody>
               </Table>
             </div>
