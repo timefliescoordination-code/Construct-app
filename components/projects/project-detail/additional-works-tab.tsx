@@ -385,25 +385,27 @@ export function AdditionalWorksTab({
             </p>
           ) : (
             <div className="overflow-x-auto rounded-md border border-border">
-              <Table>
+              <Table className="table-fixed">
                 <TableHeader>
                   <TableRow className="border-border hover:bg-muted/50">
-                    <TableHead>Description</TableHead>
+                    <TableHead className="w-[45%]">Description</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Status</TableHead>
                     {canManageProjects && (
-                      <TableHead className="w-12 text-right">Actions</TableHead>
+                      <TableHead className="w-16 text-right">Actions</TableHead>
                     )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {additionalWorks.map((work) => (
                     <TableRow key={work.id} className="border-border hover:bg-muted/50">
-                      <TableCell className="font-medium max-w-[300px]">
-                        <p>{work.description}</p>
+                      <TableCell className="font-medium align-top">
+                        <p className="whitespace-pre-wrap break-words pr-2">{work.description}</p>
                         {work.notes ? (
-                          <p className="mt-1 text-xs text-muted-foreground">{work.notes}</p>
+                          <p className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap break-words pr-2">
+                            {work.notes}
+                          </p>
                         ) : null}
                       </TableCell>
                       <TableCell className="font-medium whitespace-nowrap">
