@@ -4,6 +4,16 @@ import { handleTelegramUpdate } from '@/lib/telegram/handlers'
 import type { TelegramUpdate } from '@/lib/telegram/types'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    route: 'telegram-webhook',
+    configured: isTelegramConfigured(),
+    secretConfigured: Boolean(getTelegramWebhookSecret()),
+  })
+}
 
 export async function POST(request: Request) {
   if (!isTelegramConfigured()) {

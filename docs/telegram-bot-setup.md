@@ -28,16 +28,31 @@ Run in Supabase SQL Editor (or apply migration `20260601120000_telegram_bot.sql`
 
 ## 4. Register webhook (after deploy)
 
-Sign in as **admin**, then:
+**Important:** Redeploy after the Telegram commit (`7ac6c37` or later). A 404 on `/api/telegram/set-webhook` usually means production does not include that route yet.
 
-```bash
-curl -X POST "https://YOUR_APP.vercel.app/api/telegram/set-webhook" \
-  -H "Cookie: YOUR_SESSION_COOKIE" \
-  -H "Content-Type: application/json" \
-  -d "{\"baseUrl\":\"https://YOUR_APP.vercel.app\"}"
+### Option A — Directly via Telegram (no app API; recommended)
+
+Replace `YOUR_TOKEN`, `YOUR_APP`, and `YOUR_SECRET`:
+
+```text
+https://api.telegram.org/botYOUR_TOKEN/setWebhook?url=https://YOUR_APP.vercel.app/api/telegram/webhook&secret_token=YOUR_SECRET
 ```
 
-Or use the browser while logged in as admin (POST from devtools).
+Open that URL in the browser. You should see JSON: `{"ok":true,...}`.
+
+### Option B — App API (admin must be signed in)
+
+Sign in as **admin** on the same site, then in the browser console:
+
+```javascript
+fetch('/api/telegram/set-webhook', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ baseUrl: 'https://YOUR_APP.vercel.app' }),
+}).then((r) => r.json()).then(console.log)
+```
+
+If you get HTML or 404, use Option A and confirm the latest code is deployed.
 
 ## 5. Engineer flow
 

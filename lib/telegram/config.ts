@@ -8,8 +8,23 @@ export function getTelegramBotToken(): string {
   return token
 }
 
+/** Telegram allows only A–Z, a–z, 0–9, _, - (1–256 chars). */
+const WEBHOOK_SECRET_PATTERN = /^[A-Za-z0-9_-]{1,256}$/
+
 export function getTelegramWebhookSecret(): string | null {
-  return process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || null
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim()
+  if (!secret) return null
+  if (!WEBHOOK_SECRET_PATTERN.test(secret)) {
+    console.error(
+      '[telegram] TELEGRAM_WEBHOOK_SECRET has invalid characters. Use only letters, numbers, _ and -.',
+    )
+    return null
+  }
+  return secret
+}
+
+export function isValidTelegramWebhookSecret(value: string): boolean {
+  return WEBHOOK_SECRET_PATTERN.test(value.trim())
 }
 
 export function getTelegramBotUsername(): string {

@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getTelegramBotToken, getTelegramWebhookSecret, isTelegramConfigured } from '@/lib/telegram/config'
+import {
+  getTelegramBotToken,
+  getTelegramWebhookSecret,
+  isTelegramConfigured,
+} from '@/lib/telegram/config'
+
+export const dynamic = 'force-dynamic'
 
 /** Admin-only: register Telegram webhook URL (run once after deploy). */
 export async function POST(request: Request) {
@@ -34,7 +40,18 @@ export async function POST(request: Request) {
 
   const webhookUrl = `${origin}/api/telegram/webhook`
   const token = getTelegramBotToken()
+  const rawSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() ?? ''
   const secret = getTelegramWebhookSecret()
+
+  if (rawSecret && !secret) {
+    return NextResponse.json(
+      {
+        error:
+          'TELEGRAM_WEBHOOK_SECRET has invalid characters. Use only A-Z, a-z, 0-9, underscore, and hyphen.',
+      },
+      { status: 400 },
+    )
+  }
 
   const params = new URLSearchParams({ url: webhookUrl })
   if (secret) {

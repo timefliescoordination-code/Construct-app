@@ -5,9 +5,16 @@ import { getSupabaseEnv, isSupabaseConfigured } from '@/lib/supabase/env'
 // Public routes that don't require authentication
 const publicRoutes = ['/login', '/signup', '/auth/callback', '/auth/error', '/auth/signout', '/setup']
 
+/** Telegram servers call the webhook without app cookies. Auth is via TELEGRAM_WEBHOOK_SECRET. */
+function isTelegramWebhookRoute(pathname: string) {
+  return pathname === '/api/telegram/webhook'
+}
+
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
-  const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
+  const isPublicRoute =
+    publicRoutes.some((route) => pathname.startsWith(route)) ||
+    isTelegramWebhookRoute(pathname)
 
   if (!isSupabaseConfigured()) {
     if (pathname.startsWith('/setup') || isPublicRoute) {
