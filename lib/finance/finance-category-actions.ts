@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getSupabaseErrorMessage } from "@/lib/supabase/db-errors"
+import {
+  FINANCE_MIGRATIONS_HINT,
+  isMissingFinanceTableError,
+} from "@/lib/finance/finance-db"
 import type { FinanceCategory, FinanceCategoryKind } from "@/lib/types/database"
 
 export type FinanceCategoryActionResult<T = void> =
@@ -120,7 +124,12 @@ export async function createFinanceCategoryAction(input: {
     .single()
 
   if (error) {
-    return { ok: false, error: getSupabaseErrorMessage(error) }
+    return {
+      ok: false,
+      error: isMissingFinanceTableError(error)
+        ? FINANCE_MIGRATIONS_HINT
+        : getSupabaseErrorMessage(error),
+    }
   }
 
   revalidateFinanceCategories()

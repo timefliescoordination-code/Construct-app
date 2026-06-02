@@ -27,8 +27,18 @@ create policy "Admin manage finance_categories"
   on public.finance_categories
   for all
   to authenticated
-  using (public.is_admin())
-  with check (public.is_admin());
+  using (
+    exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role = 'admin'
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role = 'admin'
+    )
+  );
 
 -- Default categories (skip if re-run)
 insert into public.finance_categories (kind, name, sort_order)

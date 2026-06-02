@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { isMissingFinanceTableError } from "@/lib/finance/finance-db"
 import { normalizeDateValue, unwrapProject } from "@/lib/money-timeline/dates"
 
 export type ExpenseLayer = "project" | "company" | "personal"
@@ -151,7 +152,10 @@ export async function fetchUnifiedMoneyFeed(
           .select("*")
           .order("expense_date", { ascending: false })
 
-        if (error) throw error
+        if (error) {
+          if (isMissingFinanceTableError(error)) return
+          throw error
+        }
 
         for (const row of data ?? []) {
           const date = normalizeDateValue(row.expense_date)
@@ -173,7 +177,10 @@ export async function fetchUnifiedMoneyFeed(
           .select("*")
           .order("received_date", { ascending: false })
 
-        if (incomeResult.error) throw incomeResult.error
+        if (incomeResult.error) {
+          if (isMissingFinanceTableError(incomeResult.error)) return
+          throw incomeResult.error
+        }
 
         for (const row of incomeResult.data ?? []) {
           const date = normalizeDateValue(row.received_date)
@@ -204,7 +211,10 @@ export async function fetchUnifiedMoneyFeed(
           .select("*")
           .order("expense_date", { ascending: false })
 
-        if (error) throw error
+        if (error) {
+          if (isMissingFinanceTableError(error)) return
+          throw error
+        }
 
         for (const row of data ?? []) {
           const date = normalizeDateValue(row.expense_date)

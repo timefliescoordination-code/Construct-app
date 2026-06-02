@@ -5,6 +5,7 @@ import {
   COMPANY_INCOME_CATEGORIES,
   PERSONAL_EXPENSE_CATEGORIES,
 } from "@/lib/finance/categories"
+import { isMissingFinanceTableError } from "@/lib/finance/finance-db"
 import type { FinanceCategoryKind } from "@/lib/types/database"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -63,8 +64,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query
 
     if (error) {
-      const message = getSupabaseErrorMessage(error)
-      if (message.toLowerCase().includes("does not exist")) {
+      if (isMissingFinanceTableError(error)) {
         const byKind: Record<string, { id: string; kind: string; name: string }[]> =
           {}
         for (const kind of kinds) {
@@ -72,11 +72,17 @@ export async function GET(request: NextRequest) {
             id: `fallback-${kind}-${i}`,
             kind,
             name,
+            sort_order: i + 1,
+            created_at: "",
+            updated_at: "",
           }))
         }
         return NextResponse.json({ categories: byKind, fallback: true })
       }
-      return NextResponse.json({ error: message }, { status: 500 })
+      return NextResponse.json(
+        { error: getSupabaseErrorMessage(error) },
+        { status: 500 },
+      )
     }
 
     const byKind: Record<string, typeof data> = {}

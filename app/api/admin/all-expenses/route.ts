@@ -1,6 +1,11 @@
 import { createClient } from "@/lib/supabase/server"
 import { getSupabaseErrorMessage } from "@/lib/supabase/db-errors"
 import {
+  FINANCE_MIGRATIONS_HINT,
+  financeErrorMessage,
+  isMissingFinanceTableError,
+} from "@/lib/finance/finance-db"
+import {
   fetchUnifiedMoneyFeed,
   parseExpenseLayers,
   periodToDateRange,
@@ -55,11 +60,31 @@ export async function GET(request: NextRequest) {
       Math.max(1, Number(searchParams.get("limit") ?? 100)),
     )
 
-    const { rows, overview } = await fetchUnifiedMoneyFeed(auth.supabase, {
-      dateFrom,
-      dateTo,
-      layers,
-    })
+    let setupWarning: string | undefined
+
+    let rows: Awaited<ReturnType<typeof fetchUnifiedMoneyFeed>>["rows"] = []
+    let overview: Awaited<ReturnType<typeof fetchUnifiedMoneyFeed>>["overview"] =
+      {
+        project: { expensesOut: 0, incomeIn: 0 },
+        company: { expensesOut: 0, incomeIn: 0 },
+        personal: { expensesOut: 0, incomeIn: 0 },
+      }
+
+    try {
+      const feed = await fetchUnifiedMoneyFeed(auth.supabase, {
+        dateFrom,
+        dateTo,
+        layers,
+      })
+      rows = feed.rows
+      overview = feed.overview
+    } catch (feedError) {
+      if (isMissingFinanceTableError(feedError)) {
+        setupWarning = FINANCE_MIGRATIONS_HINT
+      } else {
+        throw feedError
+      }
+    }
 
     const total = rows.length
     const pageRows = rows.slice(offset, offset + limit)
@@ -91,14 +116,34 @@ export async function GET(request: NextRequest) {
           .order("name"),
       ])
 
-    const listError =
-      companyList.error ??
-      companyIncomeList.error ??
-      personalList.error ??
-      projectsResult.error
-    if (listError) {
+    const financeErrors = [
+      companyList.error,
+      companyIncomeList.error,
+      personalList.error,
+    ].filter(Boolean)
+
+    const missingFinance = financeErrors.some((e) =>
+      isMissingFinanceTableError(e),
+    )
+    if (missingFinance) {
+      setupWarning = FINANCE_MIGRATIONS_HINT
+    } else {
+      const blockingError =
+        financeErrors[0] ??
+        (projectsResult.error && !isMissingFinanceTableError(projectsResult.error)
+          ? projectsResult.error
+          : null)
+      if (blockingError) {
+        return NextResponse.json(
+          { error: getSupabaseErrorMessage(blockingError) },
+          { status: 500 },
+        )
+      }
+    }
+
+    if (projectsResult.error) {
       return NextResponse.json(
-        { error: getSupabaseErrorMessage(listError) },
+        { error: getSupabaseErrorMessage(projectsResult.error) },
         { status: 500 },
       )
     }
@@ -112,18 +157,16 @@ export async function GET(request: NextRequest) {
       overview,
       dateFrom,
       dateTo,
-      companyExpenses: companyList.data ?? [],
-      companyIncome: companyIncomeList.data ?? [],
-      personalExpenses: personalList.data ?? [],
+      companyExpenses: missingFinance ? [] : (companyList.data ?? []),
+      companyIncome: missingFinance ? [] : (companyIncomeList.data ?? []),
+      personalExpenses: missingFinance ? [] : (personalList.data ?? []),
       projects: projectsResult.data ?? [],
+      setupWarning,
     })
   } catch (error) {
     console.error("[admin/all-expenses] unexpected error:", error)
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
-      },
+      { error: financeErrorMessage(error) },
       { status: 500 },
     )
   }

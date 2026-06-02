@@ -106,6 +106,7 @@ type AllExpensesResponse = {
   projects: ProjectOption[]
   dateFrom: string
   dateTo: string
+  setupWarning?: string
 }
 
 function buildQuery(
@@ -654,6 +655,12 @@ export function AllExpensesContent() {
         {error ? (
           <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error.message}
+          </div>
+        ) : null}
+
+        {!error && data?.setupWarning ? (
+          <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+            {data.setupWarning}
           </div>
         ) : null}
 
