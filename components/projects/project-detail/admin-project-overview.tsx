@@ -28,7 +28,6 @@ import { calculateCompletionPercent, type MilestoneData } from "@/lib/financial-
 import { summarizeProjectFinancialLayers } from "@/lib/dashboard-financials"
 import {
   DashboardSection,
-  HealthBadge,
   MetricTile,
 } from "@/components/dashboard/financial-layers"
 import {
@@ -233,16 +232,6 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
-        <div>
-          <p className="text-sm font-medium text-foreground">Project financial health</p>
-          <p className="text-xs text-muted-foreground">
-            Plan, stage results, and cash are shown separately
-          </p>
-        </div>
-        <HealthBadge health={financials.health} />
-      </div>
-
       <DashboardSection
         layer="plan"
         title="Contract & fixed profit (plan)"
