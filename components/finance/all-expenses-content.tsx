@@ -74,6 +74,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -95,6 +96,10 @@ import {
 } from "@/components/ui/alert-dialog"
 
 type TabKey = "all" | "projects" | "company" | "personal"
+
+const FINANCE_DIALOG_CLASS =
+  "flex max-h-[min(92dvh,100dvh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+const FINANCE_FORM_ROW = "grid grid-cols-1 gap-3 sm:grid-cols-2"
 
 type AllExpensesResponse = {
   rows: UnifiedMoneyRow[]
@@ -941,12 +946,13 @@ export function AllExpensesContent() {
             if (!open) resetCompanyForm()
           }}
         >
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className={FINANCE_DIALOG_CLASS}>
+            <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
               <DialogTitle>
                 {editingCompany ? "Edit company expense" : "Add company expense"}
               </DialogTitle>
             </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
             <div className="space-y-4">
               <CategorySelectField
                 kind="company_expense"
@@ -969,7 +975,7 @@ export function AllExpensesContent() {
                   }
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className={FINANCE_FORM_ROW}>
                 <div className="space-y-2">
                   <Label>Amount</Label>
                   <Input
@@ -1011,10 +1017,13 @@ export function AllExpensesContent() {
                   rows={2}
                 />
               </div>
-              <Button onClick={() => void saveCompany()} disabled={saving} className="w-full">
+            </div>
+            </div>
+            <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:px-6">
+              <Button onClick={() => void saveCompany()} disabled={saving} className="w-full sm:w-auto">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -1025,14 +1034,15 @@ export function AllExpensesContent() {
             if (!open) resetCompanyIncomeForm()
           }}
         >
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className={FINANCE_DIALOG_CLASS}>
+            <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
               <DialogTitle>
                 {editingCompanyIncome
                   ? "Edit company income"
                   : "Add company income"}
               </DialogTitle>
             </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
             <div className="space-y-4">
               <CategorySelectField
                 kind="company_income"
@@ -1058,7 +1068,7 @@ export function AllExpensesContent() {
                   }
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className={FINANCE_FORM_ROW}>
                 <div className="space-y-2">
                   <Label>Amount</Label>
                   <Input
@@ -1100,7 +1110,7 @@ export function AllExpensesContent() {
                   placeholder="Who paid?"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className={FINANCE_FORM_ROW}>
                 <div className="space-y-2">
                   <Label>Payment method (optional)</Label>
                   <Input
@@ -1136,14 +1146,17 @@ export function AllExpensesContent() {
                   rows={2}
                 />
               </div>
+            </div>
+            </div>
+            <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:px-6">
               <Button
                 onClick={() => void saveCompanyIncome()}
                 disabled={saving}
-                className="w-full"
+                className="w-full sm:w-auto"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -1154,12 +1167,13 @@ export function AllExpensesContent() {
             if (!open) resetPersonalForm()
           }}
         >
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className={FINANCE_DIALOG_CLASS}>
+            <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
               <DialogTitle>
                 {editingPersonal ? "Edit personal expense" : "Add personal expense"}
               </DialogTitle>
             </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
             <div className="space-y-4">
               <CategorySelectField
                 kind="personal_expense"
@@ -1182,7 +1196,7 @@ export function AllExpensesContent() {
                   }
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className={FINANCE_FORM_ROW}>
                 <div className="space-y-2">
                   <Label>Amount</Label>
                   <Input
@@ -1215,10 +1229,13 @@ export function AllExpensesContent() {
                   rows={2}
                 />
               </div>
-              <Button onClick={() => void savePersonal()} disabled={saving} className="w-full">
+            </div>
+            </div>
+            <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:px-6">
+              <Button onClick={() => void savePersonal()} disabled={saving} className="w-full sm:w-auto">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 

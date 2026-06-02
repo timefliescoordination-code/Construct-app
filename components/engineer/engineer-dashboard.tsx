@@ -495,8 +495,8 @@ export function EngineerDashboard() {
           <div className={cn(CONTENT_SIDEBAR_MAIN_CLASS, "space-y-6")}>
             {/* Expenses Tabs */}
             <Tabs defaultValue="today" className="w-full">
-              <div className="flex items-center justify-between mb-4">
-                <TabsList>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <TabsList className="w-full sm:w-auto">
                   <TabsTrigger value="today">Recent Expenses</TabsTrigger>
                   <TabsTrigger value="history" className="gap-2">
                     <History className="h-4 w-4" />
@@ -506,7 +506,7 @@ export function EngineerDashboard() {
                 <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
                   <DialogTrigger asChild>
                     <Button
-                      className="gap-2"
+                      className="w-full gap-2 sm:w-auto"
                       disabled={engineerData.showAll}
                       title={
                         engineerData.showAll
@@ -518,14 +518,15 @@ export function EngineerDashboard() {
                       Add Expense
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="sm:max-w-[500px]">
-                    <DialogHeader>
+                  <DialogContent className="flex max-h-[min(92dvh,100dvh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[500px]">
+                    <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
                       <DialogTitle>Add New Expense</DialogTitle>
                       <DialogDescription>
                         Record a new expense for approval
                       </DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+                    <div className="grid gap-4">
                       <div className="space-y-2">
                         <Label>Stage</Label>
                         <Select 
@@ -587,15 +588,18 @@ export function EngineerDashboard() {
                         />
                       </div>
                     </div>
-                    <DialogFooter>
+                    </div>
+                    <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:px-6">
                       <Button
                         variant="outline"
+                        className="w-full sm:w-auto"
                         onClick={() => setIsAddExpenseOpen(false)}
                         disabled={isSubmittingExpense}
                       >
                         Cancel
                       </Button>
                       <Button
+                        className="w-full sm:w-auto"
                         onClick={() => void handleSubmitExpense()}
                         disabled={isSubmittingExpense}
                       >

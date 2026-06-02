@@ -34,6 +34,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -124,6 +125,9 @@ function categoryUsesLabourTeams(
 }
 const statuses = ["pending", "approved", "rejected"]
 const EXPENSE_LIST_PREVIEW_LIMIT = 15
+const EXPENSE_DIALOG_CLASS =
+  "flex max-h-[min(92dvh,100dvh)] flex-col gap-0 overflow-hidden border-border bg-card p-0 sm:max-w-[600px]"
+const EXPENSE_FORM_ROW = "grid grid-cols-1 gap-4 sm:grid-cols-2"
 
 type ExpenseInvoiceDetailsState = {
   loading: boolean
@@ -2211,12 +2215,13 @@ export function ExpensesTab({
                   if (!open) resetNewExpenseForm()
                 }}
               >
-                <DialogContent className="sm:max-w-[600px] bg-card border-border">
-                  <DialogHeader>
+                <DialogContent className={EXPENSE_DIALOG_CLASS}>
+                  <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
                     <DialogTitle>Add New Expense</DialogTitle>
                   </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-2 gap-4">
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+                  <div className="grid gap-4">
+                    <div className={EXPENSE_FORM_ROW}>
                       <div className="space-y-2">
                         <Label>Date *</Label>
                         <Input 
@@ -2262,7 +2267,7 @@ export function ExpensesTab({
                         </Select>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className={EXPENSE_FORM_ROW}>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-2">
                           <Label>
@@ -2370,7 +2375,7 @@ export function ExpensesTab({
                         className="bg-muted border-border"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className={EXPENSE_FORM_ROW}>
                       <div className="space-y-2">
                         <Label>Vendor</Label>
                         <Input 
@@ -2447,7 +2452,7 @@ export function ExpensesTab({
                         </p>
                       </div>
                     )}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className={EXPENSE_FORM_ROW}>
                       <div className="space-y-2">
                         <Label>Bill Number</Label>
                         <Input 
@@ -2490,10 +2495,12 @@ export function ExpensesTab({
                       </div>
                     </div>
                   </div>
-                  <div className="flex justify-end gap-2">
+                  </div>
+                  <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:px-6">
                       <Button
                         type="button"
                         variant="outline"
+                        className="w-full sm:w-auto"
                         onClick={() => setIsAddDialogOpen(false)}
                         disabled={isSubmitting}
                       >
@@ -2501,6 +2508,7 @@ export function ExpensesTab({
                       </Button>
                       <Button
                         type="button"
+                        className="w-full sm:w-auto"
                         onClick={() => void handleAddExpense()}
                         disabled={isSubmitting}
                       >
@@ -2513,16 +2521,17 @@ export function ExpensesTab({
                           "Add Expense"
                         )}
                       </Button>
-                    </div>
+                  </DialogFooter>
                 </DialogContent>
               </Dialog>
               <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                <DialogContent className="sm:max-w-[600px] bg-card border-border">
-                  <DialogHeader>
+                <DialogContent className={EXPENSE_DIALOG_CLASS}>
+                  <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
                     <DialogTitle>Edit Expense</DialogTitle>
                   </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-2 gap-4">
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+                  <div className="grid gap-4">
+                    <div className={EXPENSE_FORM_ROW}>
                       <div className="space-y-2">
                         <Label>Date *</Label>
                         <Input
@@ -2556,7 +2565,7 @@ export function ExpensesTab({
                         </Select>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className={EXPENSE_FORM_ROW}>
                       <div className="space-y-2">
                         <Label>
                           {categoryUsesLabourTeams(editExpense.category, expenseCategories)
@@ -2631,7 +2640,7 @@ export function ExpensesTab({
                         className="bg-muted border-border"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className={EXPENSE_FORM_ROW}>
                       <div className="space-y-2">
                         <Label>Vendor</Label>
                         <Input
@@ -2652,7 +2661,7 @@ export function ExpensesTab({
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className={EXPENSE_FORM_ROW}>
                       <div className="space-y-2">
                         <Label>Bill Number</Label>
                         <Input
@@ -2686,9 +2695,11 @@ export function ExpensesTab({
                       )}
                     </div>
                   </div>
-                  <div className="flex justify-end gap-2">
+                  </div>
+                  <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:px-6">
                     <Button
                       variant="outline"
+                      className="w-full sm:w-auto"
                       onClick={() => {
                         setIsEditDialogOpen(false)
                         setEditingExpenseId(null)
@@ -2697,7 +2708,11 @@ export function ExpensesTab({
                     >
                       Cancel
                     </Button>
-                    <Button onClick={() => void handleUpdateExpense()} disabled={isSubmitting}>
+                    <Button
+                      className="w-full sm:w-auto"
+                      onClick={() => void handleUpdateExpense()}
+                      disabled={isSubmitting}
+                    >
                       {isSubmitting ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -2707,7 +2722,7 @@ export function ExpensesTab({
                         "Save Changes"
                       )}
                     </Button>
-                  </div>
+                  </DialogFooter>
                 </DialogContent>
               </Dialog>
             </div>
