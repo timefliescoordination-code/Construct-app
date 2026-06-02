@@ -64,28 +64,38 @@ export async function GET(request: NextRequest) {
     const total = rows.length
     const pageRows = rows.slice(offset, offset + limit)
 
-    const [companyList, personalList, projectsResult] = await Promise.all([
-      auth.supabase
-        .from("company_expenses")
-        .select("*")
-        .gte("expense_date", dateFrom)
-        .lte("expense_date", dateTo)
-        .order("expense_date", { ascending: false }),
-      auth.supabase
-        .from("personal_expenses")
-        .select("*")
-        .gte("expense_date", dateFrom)
-        .lte("expense_date", dateTo)
-        .order("expense_date", { ascending: false }),
-      auth.supabase
-        .from("projects")
-        .select("id, name")
-        .neq("status", "archived")
-        .order("name"),
-    ])
+    const [companyList, companyIncomeList, personalList, projectsResult] =
+      await Promise.all([
+        auth.supabase
+          .from("company_expenses")
+          .select("*")
+          .gte("expense_date", dateFrom)
+          .lte("expense_date", dateTo)
+          .order("expense_date", { ascending: false }),
+        auth.supabase
+          .from("company_income")
+          .select("*")
+          .gte("received_date", dateFrom)
+          .lte("received_date", dateTo)
+          .order("received_date", { ascending: false }),
+        auth.supabase
+          .from("personal_expenses")
+          .select("*")
+          .gte("expense_date", dateFrom)
+          .lte("expense_date", dateTo)
+          .order("expense_date", { ascending: false }),
+        auth.supabase
+          .from("projects")
+          .select("id, name")
+          .neq("status", "archived")
+          .order("name"),
+      ])
 
     const listError =
-      companyList.error ?? personalList.error ?? projectsResult.error
+      companyList.error ??
+      companyIncomeList.error ??
+      personalList.error ??
+      projectsResult.error
     if (listError) {
       return NextResponse.json(
         { error: getSupabaseErrorMessage(listError) },
@@ -103,6 +113,7 @@ export async function GET(request: NextRequest) {
       dateFrom,
       dateTo,
       companyExpenses: companyList.data ?? [],
+      companyIncome: companyIncomeList.data ?? [],
       personalExpenses: personalList.data ?? [],
       projects: projectsResult.data ?? [],
     })

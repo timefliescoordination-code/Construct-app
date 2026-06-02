@@ -228,6 +228,21 @@ export interface CompanyExpense {
   updated_at: string
 }
 
+export interface CompanyIncome {
+  id: string
+  category: string
+  description: string
+  amount: number
+  source_name: string | null
+  received_date: string
+  payment_method: string | null
+  reference_number: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface PersonalExpense {
   id: string
   category: string

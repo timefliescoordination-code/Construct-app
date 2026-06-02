@@ -3,7 +3,11 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getSupabaseErrorMessage } from "@/lib/supabase/db-errors"
-import type { CompanyExpense, PersonalExpense } from "@/lib/types/database"
+import type {
+  CompanyExpense,
+  CompanyIncome,
+  PersonalExpense,
+} from "@/lib/types/database"
 
 export type FinanceActionResult<T = void> =
   | { ok: true; data: T }
@@ -119,6 +123,100 @@ export async function deleteCompanyExpenseAction(
 
   const { error } = await session.supabase
     .from("company_expenses")
+    .delete()
+    .eq("id", id)
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  revalidateFinance()
+  return { ok: true, data: undefined }
+}
+
+export async function createCompanyIncomeAction(input: {
+  category: string
+  description: string
+  amount: number
+  sourceName?: string | null
+  receivedDate: string
+  paymentMethod?: string | null
+  referenceNumber?: string | null
+  notes?: string | null
+}): Promise<FinanceActionResult<CompanyIncome>> {
+  const session = await requireAdminSession()
+  if (!session.ok) return session
+
+  const { data, error } = await session.supabase
+    .from("company_income")
+    .insert({
+      category: input.category,
+      description: input.description,
+      amount: input.amount,
+      source_name: input.sourceName ?? null,
+      received_date: input.receivedDate,
+      payment_method: input.paymentMethod ?? null,
+      reference_number: input.referenceNumber ?? null,
+      notes: input.notes ?? null,
+      created_by: session.userId,
+    })
+    .select("*")
+    .single()
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  revalidateFinance()
+  return { ok: true, data: data as CompanyIncome }
+}
+
+export async function updateCompanyIncomeAction(input: {
+  id: string
+  category: string
+  description: string
+  amount: number
+  sourceName?: string | null
+  receivedDate: string
+  paymentMethod?: string | null
+  referenceNumber?: string | null
+  notes?: string | null
+}): Promise<FinanceActionResult<CompanyIncome>> {
+  const session = await requireAdminSession()
+  if (!session.ok) return session
+
+  const { data, error } = await session.supabase
+    .from("company_income")
+    .update({
+      category: input.category,
+      description: input.description,
+      amount: input.amount,
+      source_name: input.sourceName ?? null,
+      received_date: input.receivedDate,
+      payment_method: input.paymentMethod ?? null,
+      reference_number: input.referenceNumber ?? null,
+      notes: input.notes ?? null,
+    })
+    .eq("id", input.id)
+    .select("*")
+    .single()
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  revalidateFinance()
+  return { ok: true, data: data as CompanyIncome }
+}
+
+export async function deleteCompanyIncomeAction(
+  id: string,
+): Promise<FinanceActionResult> {
+  const session = await requireAdminSession()
+  if (!session.ok) return session
+
+  const { error } = await session.supabase
+    .from("company_income")
     .delete()
     .eq("id", id)
 

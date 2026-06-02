@@ -20,6 +20,7 @@ import { formatINR } from "@/lib/currency"
 import { cn } from "@/lib/utils"
 import type {
   CompanyExpense,
+  CompanyIncome,
   PersonalExpense,
 } from "@/lib/types/database"
 import type {
@@ -29,14 +30,18 @@ import type {
 } from "@/lib/finance/unified-money-feed"
 import {
   COMPANY_EXPENSE_CATEGORIES,
+  COMPANY_INCOME_CATEGORIES,
   PERSONAL_EXPENSE_CATEGORIES,
 } from "@/lib/finance/categories"
 import {
   createCompanyExpenseAction,
+  createCompanyIncomeAction,
   createPersonalExpenseAction,
   deleteCompanyExpenseAction,
+  deleteCompanyIncomeAction,
   deletePersonalExpenseAction,
   updateCompanyExpenseAction,
+  updateCompanyIncomeAction,
   updatePersonalExpenseAction,
 } from "@/lib/finance/finance-actions"
 import { AddExpenseMenu, type ProjectOption } from "@/components/finance/add-expense-menu"
@@ -99,6 +104,7 @@ type AllExpensesResponse = {
   total: number
   overview: AllExpensesOverview
   companyExpenses: CompanyExpense[]
+  companyIncome: CompanyIncome[]
   personalExpenses: PersonalExpense[]
   projects: ProjectOption[]
   dateFrom: string
@@ -235,6 +241,7 @@ export function AllExpensesContent() {
   const tab = (searchParams.get("tab") as TabKey) || "all"
   const period = searchParams.get("period") ?? "30d"
   const shouldOpenAdd = searchParams.get("add") === "1"
+  const shouldOpenAddIncome = searchParams.get("addIncome") === "1"
 
   const [layerToggles, setLayerToggles] = useState({
     project: searchParams.get("project") !== "0",
@@ -264,11 +271,14 @@ export function AllExpensesContent() {
   const projects: ProjectOption[] = data?.projects ?? []
 
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false)
+  const [companyIncomeDialogOpen, setCompanyIncomeDialogOpen] = useState(false)
   const [personalDialogOpen, setPersonalDialogOpen] = useState(false)
   const [editingCompany, setEditingCompany] = useState<CompanyExpense | null>(null)
+  const [editingCompanyIncome, setEditingCompanyIncome] =
+    useState<CompanyIncome | null>(null)
   const [editingPersonal, setEditingPersonal] = useState<PersonalExpense | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{
-    type: "company" | "personal"
+    type: "company-expense" | "company-income" | "personal"
     id: string
   } | null>(null)
   const [saving, setSaving] = useState(false)
@@ -283,6 +293,17 @@ export function AllExpensesContent() {
     notes: "",
   })
 
+  const [companyIncomeForm, setCompanyIncomeForm] = useState({
+    category: COMPANY_INCOME_CATEGORIES[0],
+    description: "",
+    amount: "",
+    sourceName: "",
+    receivedDate: new Date().toISOString().slice(0, 10),
+    paymentMethod: "",
+    referenceNumber: "",
+    notes: "",
+  })
+
   const [personalForm, setPersonalForm] = useState({
     category: PERSONAL_EXPENSE_CATEGORIES[0],
     description: "",
@@ -292,15 +313,17 @@ export function AllExpensesContent() {
   })
 
   useEffect(() => {
-    if (!shouldOpenAdd) return
-    if (tab === "company") {
+    if (shouldOpenAdd && tab === "company") {
       setCompanyDialogOpen(true)
       syncUrl({ add: null })
-    } else if (tab === "personal") {
+    } else if (shouldOpenAddIncome && tab === "company") {
+      setCompanyIncomeDialogOpen(true)
+      syncUrl({ addIncome: null })
+    } else if (shouldOpenAdd && tab === "personal") {
       setPersonalDialogOpen(true)
       syncUrl({ add: null })
     }
-  }, [shouldOpenAdd, tab, syncUrl])
+  }, [shouldOpenAdd, shouldOpenAddIncome, tab, syncUrl])
 
   const projectRows = useMemo(
     () => (data?.rows ?? []).filter((r) => r.layer === "project"),
@@ -345,6 +368,35 @@ export function AllExpensesContent() {
     setCompanyDialogOpen(true)
   }
 
+  const resetCompanyIncomeForm = () => {
+    setEditingCompanyIncome(null)
+    setCompanyIncomeForm({
+      category: COMPANY_INCOME_CATEGORIES[0],
+      description: "",
+      amount: "",
+      sourceName: "",
+      receivedDate: new Date().toISOString().slice(0, 10),
+      paymentMethod: "",
+      referenceNumber: "",
+      notes: "",
+    })
+  }
+
+  const openEditCompanyIncome = (row: CompanyIncome) => {
+    setEditingCompanyIncome(row)
+    setCompanyIncomeForm({
+      category: row.category,
+      description: row.description,
+      amount: String(row.amount),
+      sourceName: row.source_name ?? "",
+      receivedDate: row.received_date,
+      paymentMethod: row.payment_method ?? "",
+      referenceNumber: row.reference_number ?? "",
+      notes: row.notes ?? "",
+    })
+    setCompanyIncomeDialogOpen(true)
+  }
+
   const openEditPersonal = (row: PersonalExpense) => {
     setEditingPersonal(row)
     setPersonalForm({
@@ -387,6 +439,46 @@ export function AllExpensesContent() {
     void mutate()
   }
 
+  const saveCompanyIncome = async () => {
+    const amount = Number(companyIncomeForm.amount)
+    if (
+      !companyIncomeForm.description.trim() ||
+      !Number.isFinite(amount) ||
+      amount < 0
+    ) {
+      toast.error("Enter a valid description and amount.")
+      return
+    }
+    setSaving(true)
+    const payload = {
+      category: companyIncomeForm.category,
+      description: companyIncomeForm.description.trim(),
+      amount,
+      sourceName: companyIncomeForm.sourceName.trim() || null,
+      receivedDate: companyIncomeForm.receivedDate,
+      paymentMethod: companyIncomeForm.paymentMethod.trim() || null,
+      referenceNumber: companyIncomeForm.referenceNumber.trim() || null,
+      notes: companyIncomeForm.notes.trim() || null,
+    }
+    const result = editingCompanyIncome
+      ? await updateCompanyIncomeAction({
+          id: editingCompanyIncome.id,
+          ...payload,
+        })
+      : await createCompanyIncomeAction(payload)
+    setSaving(false)
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+    toast.success(
+      editingCompanyIncome ? "Company income updated" : "Company income added",
+    )
+    setCompanyIncomeDialogOpen(false)
+    resetCompanyIncomeForm()
+    void mutate()
+  }
+
   const savePersonal = async () => {
     const amount = Number(personalForm.amount)
     if (!personalForm.description.trim() || !Number.isFinite(amount) || amount < 0) {
@@ -419,9 +511,11 @@ export function AllExpensesContent() {
     if (!deleteTarget) return
     setSaving(true)
     const result =
-      deleteTarget.type === "company"
+      deleteTarget.type === "company-expense"
         ? await deleteCompanyExpenseAction(deleteTarget.id)
-        : await deletePersonalExpenseAction(deleteTarget.id)
+        : deleteTarget.type === "company-income"
+          ? await deleteCompanyIncomeAction(deleteTarget.id)
+          : await deletePersonalExpenseAction(deleteTarget.id)
     setSaving(false)
     setDeleteTarget(null)
     if (!result.ok) {
@@ -659,9 +753,10 @@ export function AllExpensesContent() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="company">
-            <div className="flex justify-end mb-3">
+          <TabsContent value="company" className="space-y-6">
+            <div className="flex flex-wrap justify-end gap-2">
               <Button
+                variant="outline"
                 onClick={() => {
                   resetCompanyForm()
                   setCompanyDialogOpen(true)
@@ -669,15 +764,45 @@ export function AllExpensesContent() {
               >
                 Add company expense
               </Button>
+              <Button
+                onClick={() => {
+                  resetCompanyIncomeForm()
+                  setCompanyIncomeDialogOpen(true)
+                }}
+              >
+                Add company income
+              </Button>
             </div>
             <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Expenses</CardTitle>
+              </CardHeader>
               <CardContent className="p-0">
                 <CompanyPersonalTable
                   rows={data?.companyExpenses ?? []}
                   isLoading={isLoading}
                   type="company"
                   onEdit={openEditCompany}
-                  onDelete={(id) => setDeleteTarget({ type: "company", id })}
+                  onDelete={(id) =>
+                    setDeleteTarget({ type: "company-expense", id })
+                  }
+                />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-green-600">
+                  Income
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <CompanyIncomeTable
+                  rows={data?.companyIncome ?? []}
+                  isLoading={isLoading}
+                  onEdit={openEditCompanyIncome}
+                  onDelete={(id) =>
+                    setDeleteTarget({ type: "company-income", id })
+                  }
                 />
               </CardContent>
             </Card>
@@ -801,6 +926,143 @@ export function AllExpensesContent() {
         </Dialog>
 
         <Dialog
+          open={companyIncomeDialogOpen}
+          onOpenChange={(open) => {
+            setCompanyIncomeDialogOpen(open)
+            if (!open) resetCompanyIncomeForm()
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {editingCompanyIncome
+                  ? "Edit company income"
+                  : "Add company income"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <Select
+                  value={companyIncomeForm.category}
+                  onValueChange={(v) =>
+                    setCompanyIncomeForm((f) => ({ ...f, category: v }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMPANY_INCOME_CATEGORIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Input
+                  value={companyIncomeForm.description}
+                  onChange={(e) =>
+                    setCompanyIncomeForm((f) => ({
+                      ...f,
+                      description: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Amount</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={companyIncomeForm.amount}
+                    onChange={(e) =>
+                      setCompanyIncomeForm((f) => ({
+                        ...f,
+                        amount: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Received date</Label>
+                  <Input
+                    type="date"
+                    value={companyIncomeForm.receivedDate}
+                    onChange={(e) =>
+                      setCompanyIncomeForm((f) => ({
+                        ...f,
+                        receivedDate: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Source / payer (optional)</Label>
+                <Input
+                  value={companyIncomeForm.sourceName}
+                  onChange={(e) =>
+                    setCompanyIncomeForm((f) => ({
+                      ...f,
+                      sourceName: e.target.value,
+                    }))
+                  }
+                  placeholder="Who paid?"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Payment method (optional)</Label>
+                  <Input
+                    value={companyIncomeForm.paymentMethod}
+                    onChange={(e) =>
+                      setCompanyIncomeForm((f) => ({
+                        ...f,
+                        paymentMethod: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Reference # (optional)</Label>
+                  <Input
+                    value={companyIncomeForm.referenceNumber}
+                    onChange={(e) =>
+                      setCompanyIncomeForm((f) => ({
+                        ...f,
+                        referenceNumber: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Notes (optional)</Label>
+                <Textarea
+                  value={companyIncomeForm.notes}
+                  onChange={(e) =>
+                    setCompanyIncomeForm((f) => ({ ...f, notes: e.target.value }))
+                  }
+                  rows={2}
+                />
+              </div>
+              <Button
+                onClick={() => void saveCompanyIncome()}
+                disabled={saving}
+                className="w-full"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
           open={personalDialogOpen}
           onOpenChange={(open) => {
             setPersonalDialogOpen(open)
@@ -889,7 +1151,7 @@ export function AllExpensesContent() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete expense?</AlertDialogTitle>
+              <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
               <AlertDialogDescription>
                 This cannot be undone.
               </AlertDialogDescription>
@@ -952,6 +1214,82 @@ function CompanyPersonalTable({
             <TableCell>{row.category}</TableCell>
             <TableCell>{row.description}</TableCell>
             <TableCell className="text-right">{formatINR(row.amount)}</TableCell>
+            <TableCell>
+              <div className="flex gap-1 justify-end">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onEdit(row)}
+                  aria-label="Edit"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onDelete(row.id)}
+                  aria-label="Delete"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+function CompanyIncomeTable({
+  rows,
+  isLoading,
+  onEdit,
+  onDelete,
+}: {
+  rows: CompanyIncome[]
+  isLoading: boolean
+  onEdit: (row: CompanyIncome) => void
+  onDelete: (id: string) => void
+}) {
+  if (isLoading) {
+    return (
+      <div className="p-8 flex justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+  if (rows.length === 0) {
+    return (
+      <p className="p-6 text-sm text-muted-foreground text-center">
+        No company income in this period.
+      </p>
+    )
+  }
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Date</TableHead>
+          <TableHead>Category</TableHead>
+          <TableHead>Description</TableHead>
+          <TableHead>Source</TableHead>
+          <TableHead className="text-right">Amount</TableHead>
+          <TableHead className="w-20" />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row) => (
+          <TableRow key={row.id}>
+            <TableCell>{formatDate(row.received_date)}</TableCell>
+            <TableCell>{row.category}</TableCell>
+            <TableCell>{row.description}</TableCell>
+            <TableCell className="text-muted-foreground">
+              {row.source_name ?? "—"}
+            </TableCell>
+            <TableCell className="text-right font-medium text-green-600">
+              {formatINR(row.amount)}
+            </TableCell>
             <TableCell>
               <div className="flex gap-1 justify-end">
                 <Button

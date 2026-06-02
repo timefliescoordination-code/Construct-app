@@ -54,6 +54,13 @@ export function AddExpenseMenu({
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() =>
+              router.push("/admin/expenses?tab=company&addIncome=1")
+            }
+          >
+            Company income
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() =>
               router.push("/admin/expenses?tab=personal&add=1")
             }
           >

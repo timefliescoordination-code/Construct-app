@@ -167,6 +167,31 @@ export async function fetchUnifiedMoneyFeed(
             linkHref: "/admin/expenses?tab=company",
           })
         }
+
+        const incomeResult = await supabase
+          .from("company_income")
+          .select("*")
+          .order("received_date", { ascending: false })
+
+        if (incomeResult.error) throw incomeResult.error
+
+        for (const row of incomeResult.data ?? []) {
+          const date = normalizeDateValue(row.received_date)
+          if (!date || !inDateRange(date, dateFrom, dateTo)) continue
+          const source = (row.source_name as string | null)?.trim()
+          rows.push({
+            id: `company-income-${row.id}`,
+            date,
+            direction: "in",
+            layer: "company",
+            amount: Number(row.amount),
+            description: source
+              ? `${row.description} — ${source}`
+              : (row.description as string),
+            category: row.category as string,
+            linkHref: "/admin/expenses?tab=company",
+          })
+        }
       })(),
     )
   }
