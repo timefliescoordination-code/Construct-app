@@ -214,6 +214,32 @@ export interface ExpenseInvoiceWithItems extends ExpenseInvoice {
   items: InvoiceItem[]
 }
 
+export interface CompanyExpense {
+  id: string
+  category: string
+  description: string
+  amount: number
+  vendor_name: string | null
+  expense_date: string
+  payment_method: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PersonalExpense {
+  id: string
+  category: string
+  description: string
+  amount: number
+  expense_date: string
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface ProjectEngineerAssignment {
   engineer_id: string
   engineer?: Profile | null

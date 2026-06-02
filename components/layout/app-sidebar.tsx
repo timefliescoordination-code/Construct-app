@@ -8,6 +8,7 @@ import {
   Users,
   HelpCircle,
   MessageCircle,
+  Wallet,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/use-auth"
@@ -36,7 +37,10 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     { href: dashboardHref, label: "Dashboard", icon: LayoutDashboard },
     { href: "/projects", label: "Projects", icon: FolderKanban },
     ...(role === "admin"
-      ? [{ href: "/admin/users", label: "User Management", icon: Users }]
+      ? [
+          { href: "/admin/expenses", label: "All expenses", icon: Wallet },
+          { href: "/admin/users", label: "User Management", icon: Users },
+        ]
       : []),
   ]
 
@@ -51,7 +55,12 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     if (href === "/projects") {
       return pathname === "/projects" || pathname.startsWith("/projects/")
     }
-    if (href === "/admin") return pathname === "/admin"
+    if (href === "/admin") {
+      return pathname === "/admin"
+    }
+    if (href === "/admin/expenses") {
+      return pathname.startsWith("/admin/expenses")
+    }
     return pathname.startsWith(href)
   }
 

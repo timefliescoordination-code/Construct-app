@@ -536,6 +536,12 @@ export function ExpensesTab({
     }
   }, [searchParams])
 
+  useEffect(() => {
+    if (searchParams.get("add") === "1") {
+      setIsAddDialogOpen(true)
+    }
+  }, [searchParams])
+
   const labourTeamNameById = useMemo(
     () => new Map(labourTeams.map((t) => [t.id, t.name])),
     [labourTeams],

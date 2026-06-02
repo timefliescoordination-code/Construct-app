@@ -44,6 +44,11 @@ export function canManageProjectData(role: UserRole | null): boolean {
   return role === "admin" || role === "pm"
 }
 
+/** Admin-only unified expenses hub and finance APIs. */
+export function canAccessFinance(role: UserRole | null): boolean {
+  return role === "admin"
+}
+
 /** Remove financial fields from API payloads for site engineers. */
 export function stripProjectFinancialsForEngineer(
   project: ProjectWithDetails,

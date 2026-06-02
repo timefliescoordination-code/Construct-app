@@ -32,6 +32,7 @@ import {
 } from "@/components/dashboard/financial-layers"
 import Link from "next/link"
 import { Plus } from "lucide-react"
+import { AddExpenseMenu } from "@/components/finance/add-expense-menu"
 import {
   Table,
   TableBody,
@@ -117,6 +118,15 @@ export function AdminDashboard() {
   const { isAdmin, canManageProjects, isLoading: authLoading } = useAuth()
   const showCreateProject = !authLoading && (isAdmin || canManageProjects)
 
+  const projectPickerOptions = useMemo(
+    () =>
+      projects.map((p) => ({
+        id: p.id,
+        name: p.name || "Unnamed project",
+      })),
+    [projects],
+  )
+
   const showAllProjects = selectedProjectId === SHOW_ALL_PROJECTS
 
   const visibleProjects = useMemo(() => {
@@ -187,6 +197,14 @@ export function AdminDashboard() {
               </Button>
             )}
 
+            {isAdmin && !authLoading ? (
+              <AddExpenseMenu
+                projects={projectPickerOptions}
+                variant="outline"
+                className="border-border w-full sm:w-auto"
+              />
+            ) : null}
+
             <Button variant="outline" className="border-border w-full sm:w-auto">
               <Calendar className="mr-2 h-4 w-4 shrink-0" />
               <span className="truncate">Export Report</span>
@@ -211,13 +229,18 @@ export function AdminDashboard() {
                   </p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="text-success border-success/30">
                   {displayCompany.activeProjects} active
                 </Badge>
                 <Badge variant="outline" className="text-muted-foreground">
                   {displayCompany.completedProjects} completed
                 </Badge>
+                {isAdmin ? (
+                  <Button variant="link" className="h-auto p-0 text-xs" asChild>
+                    <Link href="/admin/expenses">View all expenses</Link>
+                  </Button>
+                ) : null}
               </div>
             </div>
 
