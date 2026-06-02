@@ -10,6 +10,7 @@ import {
   type ChangeEvent,
 } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -75,6 +76,7 @@ import { milestoneNameById } from "@/lib/project-tab-hydration"
 import {
   bulkCreateExpensesAction,
   createExpenseAction,
+  syncProjectMilestoneMetricsAction,
   updateExpenseAction,
   updateExpenseStatusAction,
 } from "@/lib/projects/tab-actions"
@@ -248,7 +250,17 @@ interface ImportDraftRow {
   selected: boolean
 }
 
-const IMPORT_COMMIT_TIMEOUT_MS = 2 * 60 * 1000
+/** Rows per server request — keeps each action under hosting time limits. */
+const IMPORT_SERVER_CHUNK_SIZE = 50
+
+type ImportProgressState = {
+  phase: "idle" | "preparing" | "importing" | "syncing" | "refreshing"
+  current: number
+  total: number
+  chunk: number
+  chunkCount: number
+  message: string
+} | null
 
 interface ExpensesTabProps {
   projectId?: string
@@ -320,6 +332,7 @@ export function ExpensesTab({
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
   const [isParsingImportFile, setIsParsingImportFile] = useState(false)
   const [isCommittingImport, setIsCommittingImport] = useState(false)
+  const [importProgress, setImportProgress] = useState<ImportProgressState>(null)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [importDraftRows, setImportDraftRows] = useState<ImportDraftRow[]>([])
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null)
@@ -1598,9 +1611,14 @@ export function ExpensesTab({
     }
 
     setIsCommittingImport(true)
-    const loadingToastId = toast.loading(
-      `Importing ${importDraftRows.length} row(s)…`,
-    )
+    setImportProgress({
+      phase: "preparing",
+      current: 0,
+      total: importDraftRows.length,
+      chunk: 0,
+      chunkCount: 0,
+      message: "Validating rows…",
+    })
 
     try {
       const milestoneByName = new Map(
@@ -1654,7 +1672,6 @@ export function ExpensesTab({
       }
 
       if (rowsToCreate.length === 0) {
-        toast.dismiss(loadingToastId)
         const preview = failedReasons.slice(0, 3).join(" | ")
         toast.error(
           preview
@@ -1664,30 +1681,77 @@ export function ExpensesTab({
         return
       }
 
-      const result = await Promise.race([
-        bulkCreateExpensesAction({
-          projectId,
-          rows: rowsToCreate,
-        }),
-        new Promise<Awaited<ReturnType<typeof bulkCreateExpensesAction>>>((resolve) => {
-          setTimeout(() => {
-            resolve({
-              ok: false,
-              error:
-                "Import is taking too long. Please try with a smaller file (200-500 rows) and retry.",
-            })
-          }, IMPORT_COMMIT_TIMEOUT_MS)
-        }),
-      ])
-
-      toast.dismiss(loadingToastId)
-
-      if (!result.ok) {
-        toast.error(result.error)
-        return
+      const chunks: (typeof rowsToCreate)[] = []
+      for (let i = 0; i < rowsToCreate.length; i += IMPORT_SERVER_CHUNK_SIZE) {
+        chunks.push(rowsToCreate.slice(i, i + IMPORT_SERVER_CHUNK_SIZE))
       }
 
-      const created = result.data.created
+      let created = 0
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        const chunk = chunks[chunkIndex]
+        const batchStart = chunkIndex * IMPORT_SERVER_CHUNK_SIZE
+
+        setImportProgress({
+          phase: "importing",
+          current: batchStart,
+          total: rowsToCreate.length,
+          chunk: chunkIndex + 1,
+          chunkCount: chunks.length,
+          message: `Saving batch ${chunkIndex + 1} of ${chunks.length}…`,
+        })
+
+        const result = await bulkCreateExpensesAction({
+          projectId,
+          rows: chunk,
+          deferMilestoneSync: true,
+          deferRevalidate: true,
+        })
+
+        if (!result.ok) {
+          toast.error(
+            result.error +
+              (created > 0 ? ` (${created} row(s) were saved before this error.)` : ""),
+          )
+          return
+        }
+
+        created += result.data.created
+
+        setImportProgress({
+          phase: "importing",
+          current: Math.min(batchStart + chunk.length, rowsToCreate.length),
+          total: rowsToCreate.length,
+          chunk: chunkIndex + 1,
+          chunkCount: chunks.length,
+          message: `Saved batch ${chunkIndex + 1} of ${chunks.length}`,
+        })
+      }
+
+      setImportProgress({
+        phase: "syncing",
+        current: rowsToCreate.length,
+        total: rowsToCreate.length,
+        chunk: chunks.length,
+        chunkCount: chunks.length,
+        message: "Updating milestone totals…",
+      })
+
+      const syncResult = await syncProjectMilestoneMetricsAction(projectId)
+      if (!syncResult.ok) {
+        toast.warning(
+          `Imported ${created} expense(s), but milestone totals may be stale: ${syncResult.error}`,
+        )
+      }
+
+      setImportProgress({
+        phase: "refreshing",
+        current: rowsToCreate.length,
+        total: rowsToCreate.length,
+        chunk: chunks.length,
+        chunkCount: chunks.length,
+        message: "Refreshing expense list…",
+      })
+
       const skipped = failedReasons.length
 
       setIsImportDialogOpen(false)
@@ -1705,7 +1769,6 @@ export function ExpensesTab({
 
       refreshExpensesAfterImport()
     } catch (error) {
-      toast.dismiss(loadingToastId)
       console.error("[expenses-tab] commit import:", error)
       toast.error(
         error instanceof Error
@@ -1714,6 +1777,7 @@ export function ExpensesTab({
       )
     } finally {
       setIsCommittingImport(false)
+      setImportProgress(null)
     }
   }
 
@@ -2051,6 +2115,36 @@ export function ExpensesTab({
                       </TableBody>
                     </Table>
                   </div>
+                  {isCommittingImport && importProgress ? (
+                    <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-4">
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <span className="font-medium">{importProgress.message}</span>
+                        <span className="text-muted-foreground tabular-nums">
+                          {importProgress.phase === "importing"
+                            ? `${Math.min(importProgress.current, importProgress.total)} / ${importProgress.total}`
+                            : importProgress.phase === "preparing"
+                              ? "…"
+                              : "Done"}
+                        </span>
+                      </div>
+                      <Progress
+                        value={
+                          importProgress.total > 0
+                            ? Math.round(
+                                (importProgress.current / importProgress.total) *
+                                  100,
+                              )
+                            : 0
+                        }
+                        className="h-2"
+                      />
+                      {importProgress.chunkCount > 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Batch {importProgress.chunk} of {importProgress.chunkCount}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="flex justify-end gap-2">
                     <Button
                       variant="outline"
@@ -2070,7 +2164,7 @@ export function ExpensesTab({
                       {isCommittingImport ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Importing...
+                          {importProgress?.message ?? "Importing…"}
                         </>
                       ) : (
                         "Import All Rows"

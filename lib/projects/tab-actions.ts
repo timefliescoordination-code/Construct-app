@@ -178,9 +178,27 @@ export type BulkCreateExpenseRow = {
   status?: 'approved' | 'rejected' | 'pending'
 }
 
+export async function syncProjectMilestoneMetricsAction(
+  projectId: string,
+): Promise<TabActionResult> {
+  const session = await getSession()
+  if (!session.ok) return session
+  if (!canEnterExpenses(session.role)) {
+    return { ok: false, error: 'You do not have permission to sync milestones.' }
+  }
+
+  await syncProjectMilestoneMetrics(session.supabase, projectId)
+  revalidateProject(projectId)
+  return { ok: true, data: undefined }
+}
+
 export async function bulkCreateExpensesAction(input: {
   projectId: string
   rows: BulkCreateExpenseRow[]
+  /** Skip milestone recompute until a final sync (faster multi-chunk imports). */
+  deferMilestoneSync?: boolean
+  /** Skip route revalidation until the import finishes. */
+  deferRevalidate?: boolean
 }): Promise<TabActionResult<{ created: number }>> {
   const session = await getSession()
   if (!session.ok) return session
@@ -222,11 +240,13 @@ export async function bulkCreateExpensesAction(input: {
     created += chunk.length
   }
   const anyApproved = payload.some((row) => row.status === 'approved')
-  if (anyApproved) {
+  if (anyApproved && !input.deferMilestoneSync) {
     await syncProjectMilestoneMetrics(session.supabase, input.projectId)
   }
 
-  revalidateProject(input.projectId)
+  if (!input.deferRevalidate) {
+    revalidateProject(input.projectId)
+  }
   return { ok: true, data: { created } }
 }
 
