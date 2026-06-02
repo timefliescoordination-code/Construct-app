@@ -248,6 +248,8 @@ interface ImportDraftRow {
   selected: boolean
 }
 
+const IMPORT_COMMIT_TIMEOUT_MS = 2 * 60 * 1000
+
 interface ExpensesTabProps {
   projectId?: string
   project?: ProjectWithDetails
@@ -1662,10 +1664,21 @@ export function ExpensesTab({
         return
       }
 
-      const result = await bulkCreateExpensesAction({
-        projectId,
-        rows: rowsToCreate,
-      })
+      const result = await Promise.race([
+        bulkCreateExpensesAction({
+          projectId,
+          rows: rowsToCreate,
+        }),
+        new Promise<Awaited<ReturnType<typeof bulkCreateExpensesAction>>>((resolve) => {
+          setTimeout(() => {
+            resolve({
+              ok: false,
+              error:
+                "Import is taking too long. Please try with a smaller file (200-500 rows) and retry.",
+            })
+          }, IMPORT_COMMIT_TIMEOUT_MS)
+        }),
+      ])
 
       toast.dismiss(loadingToastId)
 

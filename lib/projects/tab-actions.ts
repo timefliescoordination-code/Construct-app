@@ -208,10 +208,9 @@ export async function bulkCreateExpensesAction(input: {
 
   let created = 0
   for (const chunk of chunkExpenseRows(payload, BULK_EXPENSE_INSERT_CHUNK)) {
-    const { data, error } = await session.supabase
+    const { error } = await session.supabase
       .from('expenses')
       .insert(chunk)
-      .select('id')
 
     if (error) {
       return {
@@ -220,7 +219,7 @@ export async function bulkCreateExpensesAction(input: {
       }
     }
 
-    created += data?.length ?? 0
+    created += chunk.length
   }
   const anyApproved = payload.some((row) => row.status === 'approved')
   if (anyApproved) {
