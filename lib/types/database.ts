@@ -243,6 +243,20 @@ export interface CompanyIncome {
   updated_at: string
 }
 
+export type FinanceCategoryKind =
+  | "company_expense"
+  | "company_income"
+  | "personal_expense"
+
+export interface FinanceCategory {
+  id: string
+  kind: FinanceCategoryKind
+  name: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
 export interface PersonalExpense {
   id: string
   category: string

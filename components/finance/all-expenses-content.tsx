@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils"
 import type {
   CompanyExpense,
   CompanyIncome,
+  FinanceCategory,
   PersonalExpense,
 } from "@/lib/types/database"
 import type {
@@ -28,11 +29,6 @@ import type {
   ExpenseLayer,
   UnifiedMoneyRow,
 } from "@/lib/finance/unified-money-feed"
-import {
-  COMPANY_EXPENSE_CATEGORIES,
-  COMPANY_INCOME_CATEGORIES,
-  PERSONAL_EXPENSE_CATEGORIES,
-} from "@/lib/finance/categories"
 import {
   createCompanyExpenseAction,
   createCompanyIncomeAction,
@@ -45,6 +41,7 @@ import {
   updatePersonalExpenseAction,
 } from "@/lib/finance/finance-actions"
 import { AddExpenseMenu, type ProjectOption } from "@/components/finance/add-expense-menu"
+import { CategorySelectField } from "@/components/finance/category-select-field"
 import { DashboardHeader } from "@/components/dashboard/header"
 import {
   PageHeader,
@@ -136,6 +133,27 @@ async function fetchAllExpenses(query: string): Promise<AllExpensesResponse> {
     throw new Error(body.error ?? "Failed to load expenses")
   }
   return res.json()
+}
+
+type FinanceCategoriesResponse = {
+  categories: {
+    company_expense: FinanceCategory[]
+    company_income: FinanceCategory[]
+    personal_expense: FinanceCategory[]
+  }
+}
+
+async function fetchFinanceCategories(): Promise<FinanceCategoriesResponse> {
+  const res = await fetch("/api/admin/finance-categories")
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error ?? "Failed to load categories")
+  }
+  return res.json()
+}
+
+function firstCategoryName(categories: FinanceCategory[]): string {
+  return categories[0]?.name ?? ""
 }
 
 function layerLabel(layer: ExpenseLayer) {
@@ -268,6 +286,20 @@ export function AllExpensesContent() {
     { revalidateOnFocus: true },
   )
 
+  const { data: categoriesData, mutate: mutateCategories } = useSWR(
+    "finance-categories",
+    fetchFinanceCategories,
+    { revalidateOnFocus: true },
+  )
+
+  const companyExpenseCategories =
+    categoriesData?.categories.company_expense ?? []
+  const companyIncomeCategories = categoriesData?.categories.company_income ?? []
+  const personalExpenseCategories =
+    categoriesData?.categories.personal_expense ?? []
+
+  const refreshCategories = () => void mutateCategories()
+
   const projects: ProjectOption[] = data?.projects ?? []
 
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false)
@@ -284,7 +316,7 @@ export function AllExpensesContent() {
   const [saving, setSaving] = useState(false)
 
   const [companyForm, setCompanyForm] = useState({
-    category: COMPANY_EXPENSE_CATEGORIES[0],
+    category: "",
     description: "",
     amount: "",
     vendorName: "",
@@ -294,7 +326,7 @@ export function AllExpensesContent() {
   })
 
   const [companyIncomeForm, setCompanyIncomeForm] = useState({
-    category: COMPANY_INCOME_CATEGORIES[0],
+    category: "",
     description: "",
     amount: "",
     sourceName: "",
@@ -305,12 +337,40 @@ export function AllExpensesContent() {
   })
 
   const [personalForm, setPersonalForm] = useState({
-    category: PERSONAL_EXPENSE_CATEGORIES[0],
+    category: "",
     description: "",
     amount: "",
     expenseDate: new Date().toISOString().slice(0, 10),
     notes: "",
   })
+
+  useEffect(() => {
+    if (companyExpenseCategories.length && !companyForm.category) {
+      setCompanyForm((f) => ({
+        ...f,
+        category: firstCategoryName(companyExpenseCategories),
+      }))
+    }
+    if (companyIncomeCategories.length && !companyIncomeForm.category) {
+      setCompanyIncomeForm((f) => ({
+        ...f,
+        category: firstCategoryName(companyIncomeCategories),
+      }))
+    }
+    if (personalExpenseCategories.length && !personalForm.category) {
+      setPersonalForm((f) => ({
+        ...f,
+        category: firstCategoryName(personalExpenseCategories),
+      }))
+    }
+  }, [
+    companyExpenseCategories,
+    companyIncomeCategories,
+    personalExpenseCategories,
+    companyForm.category,
+    companyIncomeForm.category,
+    personalForm.category,
+  ])
 
   useEffect(() => {
     if (shouldOpenAdd && tab === "company") {
@@ -330,10 +390,32 @@ export function AllExpensesContent() {
     [data?.rows],
   )
 
+  const syncCategoryFields = useCallback(() => {
+    const ce = companyExpenseCategories.map((c) => c.name)
+    const ci = companyIncomeCategories.map((c) => c.name)
+    const pe = personalExpenseCategories.map((c) => c.name)
+    setCompanyForm((f) => ({
+      ...f,
+      category: ce.includes(f.category) ? f.category : firstCategoryName(companyExpenseCategories),
+    }))
+    setCompanyIncomeForm((f) => ({
+      ...f,
+      category: ci.includes(f.category) ? f.category : firstCategoryName(companyIncomeCategories),
+    }))
+    setPersonalForm((f) => ({
+      ...f,
+      category: pe.includes(f.category) ? f.category : firstCategoryName(personalExpenseCategories),
+    }))
+  }, [
+    companyExpenseCategories,
+    companyIncomeCategories,
+    personalExpenseCategories,
+  ])
+
   const resetCompanyForm = () => {
     setEditingCompany(null)
     setCompanyForm({
-      category: COMPANY_EXPENSE_CATEGORIES[0],
+      category: firstCategoryName(companyExpenseCategories),
       description: "",
       amount: "",
       vendorName: "",
@@ -346,7 +428,7 @@ export function AllExpensesContent() {
   const resetPersonalForm = () => {
     setEditingPersonal(null)
     setPersonalForm({
-      category: PERSONAL_EXPENSE_CATEGORIES[0],
+      category: firstCategoryName(personalExpenseCategories),
       description: "",
       amount: "",
       expenseDate: new Date().toISOString().slice(0, 10),
@@ -371,7 +453,7 @@ export function AllExpensesContent() {
   const resetCompanyIncomeForm = () => {
     setEditingCompanyIncome(null)
     setCompanyIncomeForm({
-      category: COMPANY_INCOME_CATEGORIES[0],
+      category: firstCategoryName(companyIncomeCategories),
       description: "",
       amount: "",
       sourceName: "",
@@ -411,6 +493,10 @@ export function AllExpensesContent() {
 
   const saveCompany = async () => {
     const amount = Number(companyForm.amount)
+    if (!companyForm.category) {
+      toast.error("Select a category.")
+      return
+    }
     if (!companyForm.description.trim() || !Number.isFinite(amount) || amount < 0) {
       toast.error("Enter a valid description and amount.")
       return
@@ -441,6 +527,10 @@ export function AllExpensesContent() {
 
   const saveCompanyIncome = async () => {
     const amount = Number(companyIncomeForm.amount)
+    if (!companyIncomeForm.category) {
+      toast.error("Select a category.")
+      return
+    }
     if (
       !companyIncomeForm.description.trim() ||
       !Number.isFinite(amount) ||
@@ -481,6 +571,10 @@ export function AllExpensesContent() {
 
   const savePersonal = async () => {
     const amount = Number(personalForm.amount)
+    if (!personalForm.category) {
+      toast.error("Select a category.")
+      return
+    }
     if (!personalForm.description.trim() || !Number.isFinite(amount) || amount < 0) {
       toast.error("Enter a valid description and amount.")
       return
@@ -847,26 +941,18 @@ export function AllExpensesContent() {
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select
-                  value={companyForm.category}
-                  onValueChange={(v) =>
-                    setCompanyForm((f) => ({ ...f, category: v }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMPANY_EXPENSE_CATEGORIES.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <CategorySelectField
+                kind="company_expense"
+                value={companyForm.category}
+                onValueChange={(v) =>
+                  setCompanyForm((f) => ({ ...f, category: v }))
+                }
+                categories={companyExpenseCategories}
+                onCategoriesChange={() => {
+                  refreshCategories()
+                  syncCategoryFields()
+                }}
+              />
               <div className="space-y-2">
                 <Label>Description</Label>
                 <Input
@@ -941,26 +1027,18 @@ export function AllExpensesContent() {
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select
-                  value={companyIncomeForm.category}
-                  onValueChange={(v) =>
-                    setCompanyIncomeForm((f) => ({ ...f, category: v }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMPANY_INCOME_CATEGORIES.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <CategorySelectField
+                kind="company_income"
+                value={companyIncomeForm.category}
+                onValueChange={(v) =>
+                  setCompanyIncomeForm((f) => ({ ...f, category: v }))
+                }
+                categories={companyIncomeCategories}
+                onCategoriesChange={() => {
+                  refreshCategories()
+                  syncCategoryFields()
+                }}
+              />
               <div className="space-y-2">
                 <Label>Description</Label>
                 <Input
@@ -1076,26 +1154,18 @@ export function AllExpensesContent() {
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select
-                  value={personalForm.category}
-                  onValueChange={(v) =>
-                    setPersonalForm((f) => ({ ...f, category: v }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PERSONAL_EXPENSE_CATEGORIES.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <CategorySelectField
+                kind="personal_expense"
+                value={personalForm.category}
+                onValueChange={(v) =>
+                  setPersonalForm((f) => ({ ...f, category: v }))
+                }
+                categories={personalExpenseCategories}
+                onCategoriesChange={() => {
+                  refreshCategories()
+                  syncCategoryFields()
+                }}
+              />
               <div className="space-y-2">
                 <Label>Description</Label>
                 <Input
