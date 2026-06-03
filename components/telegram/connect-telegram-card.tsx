@@ -10,8 +10,10 @@ import {
   createTelegramLinkCodeAction,
   getTelegramLinkStatusAction,
 } from "@/lib/telegram/actions"
+import { useAuth } from "@/lib/hooks/use-auth"
 
 export function ConnectTelegramCard() {
+  const { role } = useAuth()
   const [configured, setConfigured] = useState(false)
   const [isLinked, setIsLinked] = useState(false)
   const [botUsername, setBotUsername] = useState("")
@@ -171,8 +173,19 @@ export function ConnectTelegramCard() {
 
         {isLinked ? (
           <p className="text-xs text-muted-foreground">
-            Daily use: open Telegram and send <span className="font-mono">/expense</span> or{" "}
-            <span className="font-mono">2500 Materials Cement bags</span>
+            {role === "admin" ? (
+              <>
+                In Telegram use the menu: <strong className="text-foreground">Project</strong>,{" "}
+                <strong className="text-foreground">Company</strong>, or{" "}
+                <strong className="text-foreground">Personal</strong> expense. Quick:{" "}
+                <span className="font-mono">company 5000 Office Rent June rent</span>
+              </>
+            ) : (
+              <>
+                Daily use: open Telegram and send <span className="font-mono">/expense</span> or{" "}
+                <span className="font-mono">2500 Materials Cement bags</span>
+              </>
+            )}
           </p>
         ) : null}
       </CardContent>

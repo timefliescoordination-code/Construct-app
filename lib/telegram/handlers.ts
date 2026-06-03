@@ -25,6 +25,14 @@ import {
   parseQuickExpenseMessage,
   TELEGRAM_EXPENSE_CATEGORIES,
 } from '@/lib/telegram/expense'
+import {
+  createTelegramCompanyExpense,
+  createTelegramPersonalExpense,
+  formatFinanceExpenseSummary,
+  listTelegramFinanceCategories,
+  parseAdminCompanyQuick,
+  parseAdminPersonalQuick,
+} from '@/lib/telegram/finance-expense'
 import type {
   ExpenseSessionPayload,
   TelegramCallbackQuery,
@@ -33,22 +41,47 @@ import type {
 } from '@/lib/telegram/types'
 import type { UserRole } from '@/lib/types/database'
 
-const MAIN_MENU = [['New expense', 'My projects'], ['Help', 'Unlink']]
+const ENGINEER_MENU = [['New expense', 'My projects'], ['Help', 'Unlink']]
+const ADMIN_MENU = [
+  ['Project expense', 'Company expense'],
+  ['Personal expense', 'Help'],
+  ['Unlink'],
+]
 
 type SessionPayload = ExpenseSessionPayload & { expenseId?: string }
 
-async function sendMainMenu(chatId: number, greeting?: string) {
-  const text =
-    greeting ??
-    [
-      'Ready. Tap *New expense* or send /expense.',
+function mainMenuKeyboard(role: UserRole) {
+  return role === 'admin' ? ADMIN_MENU : ENGINEER_MENU
+}
+
+function defaultMenuHint(role: UserRole): string {
+  if (role === 'admin') {
+    return [
+      'Ready. Choose an expense type from the menu.',
       '',
-      'Quick format (single project):',
-      '`2500 Materials Cement 50 bags`',
-      '(amount, category, description)',
+      'Quick formats:',
+      '`2500 Materials Cement 50 bags` — project',
+      '`company 5000 Office Rent June rent`',
+      '`personal 200 Food Lunch meeting`',
     ].join('\n')
+  }
+  return [
+    'Ready. Tap *New expense* or send /expense.',
+    '',
+    'Quick format (single project):',
+    '`2500 Materials Cement 50 bags`',
+    '(amount, category, description)',
+  ].join('\n')
+}
+
+async function sendMainMenu(
+  chatId: number,
+  role: UserRole,
+  greeting?: string,
+) {
+  const text = greeting ?? defaultMenuHint(role)
   await sendTelegramMessage(chatId, text, {
-    replyMarkup: replyKeyboard(MAIN_MENU),
+    replyMarkup: replyKeyboard(mainMenuKeyboard(role)),
     parseMode: 'Markdown',
   })
 }
@@ -58,7 +91,13 @@ async function requireLinked(chatId: number, telegramUserId: number) {
   if (!account) {
     await sendTelegramMessage(
       chatId,
-      'Account not linked.\n\n1. Sign in to the app once\n2. Engineer dashboard → Connect Telegram\n3. Send /link YOUR_CODE here',
+      [
+        'Account not linked.',
+        '',
+        '1. Sign in to the app once',
+        '2. Sidebar → Integrations → Telegram → Get link code',
+        '3. Send /link YOUR_CODE here',
+      ].join('\n'),
     )
     return null
   }
@@ -86,6 +125,7 @@ async function startExpenseFlow(
       state: preset?.category ? 'confirm' : 'pick_category',
       profileId,
       payload: {
+        expenseType: 'project',
         ...preset,
         projectId: projects[0].id,
         projectName: projects[0].name,
@@ -111,7 +151,7 @@ async function startExpenseFlow(
   await setSession(chatId, {
     state: 'pick_project',
     profileId,
-    payload: preset ?? {},
+    payload: { expenseType: 'project', ...preset },
   })
   const rows = projects.slice(0, 12).map((p) => [
     { text: p.name.slice(0, 40), callback_data: `project:${p.id}` },
@@ -127,6 +167,73 @@ async function promptCategory(chatId: number) {
   ])
   await sendTelegramMessage(chatId, 'Select category:', {
     replyMarkup: inlineKeyboard(rows),
+  })
+}
+
+async function startCompanyExpenseFlow(chatId: number, profileId: string) {
+  const categories = await listTelegramFinanceCategories('company_expense')
+  if (!categories.length) {
+    await sendTelegramMessage(chatId, 'No company categories configured.')
+    return
+  }
+  await setSession(chatId, {
+    state: 'pick_finance_category',
+    profileId,
+    payload: { expenseType: 'company', categoryOptions: categories },
+  })
+  const rows = categories.slice(0, 12).map((name, index) => [
+    { text: name.slice(0, 40), callback_data: `fincat:${index}` },
+  ])
+  await sendTelegramMessage(chatId, 'Company expense — select category:', {
+    replyMarkup: inlineKeyboard(rows),
+  })
+}
+
+async function startPersonalExpenseFlow(chatId: number, profileId: string) {
+  const categories = await listTelegramFinanceCategories('personal_expense')
+  if (!categories.length) {
+    await sendTelegramMessage(chatId, 'No personal categories configured.')
+    return
+  }
+  await setSession(chatId, {
+    state: 'pick_finance_category',
+    profileId,
+    payload: { expenseType: 'personal', categoryOptions: categories },
+  })
+  const rows = categories.slice(0, 12).map((name, index) => [
+    { text: name.slice(0, 40), callback_data: `fincat:${index}` },
+  ])
+  await sendTelegramMessage(chatId, 'Personal expense — select category:', {
+    replyMarkup: inlineKeyboard(rows),
+  })
+}
+
+async function submitFinanceExpenseFromSession(
+  profileId: string,
+  payload: SessionPayload,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!payload.expenseType || payload.expenseType === 'project') {
+    return { ok: false, error: 'Invalid expense type.' }
+  }
+  if (!payload.category || !payload.description || payload.amount == null) {
+    return { ok: false, error: 'Missing details. Start again from the menu.' }
+  }
+
+  if (payload.expenseType === 'company') {
+    return createTelegramCompanyExpense({
+      profileId,
+      category: payload.category,
+      description: payload.description,
+      amount: payload.amount,
+      vendorName: payload.vendorName,
+    })
+  }
+
+  return createTelegramPersonalExpense({
+    profileId,
+    category: payload.category,
+    description: payload.description,
+    amount: payload.amount,
   })
 }
 
@@ -148,15 +255,17 @@ async function handleLinkCode(
     return
   }
 
+  const linked = await findLinkedAccount(telegramUserId)
   await sendMainMenu(
     chatId,
+    linked?.role ?? 'engineer',
     `Linked, ${result.fullName}. You can submit expenses here without signing into the web app.`,
   )
 }
 
 async function submitExpenseFromSession(
-  chatId: number,
   profileId: string,
+  role: UserRole,
   payload: SessionPayload,
 ): Promise<{ ok: true; expenseId: string } | { ok: false; error: string }> {
   if (!payload.projectId || !payload.category || !payload.description || payload.amount == null) {
@@ -165,6 +274,7 @@ async function submitExpenseFromSession(
 
   return createTelegramExpense({
     profileId,
+    role,
     projectId: payload.projectId,
     category: payload.category,
     description: payload.description,
@@ -232,12 +342,52 @@ async function handleCallbackQuery(query: TelegramCallbackQuery) {
     return
   }
 
+  if (data.startsWith('fincat:')) {
+    const index = Number(data.slice('fincat:'.length))
+    const options = payload.categoryOptions ?? []
+    const category = options[index]
+    if (!category) {
+      await sendTelegramMessage(chatId, 'Category not found. Start again from the menu.')
+      return
+    }
+    await setSession(chatId, {
+      state: 'enter_amount',
+      profileId: account.profileId,
+      payload: { ...payload, category },
+    })
+    await sendTelegramMessage(chatId, `Category: ${category}\n\nEnter amount in INR:`)
+    return
+  }
+
   if (data === 'confirm:yes' && query.message) {
-    const result = await submitExpenseFromSession(chatId, account.profileId, payload)
+    if (payload.expenseType === 'company' || payload.expenseType === 'personal') {
+      const result = await submitFinanceExpenseFromSession(account.profileId, payload)
+      if (!result.ok) {
+        await editTelegramMessage(chatId, query.message.message_id, result.error)
+        return
+      }
+      await clearSession(chatId)
+      const label =
+        payload.expenseType === 'company' ? 'Company expense saved.' : 'Personal expense saved.'
+      await editTelegramMessage(chatId, query.message.message_id, label)
+      await sendMainMenu(chatId, account.role)
+      return
+    }
+
+    const result = await submitExpenseFromSession(
+      account.profileId,
+      account.role,
+      payload,
+    )
     if (!result.ok) {
       await editTelegramMessage(chatId, query.message.message_id, result.error)
       return
     }
+
+    const statusNote =
+      account.role === 'admin'
+        ? 'Saved (approved).'
+        : 'Submitted for approval.'
 
     await setSession(chatId, {
       state: 'awaiting_receipt',
@@ -247,14 +397,14 @@ async function handleCallbackQuery(query: TelegramCallbackQuery) {
     await editTelegramMessage(
       chatId,
       query.message.message_id,
-      'Submitted for approval.\n\nSend a bill photo/PDF or /skip.',
+      `${statusNote}\n\nSend a bill photo/PDF or /skip.`,
     )
   }
 
   if (data === 'confirm:no' && query.message) {
     await clearSession(chatId)
     await editTelegramMessage(chatId, query.message.message_id, 'Cancelled.')
-    await sendMainMenu(chatId)
+    await sendMainMenu(chatId, account.role)
   }
 }
 
@@ -291,7 +441,12 @@ async function handlePhotoOrDocument(message: TelegramMessage) {
     }
 
     await clearSession(chatId)
-    await sendMainMenu(chatId, 'Receipt attached. Expense is pending approval.')
+    const linked = await findLinkedAccount(telegramUserId)
+    await sendMainMenu(
+      chatId,
+      linked?.role ?? 'engineer',
+      'Receipt attached. Expense saved.',
+    )
   } catch {
     await sendTelegramMessage(chatId, 'Could not save the file. Try again or /skip.')
   }
@@ -312,7 +467,7 @@ async function handleMessage(message: TelegramMessage) {
   if (text.startsWith('/start')) {
     const linked = await findLinkedAccount(telegramUserId)
     if (linked) {
-      await sendMainMenu(chatId, `Welcome back, ${linked.fullName}.`)
+      await sendMainMenu(chatId, linked.role, `Welcome back, ${linked.fullName}.`)
     } else {
       const bot = getTelegramBotUsername()
       const botLabel =
@@ -325,8 +480,8 @@ async function handleMessage(message: TelegramMessage) {
           botLabel,
           '',
           'To connect your app account:',
-          '1. Sign in on the web app → Engineer dashboard → Connect Telegram',
-          '2. Tap "Generate code" (6 letters/numbers, e.g. A3F92B)',
+          '1. Sign in on the web app → Integrations → Telegram',
+          '2. Tap "Get link code" (6 letters/numbers, e.g. A3F92B)',
           '3. Send here: /link A3F92B  (use your real code, not the word "CODE")',
           '',
           'You can also send the 6-character code alone.',
@@ -342,7 +497,7 @@ async function handleMessage(message: TelegramMessage) {
       await sendTelegramMessage(
         chatId,
         [
-          'Send your link code from the Engineer dashboard.',
+          'Send your link code from the app (Integrations → Telegram).',
           '',
           'Example: /link A3F92B',
           '',
@@ -366,17 +521,24 @@ async function handleMessage(message: TelegramMessage) {
   }
 
   if (text === '/help' || text === 'Help') {
-    await sendTelegramMessage(
-      chatId,
-      [
-        '/expense — guided expense',
-        '/link CODE — connect app account',
-        '/unlink — disconnect',
+    const linked = await findLinkedAccount(telegramUserId)
+    const lines = [
+      '/expense — guided project expense',
+      '/link CODE — connect app account',
+      '/unlink — disconnect',
+      '',
+      'Project quick: 2500 Materials Cement 50 bags',
+      'Categories: Materials, Labour, Equipment, Miscellaneous',
+    ]
+    if (linked?.role === 'admin') {
+      lines.push(
         '',
-        'Quick: 2500 Materials Cement 50 bags',
-        'Categories: Materials, Labour, Equipment, Miscellaneous',
-      ].join('\n'),
-    )
+        'Admin menu: Project / Company / Personal expense',
+        'Company quick: company 5000 Office Rent June rent',
+        'Personal quick: personal 200 Food Lunch meeting',
+      )
+    }
+    await sendTelegramMessage(chatId, lines.join('\n'))
     return
   }
 
@@ -384,6 +546,27 @@ async function handleMessage(message: TelegramMessage) {
     const account = await requireLinked(chatId, telegramUserId)
     if (!account) return
     await startExpenseFlow(chatId, account.profileId, account.role)
+    return
+  }
+
+  if (text === 'Project expense') {
+    const account = await requireLinked(chatId, telegramUserId)
+    if (!account || account.role !== 'admin') return
+    await startExpenseFlow(chatId, account.profileId, account.role)
+    return
+  }
+
+  if (text === 'Company expense') {
+    const account = await requireLinked(chatId, telegramUserId)
+    if (!account || account.role !== 'admin') return
+    await startCompanyExpenseFlow(chatId, account.profileId)
+    return
+  }
+
+  if (text === 'Personal expense') {
+    const account = await requireLinked(chatId, telegramUserId)
+    if (!account || account.role !== 'admin') return
+    await startPersonalExpenseFlow(chatId, account.profileId)
     return
   }
 
@@ -405,12 +588,55 @@ async function handleMessage(message: TelegramMessage) {
   const account = await findLinkedAccount(telegramUserId)
 
   if (account && session.state === 'idle' && text && !text.startsWith('/')) {
+    if (account.role === 'admin') {
+      const [companyCats, personalCats] = await Promise.all([
+        listTelegramFinanceCategories('company_expense'),
+        listTelegramFinanceCategories('personal_expense'),
+      ])
+      const companyQuick = parseAdminCompanyQuick(text, companyCats)
+      if (companyQuick) {
+        const result = await createTelegramCompanyExpense({
+          profileId: account.profileId,
+          ...companyQuick,
+        })
+        if (!result.ok) {
+          await sendTelegramMessage(chatId, result.error)
+          return
+        }
+        await sendMainMenu(
+          chatId,
+          account.role,
+          `Company expense saved: ${formatINR(companyQuick.amount)} · ${companyQuick.category}`,
+        )
+        return
+      }
+
+      const personalQuick = parseAdminPersonalQuick(text, personalCats)
+      if (personalQuick) {
+        const result = await createTelegramPersonalExpense({
+          profileId: account.profileId,
+          ...personalQuick,
+        })
+        if (!result.ok) {
+          await sendTelegramMessage(chatId, result.error)
+          return
+        }
+        await sendMainMenu(
+          chatId,
+          account.role,
+          `Personal expense saved: ${formatINR(personalQuick.amount)} · ${personalQuick.category}`,
+        )
+        return
+      }
+    }
+
     const quick = parseQuickExpenseMessage(text)
     if (quick) {
       const projects = await listProjectsForProfile(account.profileId, account.role)
       if (projects.length === 1) {
         const result = await createTelegramExpense({
           profileId: account.profileId,
+          role: account.role,
           projectId: projects[0].id,
           category: quick.category,
           description: quick.description,
@@ -424,6 +650,7 @@ async function handleMessage(message: TelegramMessage) {
           state: 'awaiting_receipt',
           profileId: account.profileId,
           payload: {
+            expenseType: 'project',
             projectId: projects[0].id,
             projectName: projects[0].name,
             category: quick.category,
@@ -432,13 +659,18 @@ async function handleMessage(message: TelegramMessage) {
             expenseId: result.expenseId,
           },
         })
+        const note =
+          account.role === 'admin'
+            ? 'Saved (approved).'
+            : 'Submitted for approval.'
         await sendTelegramMessage(
           chatId,
-          `Submitted: ${formatINR(quick.amount)} · ${quick.category}\n${projects[0].name}\n\nSend a bill photo or /skip.`,
+          `${note} ${formatINR(quick.amount)} · ${quick.category}\n${projects[0].name}\n\nSend a bill photo or /skip.`,
         )
         return
       }
       await startExpenseFlow(chatId, account.profileId, account.role, {
+        expenseType: 'project',
         category: quick.category,
         amount: quick.amount,
         description: quick.description,
@@ -453,7 +685,7 @@ async function handleMessage(message: TelegramMessage) {
     } else {
       await sendTelegramMessage(
         chatId,
-        'Not linked yet. Generate a code in the app (Engineer → Connect Telegram), then send /link followed by that code.',
+        'Not linked yet. Generate a code in the app (Integrations → Telegram), then send /link followed by that code.',
       )
     }
     return
@@ -475,10 +707,39 @@ async function handleMessage(message: TelegramMessage) {
   }
 
   if (session.state === 'enter_description') {
+    const next = { ...payload, description: text }
+
+    if (payload.expenseType === 'company') {
+      await setSession(chatId, {
+        state: 'enter_vendor',
+        profileId: account.profileId,
+        payload: next,
+      })
+      await sendTelegramMessage(chatId, 'Vendor name (or - to skip):')
+      return
+    }
+
+    if (payload.expenseType === 'personal') {
+      await setSession(chatId, {
+        state: 'confirm',
+        profileId: account.profileId,
+        payload: next,
+      })
+      await sendTelegramMessage(chatId, formatFinanceExpenseSummary(next), {
+        replyMarkup: inlineKeyboard([
+          [
+            { text: 'Submit', callback_data: 'confirm:yes' },
+            { text: 'Cancel', callback_data: 'confirm:no' },
+          ],
+        ]),
+      })
+      return
+    }
+
     await setSession(chatId, {
       state: 'enter_vendor',
       profileId: account.profileId,
-      payload: { ...payload, description: text },
+      payload: next,
     })
     await sendTelegramMessage(chatId, 'Vendor name (or - to skip):')
     return
@@ -492,7 +753,11 @@ async function handleMessage(message: TelegramMessage) {
       profileId: account.profileId,
       payload: next,
     })
-    await sendTelegramMessage(chatId, formatExpenseSummary(next), {
+    const summary =
+      next.expenseType === 'company' || next.expenseType === 'personal'
+        ? formatFinanceExpenseSummary(next)
+        : formatExpenseSummary(next)
+    await sendTelegramMessage(chatId, summary, {
       replyMarkup: inlineKeyboard([
         [
           { text: 'Submit', callback_data: 'confirm:yes' },
@@ -508,7 +773,7 @@ async function handleMessage(message: TelegramMessage) {
     const no = /^(no|n|cancel)$/i.test(text)
     if (no) {
       await clearSession(chatId)
-      await sendMainMenu(chatId, 'Cancelled.')
+      await sendMainMenu(chatId, account.role, 'Cancelled.')
       return
     }
     if (!yes) {
@@ -516,11 +781,31 @@ async function handleMessage(message: TelegramMessage) {
       return
     }
 
-    const result = await submitExpenseFromSession(chatId, account.profileId, payload)
+    if (payload.expenseType === 'company' || payload.expenseType === 'personal') {
+      const result = await submitFinanceExpenseFromSession(account.profileId, payload)
+      if (!result.ok) {
+        await sendTelegramMessage(chatId, result.error)
+        return
+      }
+      await clearSession(chatId)
+      await sendMainMenu(chatId, account.role, 'Expense saved.')
+      return
+    }
+
+    const result = await submitExpenseFromSession(
+      account.profileId,
+      account.role,
+      payload,
+    )
     if (!result.ok) {
       await sendTelegramMessage(chatId, result.error)
       return
     }
+
+    const statusNote =
+      account.role === 'admin'
+        ? 'Saved (approved).'
+        : 'Submitted for approval.'
 
     await setSession(chatId, {
       state: 'awaiting_receipt',
@@ -529,7 +814,7 @@ async function handleMessage(message: TelegramMessage) {
     })
     await sendTelegramMessage(
       chatId,
-      'Submitted for approval.\n\nSend a bill photo/PDF or /skip.',
+      `${statusNote}\n\nSend a bill photo/PDF or /skip.`,
     )
     return
   }
@@ -537,7 +822,7 @@ async function handleMessage(message: TelegramMessage) {
   if (session.state === 'awaiting_receipt') {
     if (/^\/skip$/i.test(text) || text.toLowerCase() === 'skip') {
       await clearSession(chatId)
-      await sendMainMenu(chatId, 'Done.')
+      await sendMainMenu(chatId, account.role, 'Done.')
       return
     }
   }

@@ -15,7 +15,9 @@ Share this with site engineers. No technical knowledge needed.
 3. In the **left sidebar**, under **Integrations**, tap **Telegram**.
 4. Follow the steps on that page to link your phone (one time).
 
-If they see Admin or PM screen, their account role may be wrong — ask admin to set role to **engineer** and assign them to a project.
+**Admins** use the same page. After linking, the Telegram bot shows **Project**, **Company**, and **Personal** expense buttons.
+
+If a site engineer sees no projects, ask admin to assign them to a project in **Edit project → Staff Assignment**.
 
 ## One-time connection (on phone)
 

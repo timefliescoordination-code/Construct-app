@@ -1,8 +1,12 @@
+export type TelegramExpenseKind = 'project' | 'company' | 'personal'
+
 export type TelegramSessionState =
   | 'idle'
   | 'awaiting_link_code'
+  | 'pick_expense_type'
   | 'pick_project'
   | 'pick_category'
+  | 'pick_finance_category'
   | 'enter_amount'
   | 'enter_description'
   | 'enter_vendor'
@@ -10,6 +14,7 @@ export type TelegramSessionState =
   | 'confirm'
 
 export type ExpenseSessionPayload = {
+  expenseType?: TelegramExpenseKind
   projectId?: string
   projectName?: string
   category?: string
@@ -17,6 +22,8 @@ export type ExpenseSessionPayload = {
   description?: string
   vendorName?: string | null
   expenseId?: string
+  /** Category labels for inline buttons (company/personal). */
+  categoryOptions?: string[]
 }
 
 export type TelegramUpdate = {

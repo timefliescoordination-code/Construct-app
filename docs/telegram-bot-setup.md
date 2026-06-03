@@ -54,17 +54,35 @@ fetch('/api/telegram/set-webhook', {
 
 If you get HTML or 404, use Option A and confirm the latest code is deployed.
 
-## 5. Engineer flow
+## 5. Linking (engineer, PM, or admin)
 
-1. Sign in to the web app once → **Engineer** dashboard → **Connect Telegram**.
+1. Sign in to the web app once → **Integrations** → **Telegram**.
 2. Generate a 6-character code (valid 15 minutes).
 3. In Telegram, open your bot and send: `/link AB12CD`
-4. Submit expenses:
-   - `/expense` — step-by-step
-   - Quick (single project): `2500 Materials Cement 50 bags`
-   - Optional bill photo after submit
+4. Submit expenses from the bot menu (see role below).
 
-Expenses are created as **pending** for PM approval, same as the web app.
+### Site engineer / PM
+
+- `/expense` — step-by-step **project** expense
+- Quick (single project): `2500 Materials Cement 50 bags`
+- Optional bill photo after submit
+- Engineer entries are **pending** for PM approval
+
+### Admin
+
+After linking, the Telegram menu offers:
+
+- **Project expense** — same flow as engineers (saved as **approved**)
+- **Company expense** — overhead (saved to `company_expenses`)
+- **Personal expense** — private (saved to `personal_expenses`)
+
+Quick formats:
+
+- Project: `2500 Materials Cement 50 bags`
+- Company: `company 5000 Office Rent June rent`
+- Personal: `personal 200 Food Lunch meeting`
+
+Company and personal entries do not need PM approval. Run finance migrations if those tables are missing.
 
 ## Commands
 

@@ -3,6 +3,7 @@ import { DEFAULT_EXPENSE_CATEGORIES } from '@/lib/expense-categories/constants'
 import { uploadExpenseInvoiceFile } from '@/lib/invoices/storage'
 import { createAdminClient } from '@/lib/supabase/server'
 import type { ExpenseSessionPayload } from '@/lib/telegram/types'
+import type { UserRole } from '@/lib/types/database'
 
 export const TELEGRAM_EXPENSE_CATEGORIES = DEFAULT_EXPENSE_CATEGORIES.map((c) => c.name)
 
@@ -27,8 +28,15 @@ export function parseQuickExpenseMessage(text: string): {
   return { amount, category, description }
 }
 
+function expenseStatusForTelegramRole(role: UserRole): 'pending' | 'approved' {
+  if (role === 'engineer') return 'pending'
+  if (role === 'admin') return 'approved'
+  return 'pending'
+}
+
 export async function createTelegramExpense(input: {
   profileId: string
+  role: UserRole
   projectId: string
   category: string
   description: string
@@ -37,6 +45,7 @@ export async function createTelegramExpense(input: {
 }): Promise<{ ok: true; expenseId: string } | { ok: false; error: string }> {
   const supabase = createAdminClient()
   const today = new Date().toISOString().slice(0, 10)
+  const status = expenseStatusForTelegramRole(input.role)
 
   const { data, error } = await supabase
     .from('expenses')
@@ -49,7 +58,7 @@ export async function createTelegramExpense(input: {
       vendor_name: input.vendorName ?? null,
       bill_number: null,
       expense_date: today,
-      status: 'pending',
+      status,
       entered_by: input.profileId,
       submitted_by: input.profileId,
     })
