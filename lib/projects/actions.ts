@@ -3,11 +3,14 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
+import { calculateFormSummary } from '@/lib/financial-calculations'
+import { DEFAULT_MILESTONES } from '@/lib/projects/default-milestones'
 
 export type CreateProjectInput = {
   name: string
   client_name: string
   site_address: string
+  client_phone: string | null
   contract_value: number
   additional_works_value: number
   expected_margin_percent: number
@@ -105,17 +108,6 @@ async function assertCanEditProject(
   return { ok: true }
 }
 
-const DEFAULT_MILESTONES = [
-  { name: 'Foundation', expected_cost_percent: 15, sort_order: 1 },
-  { name: 'Plinth', expected_cost_percent: 10, sort_order: 2 },
-  { name: 'Superstructure', expected_cost_percent: 25, sort_order: 3 },
-  { name: 'Brickwork', expected_cost_percent: 12, sort_order: 4 },
-  { name: 'Plastering', expected_cost_percent: 10, sort_order: 5 },
-  { name: 'Electrical & Plumbing', expected_cost_percent: 12, sort_order: 6 },
-  { name: 'Flooring & Tiling', expected_cost_percent: 8, sort_order: 7 },
-  { name: 'Finishing', expected_cost_percent: 8, sort_order: 8 },
-] as const
-
 const PROJECT_SETUP_ADDITIONAL_WORKS_DESCRIPTION =
   'Additional works (project setup)'
 
@@ -156,12 +148,14 @@ export async function createProjectAction(
       name: input.name.trim(),
       client_name: input.client_name.trim(),
       site_address: input.site_address.trim(),
+      client_phone: input.client_phone?.trim() || null,
       contract_value: input.contract_value,
       additional_works_value: input.additional_works_value,
       expected_margin_percent: input.expected_margin_percent,
       start_date: input.start_date,
       expected_completion_date: input.expected_completion_date,
       status: 'active' as const,
+      lifecycle_phase: 'design' as const,
       pm_id: input.pm_id,
       customer_id: input.customer_id,
     }
@@ -179,25 +173,6 @@ export async function createProjectAction(
           ? getSupabaseErrorMessage(projectError)
           : 'Project was created but could not be loaded. Check Row Level Security policies.',
       }
-    }
-
-    const milestonesData = DEFAULT_MILESTONES.map((m) => ({
-      project_id: project.id,
-      name: m.name,
-      expected_cost_percent: m.expected_cost_percent,
-      target_budget: (input.stage_budget * m.expected_cost_percent) / 100,
-      actual_expenses: 0,
-      actual_completion_percent: 0,
-      status: 'pending' as const,
-      sort_order: m.sort_order,
-    }))
-
-    const { error: milestonesError } = await supabase
-      .from('milestones')
-      .insert(milestonesData)
-
-    if (milestonesError) {
-      console.error('[createProjectAction] milestones:', milestonesError)
     }
 
     if (input.additional_works_value > 0) {
@@ -237,6 +212,7 @@ export async function createProjectAction(
 
     revalidatePath('/projects')
     revalidatePath(`/projects/${project.id}`)
+    revalidatePath('/customer')
 
     return { ok: true, projectId: project.id }
   } catch (err) {
@@ -362,7 +338,118 @@ export async function updateProjectAction(
   }
 }
 
+export type ActivateConstructionResult = { ok: true } | { ok: false; error: string }
+
 export type ArchiveProjectResult = { ok: true } | { ok: false; error: string }
+
+async function seedProjectMilestones(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  stageBudget: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { count, error: countError } = await supabase
+    .from('milestones')
+    .select('id', { count: 'exact', head: true })
+    .eq('project_id', projectId)
+
+  if (countError) {
+    return { ok: false, error: getSupabaseErrorMessage(countError) }
+  }
+
+  if ((count ?? 0) > 0) {
+    return { ok: true }
+  }
+
+  const milestonesData = DEFAULT_MILESTONES.map((m) => ({
+    project_id: projectId,
+    name: m.name,
+    expected_cost_percent: m.expected_cost_percent,
+    target_budget: (stageBudget * m.expected_cost_percent) / 100,
+    actual_expenses: 0,
+    actual_completion_percent: 0,
+    status: 'pending' as const,
+    sort_order: m.sort_order,
+  }))
+
+  const { error: milestonesError } = await supabase
+    .from('milestones')
+    .insert(milestonesData)
+
+  if (milestonesError) {
+    return { ok: false, error: getSupabaseErrorMessage(milestonesError) }
+  }
+
+  return { ok: true }
+}
+
+export async function activateConstructionPhaseAction(
+  projectId: string,
+): Promise<ActivateConstructionResult> {
+  try {
+    const supabase = await createClient()
+    const auth = await assertCanManageProjects(supabase)
+    if (!auth.ok) return auth
+
+    const canEdit = await assertCanEditProject(supabase, projectId, auth)
+    if (!canEdit.ok) return canEdit
+
+    const { data: project, error: fetchError } = await supabase
+      .from('projects')
+      .select(
+        'lifecycle_phase, contract_value, additional_works_value, expected_margin_percent',
+      )
+      .eq('id', projectId)
+      .maybeSingle()
+
+    if (fetchError) {
+      return { ok: false, error: getSupabaseErrorMessage(fetchError) }
+    }
+
+    if (!project) {
+      return { ok: false, error: 'Project not found.' }
+    }
+
+    if (project.lifecycle_phase === 'construction') {
+      return { ok: false, error: 'Construction phase is already active for this project.' }
+    }
+
+    const summary = calculateFormSummary(
+      Number(project.contract_value),
+      Number(project.additional_works_value),
+      Number(project.expected_margin_percent),
+    )
+
+    const seeded = await seedProjectMilestones(supabase, projectId, summary.stageBudget)
+    if (!seeded.ok) return seeded
+
+    const { error: updateError } = await supabase
+      .from('projects')
+      .update({
+        lifecycle_phase: 'construction',
+        construction_activated_at: new Date().toISOString(),
+        construction_activated_by: auth.userId,
+      })
+      .eq('id', projectId)
+
+    if (updateError) {
+      return { ok: false, error: getSupabaseErrorMessage(updateError) }
+    }
+
+    revalidatePath('/projects')
+    revalidatePath(`/projects/${projectId}`)
+    revalidatePath(`/projects/${projectId}/edit`)
+    revalidatePath('/customer')
+
+    return { ok: true }
+  } catch (err) {
+    console.error('[activateConstructionPhaseAction]', err)
+    return {
+      ok: false,
+      error:
+        err instanceof Error ? err.message : 'Failed to activate construction phase',
+    }
+  }
+}
 
 export async function archiveProjectAction(
   projectId: string,

@@ -1,5 +1,6 @@
 // Database types matching the Supabase schema
 export type UserRole = 'admin' | 'pm' | 'engineer' | 'customer'
+export type ProjectLifecyclePhase = 'design' | 'construction'
 export type ProjectStatus = 'active' | 'completed' | 'on-hold' | 'pending' | 'archived'
 export type MilestoneStatus = 'completed' | 'in-progress' | 'pending'
 export type ExpenseStatus = 'pending' | 'approved' | 'rejected'
@@ -24,16 +25,45 @@ export interface Project {
   name: string
   client_name: string
   site_address: string
+  client_phone: string | null
   contract_value: number
   additional_works_value: number
   expected_margin_percent: number
   start_date: string | null
   expected_completion_date: string | null
   status: ProjectStatus
+  lifecycle_phase: ProjectLifecyclePhase
+  construction_activated_at: string | null
+  construction_activated_by: string | null
   pm_id: string | null
   customer_id: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ProjectDesignFile {
+  id: string
+  project_id: string
+  file_path: string
+  file_name: string
+  file_mime_type: string
+  title: string
+  revision_label: string | null
+  uploaded_by: string | null
+  created_at: string
+}
+
+export interface ProjectDesignComment {
+  id: string
+  design_file_id: string
+  author_id: string
+  body: string
+  created_at: string
+}
+
+export interface ProjectDesignFileWithComments extends ProjectDesignFile {
+  comments: (ProjectDesignComment & { author?: Profile | null })[]
+  uploader?: Profile | null
 }
 
 export interface Milestone {

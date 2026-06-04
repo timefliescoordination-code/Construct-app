@@ -21,6 +21,8 @@ import { enrichProjectWithMilestoneMetrics } from "@/lib/project-tab-hydration"
 import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
 import { projectIdleFromProject } from "@/lib/project-idle"
 import { NO_ASSIGNED_PROJECT_MESSAGE } from "@/lib/project-access"
+import { shouldUseLiveFinancials } from "@/lib/projects/lifecycle"
+import { CONSTRUCTION_PREVIEW_MILESTONES } from "@/lib/projects/construction-preview"
 
 async function fetchFromApi<T>(path: string): Promise<T> {
   const res = await fetch(path, { credentials: "include" })
@@ -231,7 +233,28 @@ export function useProjectMetrics(project: ProjectWithDetails | null) {
       stageBudgetUsagePercent: 0,
       completionPercent: 0,
       expectedProfitPercent: 0,
-      cashflowBalance: 0
+      cashflowBalance: 0,
+      isPreviewMode: false,
+    }
+  }
+
+  const liveFinancials = shouldUseLiveFinancials(project)
+
+  if (!liveFinancials) {
+    return {
+      totalExpenses: 0,
+      totalClientPaymentsReceived: 0,
+      totalClientPaymentsPending: 0,
+      totalVendorPaymentsDue: 0,
+      additionalWorksApproved: 0,
+      totalContractValue: 0,
+      stageBudget: 0,
+      remainingStageBudget: 0,
+      stageBudgetUsagePercent: 0,
+      completionPercent: 0,
+      expectedProfitPercent: Number(project.expected_margin_percent),
+      cashflowBalance: 0,
+      isPreviewMode: true,
     }
   }
   
@@ -291,6 +314,19 @@ export function useProjectMetrics(project: ProjectWithDetails | null) {
     stageBudgetUsagePercent: finances.stageBudgetUsagePercent,
     completionPercent,
     expectedProfitPercent: Number(project.expected_margin_percent),
-    cashflowBalance
+    cashflowBalance,
+    isPreviewMode: false,
   }
+}
+
+/** Milestones for customer display when construction is not yet active. */
+export function useCustomerMilestones(project: ProjectWithDetails | null) {
+  if (!project) return []
+  if (shouldUseLiveFinancials(project)) {
+    return project.milestones.map((ms) => ({
+      name: ms.name,
+      status: ms.status,
+    }))
+  }
+  return CONSTRUCTION_PREVIEW_MILESTONES
 }

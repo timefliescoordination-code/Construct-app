@@ -13,6 +13,7 @@ import {
   PlusCircle, 
   FileBarChart, 
   Camera,
+  PenLine,
   Users,
   Edit,
   MoreVertical,
@@ -33,6 +34,8 @@ import { MilestonesTab } from "./project-detail/milestones-tab"
 import { AdditionalWorksTab } from "./project-detail/additional-works-tab"
 import { ReportsTab } from "./project-detail/reports-tab"
 import { PhotosTab } from "./project-detail/photos-tab"
+import { DesignTab } from "./project-detail/design-tab"
+import { isConstructionActive } from "@/lib/projects/lifecycle"
 import { ManpowerTab } from "./project-detail/manpower-tab"
 import {
   ProjectSidebar,
@@ -85,6 +88,7 @@ interface ProjectDetailContentProps {
 }
 
 const PROJECT_TAB_IDS = [
+  "design",
   "overview",
   "expenses",
   "payments",
@@ -304,6 +308,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   const tabs = useMemo<ProjectSidebarTab[]>(
     () =>
       [
+        { id: "design", label: "Design", icon: PenLine },
         { id: "overview", label: "Overview", icon: LayoutDashboard },
         { id: "expenses", label: "Expenses", icon: Receipt },
         { id: "payments", label: "Payments", icon: CreditCard },
@@ -444,8 +449,21 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
     )
   }
 
+  const lifecyclePhase = project.lifecycle_phase ?? 'construction'
+  const constructionActive = isConstructionActive({ lifecycle_phase: lifecyclePhase })
+
   const renderTabContent = () => {
     switch (activeTab) {
+      case "design":
+        return (
+          <DesignTab
+            projectId={project.id}
+            projectName={project.name}
+            lifecyclePhase={lifecyclePhase}
+            canManageProjects={!!canManageProjects}
+            onProjectChange={refreshProject}
+          />
+        )
       case "overview":
         return (
           <OverviewTab
@@ -543,6 +561,16 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
                       {project.name}
                     </h1>
                     {getStatusBadge(project.status)}
+                    <Badge
+                      variant={constructionActive ? "default" : "secondary"}
+                      className={
+                        constructionActive
+                          ? "bg-green-500/20 text-green-600 border-green-500/30"
+                          : "bg-amber-500/20 text-amber-700 border-amber-500/30"
+                      }
+                    >
+                      {constructionActive ? "Construction" : "Design"}
+                    </Badge>
                   </div>
                   <dl className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
                     <div>

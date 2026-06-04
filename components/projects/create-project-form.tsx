@@ -136,6 +136,7 @@ export function CreateProjectForm() {
         name: projectName,
         client_name: clientName,
         site_address: siteAddress,
+        client_phone: phone.trim() || null,
         contract_value: parseFloat(contractValue) || 0,
         additional_works_value: parseFloat(additionalWorks) || 0,
         expected_margin_percent: parseFloat(expectedMargin) || 15,
@@ -177,7 +178,10 @@ export function CreateProjectForm() {
         </Button>
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Create a Project</h1>
-          <p className="text-muted-foreground">Fill in the details to create a new construction project</p>
+          <p className="text-muted-foreground">
+            Fill in client and site details. The project starts in the{" "}
+            <span className="font-medium text-foreground">Design phase</span> until you activate construction.
+          </p>
         </div>
       </div>
 

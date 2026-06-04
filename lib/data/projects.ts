@@ -20,6 +20,7 @@ import {
   type MilestoneData
 } from "@/lib/financial-calculations"
 import { milestonesWithCalculatedExpenses } from "@/lib/project-tab-hydration"
+import { shouldUseLiveFinancials } from "@/lib/projects/lifecycle"
 
 // Fetch all projects (summary view)
 export async function getProjects(): Promise<ProjectSummary[]> {
@@ -278,6 +279,22 @@ export async function getLabourEntries(projectId: string): Promise<LabourEntry[]
 
 // Calculate aggregated project metrics
 export function calculateProjectMetrics(project: ProjectWithDetails) {
+  if (!shouldUseLiveFinancials(project)) {
+    return {
+      totalExpenses: 0,
+      totalClientPaymentsReceived: 0,
+      totalClientPaymentsPending: 0,
+      totalVendorPaymentsDue: 0,
+      additionalWorksApproved: 0,
+      totalContractValue: 0,
+      stageBudget: 0,
+      remainingStageBudget: 0,
+      stageBudgetUsagePercent: 0,
+      completionPercent: 0,
+      isPreviewMode: true,
+    }
+  }
+
   const totalExpenses = project.expenses
     .filter(e => e.status === 'approved')
     .reduce((sum, e) => sum + Number(e.amount), 0)
@@ -332,6 +349,7 @@ export function calculateProjectMetrics(project: ProjectWithDetails) {
     stageBudget: finances.stageBudget,
     remainingStageBudget: finances.remainingStageBudget,
     stageBudgetUsagePercent: finances.stageBudgetUsagePercent,
-    completionPercent
+    completionPercent,
+    isPreviewMode: false,
   }
 }
