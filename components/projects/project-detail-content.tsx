@@ -55,7 +55,9 @@ import { useAuth } from "@/lib/hooks/use-auth"
 import {
   canEnterManpowerData,
   canViewProjectFinancials,
-  ENGINEER_RESTRICTED_PROJECT_TABS,
+  canAccessProjectTab,
+  isCustomerRole,
+  CUSTOMER_ALLOWED_PROJECT_TABS,
 } from "@/lib/permissions"
 import { isDatabaseSetupError } from "@/lib/supabase/db-errors"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -115,6 +117,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
   const { role, canManageProjects } = useAuth()
+  const isCustomer = isCustomerRole(role)
   const showFinancials = canViewProjectFinancials(role)
   const canEditManpower = canEnterManpowerData(role)
   
@@ -317,8 +320,8 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
         { id: "additional-works", label: "Additional Works", icon: PlusCircle },
         { id: "reports", label: "Reports", icon: FileBarChart },
         { id: "photos", label: "Photos", icon: Camera },
-      ].filter((tab) => showFinancials || !ENGINEER_RESTRICTED_PROJECT_TABS.has(tab.id)),
-    [showFinancials],
+      ].filter((tab) => canAccessProjectTab(role, tab.id)),
+    [role],
   )
 
   const handleTabChange = (tabId: string) => {
@@ -333,18 +336,24 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
     if (!tabParam || !PROJECT_TAB_IDS.includes(tabParam as (typeof PROJECT_TAB_IDS)[number])) {
       return
     }
-    if (!showFinancials && ENGINEER_RESTRICTED_PROJECT_TABS.has(tabParam)) {
-      setActiveTab("overview")
+    if (!canAccessProjectTab(role, tabParam)) {
+      setActiveTab(isCustomer ? "design" : "overview")
       return
     }
     setActiveTab(tabParam)
-  }, [searchParams, showFinancials])
+  }, [searchParams, role, isCustomer])
 
   useEffect(() => {
-    if (!showFinancials && ENGINEER_RESTRICTED_PROJECT_TABS.has(activeTab)) {
-      setActiveTab("overview")
+    if (!canAccessProjectTab(role, activeTab)) {
+      setActiveTab(isCustomer ? "design" : "overview")
     }
-  }, [showFinancials, activeTab])
+  }, [role, activeTab, isCustomer])
+
+  useEffect(() => {
+    if (isCustomer && !CUSTOMER_ALLOWED_PROJECT_TABS.has(activeTab)) {
+      setActiveTab("design")
+    }
+  }, [isCustomer, activeTab])
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -469,7 +478,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           <OverviewTab
             projectId={project.id}
             projectData={calculatedData}
-            restrictFinancials={!showFinancials}
+            restrictFinancials={!showFinancials || isCustomer}
             canApproveExpenses={canManageProjects}
             onExpenseStatusChange={refreshProject}
           />
@@ -572,6 +581,15 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
                       {constructionActive ? "Construction" : "Design"}
                     </Badge>
                   </div>
+                  {isCustomer && (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      For payments and build progress, use{" "}
+                      <Link href="/customer" className="font-medium text-primary hover:underline">
+                        My Project dashboard
+                      </Link>
+                      . This page is for design drawings only.
+                    </p>
+                  )}
                   <dl className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
                     <div>
                       <dt className="sr-only">Client</dt>

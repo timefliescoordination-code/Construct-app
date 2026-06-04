@@ -34,8 +34,14 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
             : "/projects"
 
   const navItems = [
-    { href: dashboardHref, label: "Dashboard", icon: LayoutDashboard },
-    { href: "/projects", label: "Projects", icon: FolderKanban },
+    {
+      href: dashboardHref,
+      label: role === "customer" ? "My Project" : "Dashboard",
+      icon: LayoutDashboard,
+    },
+    ...(role !== "customer"
+      ? [{ href: "/projects", label: "Projects", icon: FolderKanban }]
+      : []),
     ...(role === "admin"
       ? [
           { href: "/admin/expenses", label: "All expenses", icon: Wallet },

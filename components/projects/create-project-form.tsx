@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Upload, Plus, X, Calendar, Building2, Users, FileSpreadsheet, IndianRupee, Percent } from "lucide-react"
+import { ArrowLeft, Upload, Plus, X, Calendar, Building2, Users, FileSpreadsheet, IndianRupee, Percent, ChevronDown } from "lucide-react"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -66,6 +67,7 @@ export function CreateProjectForm() {
   const [assignedCustomer, setAssignedCustomer] = useState("")
   const [assignedPM, setAssignedPM] = useState("")
   const [assignedEngineers, setAssignedEngineers] = useState<string[]>([])
+  const [financialsOpen, setFinancialsOpen] = useState(false)
 
   const handleCustomerChange = (customerId: string) => {
     setAssignedCustomer(customerId)
@@ -290,6 +292,33 @@ export function CreateProjectForm() {
         </CardContent>
       </Card>
 
+      <Collapsible open={financialsOpen} onOpenChange={setFinancialsOpen}>
+        <Card className="bg-card border-border">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-4 p-6 text-left"
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <IndianRupee className="h-5 w-5 text-primary" />
+                  <span className="text-lg font-semibold">Contract & estimates</span>
+                  <Badge variant="secondary">Optional during design</Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Leave blank while the design is in progress. Enter amounts before activating construction.
+                </p>
+              </div>
+              <ChevronDown
+                className={cn(
+                  "h-5 w-5 shrink-0 text-muted-foreground transition-transform",
+                  financialsOpen && "rotate-180",
+                )}
+              />
+            </button>
+          </CollapsibleTrigger>
+        </Card>
+        <CollapsibleContent className="space-y-6 pt-2">
       {/* Project Type */}
       <Card className="bg-card border-border">
         <CardHeader>
@@ -542,6 +571,8 @@ export function CreateProjectForm() {
           </CardContent>
         </Card>
       )}
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Staff Assignment */}
       <Card className="bg-card border-border">

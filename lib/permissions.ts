@@ -1,9 +1,18 @@
 import type { UserRole } from "@/lib/types/database"
 import type { ProjectWithDetails } from "@/lib/types/database"
 
-/** Site engineers must not see contract, payment, profit, or budget planning data. */
+/** Internal financials: margins, profit/loss, expenses, vendor data (admin & PM only). */
 export function canViewProjectFinancials(role: UserRole | null): boolean {
-  return role === "admin" || role === "pm" || role === "customer"
+  return role === "admin" || role === "pm"
+}
+
+/** Customer payment schedule on /customer (contract total, paid, due — no profit analysis). */
+export function canViewCustomerPaymentSummary(role: UserRole | null): boolean {
+  return role === "customer"
+}
+
+export function isCustomerRole(role: UserRole | null): boolean {
+  return role === "customer"
 }
 
 export function isSiteEngineer(role: UserRole | null): boolean {
@@ -24,6 +33,19 @@ export const ENGINEER_ALLOWED_PROJECT_TABS = new Set([
   "manpower",
   "photos",
 ])
+
+/** Customers only see design collaboration and site photos — no profit or internal ops. */
+export const CUSTOMER_ALLOWED_PROJECT_TABS = new Set(["design", "photos"])
+
+export function canAccessProjectTab(role: UserRole | null, tabId: string): boolean {
+  if (role === "customer") {
+    return CUSTOMER_ALLOWED_PROJECT_TABS.has(tabId)
+  }
+  if (role === "engineer") {
+    return !ENGINEER_RESTRICTED_PROJECT_TABS.has(tabId)
+  }
+  return true
+}
 
 /** Engineers submit expenses for PM approval; only admin/PM can approve on create/import. */
 export function resolveExpenseStatusForRole(
@@ -63,5 +85,25 @@ export function stripProjectFinancialsForEngineer(
     additional_works: project.additional_works ?? [],
     expenses: project.expenses ?? [],
     milestones: project.milestones ?? [],
+  }
+}
+
+/** Hide internal cost/profit data from customer API payloads; keep client payment schedule. */
+export function stripProjectInternalDataForCustomer(
+  project: ProjectWithDetails,
+): ProjectWithDetails {
+  return {
+    ...project,
+    expected_margin_percent: 0,
+    additional_works_value: 0,
+    expenses: [],
+    vendor_payments: [],
+    additional_works: [],
+    milestones: (project.milestones ?? []).map((ms) => ({
+      ...ms,
+      expected_cost_percent: 0,
+      target_budget: 0,
+      actual_expenses: 0,
+    })),
   }
 }

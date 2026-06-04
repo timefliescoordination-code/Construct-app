@@ -7,7 +7,10 @@ import {
   getProjectAccessScope,
   NO_ASSIGNED_PROJECT_MESSAGE,
 } from '@/lib/project-access'
-import { stripProjectFinancialsForEngineer } from '@/lib/permissions'
+import {
+  stripProjectFinancialsForEngineer,
+  stripProjectInternalDataForCustomer,
+} from '@/lib/permissions'
 
 export const PROJECT_LIST_SELECT = `
   *,
@@ -132,6 +135,9 @@ function applyRoleProjectVisibility(
 ): ProjectWithDetails {
   if (role === 'engineer') {
     return stripProjectFinancialsForEngineer(project)
+  }
+  if (role === 'customer') {
+    return stripProjectInternalDataForCustomer(project)
   }
   return project
 }
