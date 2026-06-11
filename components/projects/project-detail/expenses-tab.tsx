@@ -2377,6 +2377,8 @@ export function ExpensesTab({
                     enabled={isAddDialogOpen}
                     fields={addExpenseMandatoryFields}
                     onSubmit={() => void handleAddExpense()}
+                    autoAdvanceSelectOnLetter
+                    fadeSubmitUntilReady
                   >
                     <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
                       <DialogTitle>Add New Expense</DialogTitle>

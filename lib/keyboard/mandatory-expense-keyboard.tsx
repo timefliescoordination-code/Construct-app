@@ -14,15 +14,20 @@ import {
   type RefObject,
 } from "react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import {
   activeMandatoryFields,
+  filterOptionsByPrefix,
   findOptionByLetter,
+  optionMatchesPrefix,
   tryOpenDatePicker,
   type MandatoryFieldDef,
 } from "@/lib/keyboard/mandatory-expense-fields"
 
 type MandatoryExpenseKeyboardContextValue = {
   submitRef: RefObject<HTMLButtonElement | null>
+  submitStepReached: boolean
+  fadeSubmitUntilReady: boolean
   bindDate: (fieldId: string) => {
     ref: (el: HTMLInputElement | null) => void
     onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void
@@ -33,6 +38,8 @@ type MandatoryExpenseKeyboardContextValue = {
   }
   bindSelect: (fieldId: string) => {
     open: boolean
+    typePrefix: string
+    isOptionVisible: (label: string, value: string) => boolean
     onOpenChange: (open: boolean) => void
     onTriggerKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => void
   }
@@ -45,19 +52,28 @@ export function MandatoryExpenseKeyboardProvider({
   enabled,
   fields,
   onSubmit,
+  autoAdvanceSelectOnLetter = false,
+  fadeSubmitUntilReady = false,
   children,
 }: {
   enabled: boolean
   fields: MandatoryFieldDef[]
   onSubmit: () => void
+  /** Typing a letter on a select picks the option and moves to the next field. */
+  autoAdvanceSelectOnLetter?: boolean
+  /** Keep submit faded until the user completes the last field with Enter. */
+  fadeSubmitUntilReady?: boolean
   children: ReactNode
 }) {
   const submitRef = useRef<HTMLButtonElement>(null)
   const elementRefs = useRef<Map<string, HTMLElement>>(new Map())
   const didInitialFocusRef = useRef(false)
+  const pendingAdvanceFromRef = useRef<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [datePickerOpened, setDatePickerOpened] = useState(false)
   const [openSelectId, setOpenSelectId] = useState<string | null>(null)
+  const [submitStepReached, setSubmitStepReached] = useState(false)
+  const [selectTypePrefix, setSelectTypePrefix] = useState("")
   const letterIndexRef = useRef<Record<string, number>>({})
 
   const chain = useMemo(() => activeMandatoryFields(fields), [fields])
@@ -70,9 +86,11 @@ export function MandatoryExpenseKeyboardProvider({
       setActiveIndex(index)
       if (field.kind === "select") {
         setOpenSelectId(field.id)
+        setSelectTypePrefix("")
         letterIndexRef.current[field.id] = -1
       } else {
         setOpenSelectId(null)
+        setSelectTypePrefix("")
       }
       if (field.kind === "date") {
         setDatePickerOpened(false)
@@ -84,19 +102,46 @@ export function MandatoryExpenseKeyboardProvider({
     [chain],
   )
 
+  const reachSubmitStep = useCallback(() => {
+    setSubmitStepReached(true)
+    setOpenSelectId(null)
+    requestAnimationFrame(() => submitRef.current?.focus())
+  }, [])
+
+  const advanceFromFieldId = useCallback(
+    (fieldId: string) => {
+      const idx = chain.findIndex((f) => f.id === fieldId)
+      if (idx < 0) return
+      const next = idx + 1
+      if (next >= chain.length) {
+        setActiveIndex(idx)
+        reachSubmitStep()
+        return
+      }
+      focusField(next)
+    },
+    [chain, focusField, reachSubmitStep],
+  )
+
   const advance = useCallback(() => {
+    const field = chain[activeIndex]
+    if (field) {
+      advanceFromFieldId(field.id)
+      return
+    }
     const next = activeIndex + 1
     if (next >= chain.length) {
-      setOpenSelectId(null)
-      submitRef.current?.focus()
+      reachSubmitStep()
       return
     }
     focusField(next)
-  }, [activeIndex, chain.length, focusField])
+  }, [activeIndex, chain, advanceFromFieldId, focusField, reachSubmitStep])
 
   useEffect(() => {
     if (!enabled || chain.length === 0) {
       didInitialFocusRef.current = false
+      setSubmitStepReached(false)
+      pendingAdvanceFromRef.current = null
       return
     }
     if (didInitialFocusRef.current) return
@@ -104,9 +149,17 @@ export function MandatoryExpenseKeyboardProvider({
     setActiveIndex(0)
     setDatePickerOpened(false)
     setOpenSelectId(null)
+    setSubmitStepReached(false)
     const t = window.setTimeout(() => focusField(0), 80)
     return () => window.clearTimeout(t)
   }, [enabled, chainKey, focusField, chain.length])
+
+  useEffect(() => {
+    const fromId = pendingAdvanceFromRef.current
+    if (!fromId || !enabled) return
+    pendingAdvanceFromRef.current = null
+    advanceFromFieldId(fromId)
+  }, [chainKey, enabled, advanceFromFieldId])
 
   const setElementRef = useCallback((id: string, el: HTMLElement | null) => {
     if (el) elementRefs.current.set(id, el)
@@ -148,51 +201,124 @@ export function MandatoryExpenseKeyboardProvider({
     [advance, chain, setElementRef],
   )
 
+  const confirmSelectMatch = useCallback(
+    (fieldId: string, value: string) => {
+      const field = chain.find((f) => f.id === fieldId)
+      if (!field) return
+      field.setValue?.(value)
+      setSelectTypePrefix("")
+      setOpenSelectId(null)
+      if (autoAdvanceSelectOnLetter) {
+        pendingAdvanceFromRef.current = fieldId
+      }
+    },
+    [autoAdvanceSelectOnLetter, chain],
+  )
+
   const bindSelect = useCallback(
-    (fieldId: string) => ({
-      open: openSelectId === fieldId,
-      onOpenChange: (open: boolean) => {
-        setOpenSelectId(open ? fieldId : null)
-      },
-      onTriggerKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => {
-        const field = chain.find((f) => f.id === fieldId)
-        if (!field || field.kind !== "select" || !field.options) return
+    (fieldId: string) => {
+      const isActive = openSelectId === fieldId
+      const typePrefix = isActive ? selectTypePrefix : ""
 
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault()
-          const value = field.getValue?.() ?? ""
-          if (value) {
-            setOpenSelectId(null)
-            advance()
+      return {
+        open: isActive,
+        typePrefix,
+        isOptionVisible: (label: string, value: string) =>
+          !isActive || optionMatchesPrefix(label, value, typePrefix),
+        onOpenChange: (open: boolean) => {
+          if (open) {
+            setOpenSelectId(fieldId)
+            setSelectTypePrefix("")
           } else {
-            setOpenSelectId(fieldId)
+            setOpenSelectId(null)
+            setSelectTypePrefix("")
           }
-          return
-        }
+        },
+        onTriggerKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => {
+          const field = chain.find((f) => f.id === fieldId)
+          if (!field || field.kind !== "select" || !field.options) return
 
-        if (e.key.length === 1 && /[a-z0-9]/i.test(e.key)) {
-          e.preventDefault()
-          const start = letterIndexRef.current[fieldId] ?? -1
-          const match = findOptionByLetter(field.options, e.key, start)
-          if (match) {
-            letterIndexRef.current[fieldId] = match.nextIndex
-            field.setValue?.(match.option.value)
+          if (e.key === "Backspace" && autoAdvanceSelectOnLetter) {
+            e.preventDefault()
+            const nextPrefix = selectTypePrefix.slice(0, -1)
+            setSelectTypePrefix(nextPrefix)
             setOpenSelectId(fieldId)
+            return
           }
-        }
-      },
-    }),
-    [advance, chain, openSelectId],
+
+          if (e.key === "Escape" && autoAdvanceSelectOnLetter && selectTypePrefix) {
+            e.preventDefault()
+            setSelectTypePrefix("")
+            setOpenSelectId(fieldId)
+            return
+          }
+
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault()
+            if (autoAdvanceSelectOnLetter && selectTypePrefix) {
+              const matches = filterOptionsByPrefix(field.options, selectTypePrefix)
+              if (matches.length === 1) {
+                confirmSelectMatch(fieldId, matches[0].value)
+              }
+              return
+            }
+            const value = field.getValue?.() ?? ""
+            if (value) {
+              setSelectTypePrefix("")
+              setOpenSelectId(null)
+              advance()
+            } else {
+              setOpenSelectId(fieldId)
+            }
+            return
+          }
+
+          if (autoAdvanceSelectOnLetter && e.key.length === 1 && /[a-z0-9]/i.test(e.key)) {
+            e.preventDefault()
+            const nextPrefix = `${selectTypePrefix}${e.key.toLowerCase()}`
+            const matches = filterOptionsByPrefix(field.options, nextPrefix)
+            setSelectTypePrefix(nextPrefix)
+            setOpenSelectId(fieldId)
+
+            if (matches.length === 1) {
+              confirmSelectMatch(fieldId, matches[0].value)
+            }
+            return
+          }
+
+          if (e.key.length === 1 && /[a-z0-9]/i.test(e.key)) {
+            e.preventDefault()
+            const start = letterIndexRef.current[fieldId] ?? -1
+            const match = findOptionByLetter(field.options, e.key, start)
+            if (match) {
+              letterIndexRef.current[fieldId] = match.nextIndex
+              field.setValue?.(match.option.value)
+              setOpenSelectId(fieldId)
+            }
+          }
+        },
+      }
+    },
+    [
+      advance,
+      autoAdvanceSelectOnLetter,
+      chain,
+      confirmSelectMatch,
+      openSelectId,
+      selectTypePrefix,
+    ],
   )
 
   const value = useMemo(
     (): MandatoryExpenseKeyboardContextValue => ({
       submitRef,
+      submitStepReached,
+      fadeSubmitUntilReady,
       bindDate,
       bindText,
       bindSelect,
     }),
-    [bindDate, bindText, bindSelect],
+    [bindDate, bindText, bindSelect, fadeSubmitUntilReady, submitStepReached],
   )
 
   return (
@@ -227,13 +353,24 @@ export function MandatoryExpenseSubmitButton({
     }
   }
 
+  const faded =
+    kb?.fadeSubmitUntilReady && !kb.submitStepReached && !disabled
+
   return (
     <Button
       type="button"
       ref={setRef}
-      className={className}
+      className={cn(
+        className,
+        faded && "pointer-events-none opacity-35 transition-opacity",
+        kb?.fadeSubmitUntilReady &&
+          kb.submitStepReached &&
+          "opacity-100 transition-opacity",
+      )}
       disabled={disabled}
       onClick={onClick}
+      tabIndex={faded ? -1 : undefined}
+      aria-hidden={faded ? true : undefined}
       onKeyDown={(e) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault()

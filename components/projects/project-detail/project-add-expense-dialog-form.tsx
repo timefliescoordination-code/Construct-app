@@ -1,6 +1,12 @@
 "use client"
 
-import type { ChangeEvent, Dispatch, RefObject, SetStateAction } from "react"
+import type {
+  ChangeEvent,
+  Dispatch,
+  ReactNode,
+  RefObject,
+  SetStateAction,
+} from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,6 +28,66 @@ import { Pencil, Upload } from "lucide-react"
 import { formatFileSize } from "@/lib/file-upload"
 import { useMandatoryExpenseKeyboard } from "@/lib/keyboard/mandatory-expense-keyboard"
 import { PendingSplitSuggestion } from "@/components/projects/project-detail/pending-split-suggestion"
+import { cn } from "@/lib/utils"
+
+type SelectBind = ReturnType<
+  NonNullable<ReturnType<typeof useMandatoryExpenseKeyboard>>["bindSelect"]
+>
+
+function KeyboardSelectTriggerContent({
+  bind,
+  placeholder,
+  displayValue,
+}: {
+  bind?: SelectBind
+  placeholder: string
+  displayValue?: string
+}) {
+  if (bind?.typePrefix) {
+    return (
+      <span className="flex min-w-0 items-center gap-2">
+        <kbd className="shrink-0 rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 font-mono text-sm text-primary">
+          {bind.typePrefix}
+        </kbd>
+        <span className="truncate text-muted-foreground text-sm">
+          type more to narrow…
+        </span>
+      </span>
+    )
+  }
+  if (displayValue) {
+    return <span className="truncate">{displayValue}</span>
+  }
+  return <SelectValue placeholder={placeholder} />
+}
+
+function KeyboardSelectContent({
+  bind,
+  children,
+  empty = false,
+}: {
+  bind?: SelectBind
+  children: ReactNode
+  empty?: boolean
+}) {
+  return (
+    <SelectContent className="z-[100]">
+      {bind?.typePrefix ? (
+        <div className="border-b border-border px-2 py-1.5 text-xs text-muted-foreground">
+          Showing matches for{" "}
+          <kbd className="rounded border bg-muted px-1 font-mono">{bind.typePrefix}</kbd>
+        </div>
+      ) : null}
+      {empty && bind?.typePrefix ? (
+        <p className="px-2 py-3 text-center text-sm text-muted-foreground">
+          No matches — Backspace to edit
+        </p>
+      ) : (
+        children
+      )}
+    </SelectContent>
+  )
+}
 
 const EXPENSE_FORM_ROW = "grid grid-cols-1 gap-4 sm:grid-cols-2"
 
@@ -156,18 +222,34 @@ export function ProjectAddExpenseDialogForm({
               onOpenChange={categoryBind?.onOpenChange}
             >
               <SelectTrigger
-                className="bg-muted border-border"
+                className={cn(
+                  "bg-muted border-border",
+                  categoryBind?.typePrefix && "ring-1 ring-primary/40",
+                )}
                 onKeyDown={categoryBind?.onTriggerKeyDown}
               >
-                <SelectValue placeholder="Select category" />
+                <KeyboardSelectTriggerContent
+                  bind={categoryBind}
+                  placeholder="Select category"
+                  displayValue={newExpense.category || undefined}
+                />
               </SelectTrigger>
-              <SelectContent>
-                {categoryNames.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+              <KeyboardSelectContent
+                bind={categoryBind}
+                empty={
+                  categoryNames.filter(
+                    (cat) => categoryBind?.isOptionVisible(cat, cat) ?? true,
+                  ).length === 0
+                }
+              >
+                {categoryNames
+                  .filter((cat) => categoryBind?.isOptionVisible(cat, cat) ?? true)
+                  .map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+              </KeyboardSelectContent>
             </Select>
           </div>
         </div>
@@ -198,18 +280,38 @@ export function ProjectAddExpenseDialogForm({
                 onOpenChange={teamBind?.onOpenChange}
               >
                 <SelectTrigger
-                  className="bg-muted border-border"
+                  className={cn(
+                    "bg-muted border-border",
+                    teamBind?.typePrefix && "ring-1 ring-primary/40",
+                  )}
                   onKeyDown={teamBind?.onTriggerKeyDown}
                 >
-                  <SelectValue placeholder="Which team was paid?" />
+                  <KeyboardSelectTriggerContent
+                    bind={teamBind}
+                    placeholder="Which team was paid?"
+                    displayValue={
+                      labourTeams.find((t) => t.id === newExpense.labourTeamId)?.name
+                    }
+                  />
                 </SelectTrigger>
-                <SelectContent>
-                  {labourTeams.map((team) => (
-                    <SelectItem key={team.id} value={team.id}>
-                      {team.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+                <KeyboardSelectContent
+                  bind={teamBind}
+                  empty={
+                    labourTeams.filter((team) =>
+                      teamBind?.isOptionVisible(team.name, team.id) ?? true,
+                    ).length === 0
+                  }
+                >
+                  {labourTeams
+                    .filter((team) =>
+                      teamBind?.isOptionVisible(team.name, team.id) ?? true,
+                    )
+                    .map((team) => (
+                      <SelectItem key={team.id} value={team.id}>
+                        {team.name}
+                      </SelectItem>
+                    ))}
+                </KeyboardSelectContent>
               </Select>
             ) : (
               <Select
@@ -222,21 +324,38 @@ export function ProjectAddExpenseDialogForm({
                 onOpenChange={subcategoryBind?.onOpenChange}
               >
                 <SelectTrigger
-                  className="bg-muted border-border"
+                  className={cn(
+                    "bg-muted border-border",
+                    subcategoryBind?.typePrefix && "ring-1 ring-primary/40",
+                  )}
                   onKeyDown={subcategoryBind?.onTriggerKeyDown}
                 >
-                  <SelectValue placeholder="Select subcategory" />
+                  <KeyboardSelectTriggerContent
+                    bind={subcategoryBind}
+                    placeholder="Select subcategory"
+                    displayValue={newExpense.subcategory || undefined}
+                  />
                 </SelectTrigger>
-                <SelectContent>
+                <KeyboardSelectContent
+                  bind={subcategoryBind}
+                  empty={
+                    (subcategoriesForCategory.get(newExpense.category) ?? []).filter(
+                      (sub) => subcategoryBind?.isOptionVisible(sub, sub) ?? true,
+                    ).length === 0
+                  }
+                >
                   {newExpense.category &&
                     subcategoriesForCategory
                       .get(newExpense.category)
-                      ?.map((sub) => (
+                      ?.filter((sub) =>
+                        subcategoryBind?.isOptionVisible(sub, sub) ?? true,
+                      )
+                      .map((sub) => (
                         <SelectItem key={sub} value={sub}>
                           {sub}
                         </SelectItem>
                       ))}
-                </SelectContent>
+                </KeyboardSelectContent>
               </Select>
             )}
           </div>
@@ -251,18 +370,40 @@ export function ProjectAddExpenseDialogForm({
               onOpenChange={milestoneBind?.onOpenChange}
             >
               <SelectTrigger
-                className="bg-muted border-border"
+                className={cn(
+                  "bg-muted border-border",
+                  milestoneBind?.typePrefix && "ring-1 ring-primary/40",
+                )}
                 onKeyDown={milestoneBind?.onTriggerKeyDown}
               >
-                <SelectValue placeholder="Select milestone" />
+                <KeyboardSelectTriggerContent
+                  bind={milestoneBind}
+                  placeholder="Select milestone"
+                  displayValue={
+                    milestones.find((m) => m.id === newExpense.milestoneId)?.name
+                  }
+                />
               </SelectTrigger>
-              <SelectContent>
-                {milestones.map((milestone) => (
-                  <SelectItem key={milestone.id} value={milestone.id}>
-                    {milestone.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+              <KeyboardSelectContent
+                bind={milestoneBind}
+                empty={
+                  milestones.filter((milestone) =>
+                    milestoneBind?.isOptionVisible(milestone.name, milestone.id) ??
+                    true,
+                  ).length === 0
+                }
+              >
+                {milestones
+                  .filter((milestone) =>
+                    milestoneBind?.isOptionVisible(milestone.name, milestone.id) ??
+                    true,
+                  )
+                  .map((milestone) => (
+                    <SelectItem key={milestone.id} value={milestone.id}>
+                      {milestone.name}
+                    </SelectItem>
+                  ))}
+              </KeyboardSelectContent>
             </Select>
           </div>
         </div>

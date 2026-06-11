@@ -37,6 +37,31 @@ export function findOptionByLetter(
   return null
 }
 
+export function filterOptionsByPrefix(
+  options: MandatorySelectOption[],
+  prefix: string,
+): MandatorySelectOption[] {
+  const p = prefix.trim().toLowerCase()
+  if (!p) return options
+  return options.filter(
+    (opt) =>
+      opt.label.toLowerCase().startsWith(p) ||
+      opt.value.toLowerCase().startsWith(p),
+  )
+}
+
+export function optionMatchesPrefix(
+  label: string,
+  value: string,
+  prefix: string,
+): boolean {
+  const p = prefix.trim().toLowerCase()
+  if (!p) return true
+  return (
+    label.toLowerCase().startsWith(p) || value.toLowerCase().startsWith(p)
+  )
+}
+
 export function tryOpenDatePicker(input: HTMLInputElement | null) {
   if (!input) return
   if (typeof input.showPicker === "function") {
