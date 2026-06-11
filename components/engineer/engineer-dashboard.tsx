@@ -55,6 +55,13 @@ import { createExpenseAction } from "@/lib/projects/tab-actions"
 import { canEnterManpowerData } from "@/lib/permissions"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { toast } from "sonner"
+import { useExpenseShortcutRegistryOptional } from "@/lib/keyboard/expense-shortcut-context"
+import type { MandatoryFieldDef } from "@/lib/keyboard/mandatory-expense-fields"
+import {
+  MandatoryExpenseKeyboardProvider,
+  MandatoryExpenseSubmitButton,
+  useMandatoryExpenseKeyboard,
+} from "@/lib/keyboard/mandatory-expense-keyboard"
 import { DashboardHeader } from "@/components/dashboard/header"
 import { MetricCard } from "@/components/layout/metric-card"
 import {
@@ -244,9 +251,122 @@ function buildViewFromAllProjects(projects: ProjectWithDetails[]): EngineerDashb
   }
 }
 
+const ENGINEER_CATEGORY_OPTIONS = [
+  { value: "Materials", label: "Materials" },
+  { value: "Labour", label: "Labour" },
+  { value: "Equipment", label: "Equipment" },
+  { value: "Miscellaneous", label: "Miscellaneous" },
+]
+
+function EngineerAddExpenseForm({
+  expenseForm,
+  setExpenseForm,
+  milestones,
+}: {
+  expenseForm: {
+    category: string
+    description: string
+    amount: string
+    vendor: string
+    milestoneId: string
+  }
+  setExpenseForm: React.Dispatch<
+    React.SetStateAction<{
+      category: string
+      description: string
+      amount: string
+      vendor: string
+      milestoneId: string
+    }>
+  >
+  milestones: { id: string; name: string }[]
+}) {
+  const kb = useMandatoryExpenseKeyboard()
+  const categoryBind = kb?.bindSelect("category")
+  const descriptionBind = kb?.bindText("description")
+  const amountBind = kb?.bindText("amount")
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+      <div className="grid gap-4">
+        <div className="space-y-2">
+          <Label>Stage</Label>
+          <Select
+            value={expenseForm.milestoneId}
+            onValueChange={(v) => setExpenseForm({ ...expenseForm, milestoneId: v })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select stage" />
+            </SelectTrigger>
+            <SelectContent>
+              {milestones.map((ms) => (
+                <SelectItem key={ms.id} value={ms.id}>
+                  {ms.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Category</Label>
+          <Select
+            value={expenseForm.category}
+            onValueChange={(v) => setExpenseForm({ ...expenseForm, category: v })}
+            open={categoryBind?.open}
+            onOpenChange={categoryBind?.onOpenChange}
+          >
+            <SelectTrigger onKeyDown={categoryBind?.onTriggerKeyDown}>
+              <SelectValue placeholder="Select category" />
+            </SelectTrigger>
+            <SelectContent>
+              {ENGINEER_CATEGORY_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Description</Label>
+          <Input
+            value={expenseForm.description}
+            onChange={(e) =>
+              setExpenseForm({ ...expenseForm, description: e.target.value })
+            }
+            placeholder="e.g., Cement - 50 bags"
+            ref={descriptionBind?.ref}
+            onKeyDown={descriptionBind?.onKeyDown}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Vendor Name</Label>
+          <Input
+            value={expenseForm.vendor}
+            onChange={(e) => setExpenseForm({ ...expenseForm, vendor: e.target.value })}
+            placeholder="Vendor name"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Amount (₹)</Label>
+          <Input
+            type="number"
+            value={expenseForm.amount}
+            onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+            placeholder="0"
+            ref={amountBind?.ref}
+            onKeyDown={amountBind?.onKeyDown}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function EngineerDashboard() {
   const { role } = useAuth()
   const canUseManpower = canEnterManpowerData(role)
+  const expenseShortcuts = useExpenseShortcutRegistryOptional()
   const { projects: assignedProjects, isLoading, error, mutate } = useProjectDetailsList()
   const [selectedProjectId, setSelectedProjectId] = useState(SHOW_ALL_PROJECTS)
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false)
@@ -298,6 +418,34 @@ export function EngineerDashboard() {
     setSelectedProjectId(SHOW_ALL_PROJECTS)
   }, [assignedProjects, selectedProjectId])
 
+  const engineerMandatoryFields = useMemo((): MandatoryFieldDef[] => {
+    return [
+      {
+        id: "category",
+        kind: "select",
+        options: ENGINEER_CATEGORY_OPTIONS,
+        getValue: () => expenseForm.category,
+        setValue: (value) =>
+          setExpenseForm((prev) => ({ ...prev, category: value })),
+        validate: () => (expenseForm.category ? null : "Select category"),
+      },
+      {
+        id: "description",
+        kind: "text",
+        validate: () =>
+          expenseForm.description.trim() ? null : "Enter description",
+      },
+      {
+        id: "amount",
+        kind: "number",
+        validate: () => {
+          const amount = parseFloat(expenseForm.amount)
+          return Number.isFinite(amount) && amount > 0 ? null : "Enter amount"
+        },
+      },
+    ]
+  }, [expenseForm.category, expenseForm.description, expenseForm.amount])
+
   const engineerData = useMemo((): EngineerDashboardView | null => {
     if (!assignedProjects.length) return null
 
@@ -312,6 +460,13 @@ export function EngineerDashboard() {
 
     return buildViewFromProject(project)
   }, [assignedProjects, effectiveProjectId])
+
+  useEffect(() => {
+    if (!expenseShortcuts || engineerData?.showAll) return
+    return expenseShortcuts.registerEngineerExpense(() => {
+      setIsAddExpenseOpen(true)
+    })
+  }, [expenseShortcuts, engineerData?.showAll])
 
   function handleProjectChange(projectId: string) {
     setSelectedProjectId(projectId)
@@ -511,7 +666,7 @@ export function EngineerDashboard() {
                       title={
                         engineerData.showAll
                           ? "Select a single project to add an expense"
-                          : undefined
+                          : "Add expense (Ctrl+E)"
                       }
                     >
                       <Plus className="h-4 w-4" />
@@ -519,100 +674,47 @@ export function EngineerDashboard() {
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="flex max-h-[min(92dvh,100dvh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[500px]">
-                    <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
-                      <DialogTitle>Add New Expense</DialogTitle>
-                      <DialogDescription>
-                        Record a new expense for approval
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
-                    <div className="grid gap-4">
-                      <div className="space-y-2">
-                        <Label>Stage</Label>
-                        <Select 
-                          value={expenseForm.milestoneId}
-                          onValueChange={(v) => setExpenseForm({...expenseForm, milestoneId: v})}
+                    <MandatoryExpenseKeyboardProvider
+                      enabled={isAddExpenseOpen}
+                      fields={engineerMandatoryFields}
+                      onSubmit={() => void handleSubmitExpense()}
+                    >
+                      <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
+                        <DialogTitle>Add New Expense</DialogTitle>
+                        <DialogDescription>
+                          Record a new expense for approval
+                        </DialogDescription>
+                      </DialogHeader>
+                      <EngineerAddExpenseForm
+                        expenseForm={expenseForm}
+                        setExpenseForm={setExpenseForm}
+                        milestones={engineerData.milestones}
+                      />
+                      <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:px-6">
+                        <Button
+                          variant="outline"
+                          className="w-full sm:w-auto"
+                          onClick={() => setIsAddExpenseOpen(false)}
+                          disabled={isSubmittingExpense}
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select stage" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {engineerData.milestones.map((ms) => (
-                              <SelectItem key={ms.id} value={ms.id}>
-                                {ms.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Category</Label>
-                        <Select 
-                          value={expenseForm.category}
-                          onValueChange={(v) => setExpenseForm({...expenseForm, category: v})}
+                          Cancel
+                        </Button>
+                        <MandatoryExpenseSubmitButton
+                          className="w-full sm:w-auto"
+                          onClick={() => void handleSubmitExpense()}
+                          disabled={isSubmittingExpense}
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Materials">Materials</SelectItem>
-                            <SelectItem value="Labour">Labour</SelectItem>
-                            <SelectItem value="Equipment">Equipment</SelectItem>
-                            <SelectItem value="Miscellaneous">Miscellaneous</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Description</Label>
-                        <Input 
-                          value={expenseForm.description}
-                          onChange={(e) => setExpenseForm({...expenseForm, description: e.target.value})}
-                          placeholder="e.g., Cement - 50 bags" 
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Vendor Name</Label>
-                        <Input 
-                          value={expenseForm.vendor}
-                          onChange={(e) => setExpenseForm({...expenseForm, vendor: e.target.value})}
-                          placeholder="Vendor name" 
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Amount (₹)</Label>
-                        <Input 
-                          type="number"
-                          value={expenseForm.amount}
-                          onChange={(e) => setExpenseForm({...expenseForm, amount: e.target.value})}
-                          placeholder="0" 
-                        />
-                      </div>
-                    </div>
-                    </div>
-                    <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:px-6">
-                      <Button
-                        variant="outline"
-                        className="w-full sm:w-auto"
-                        onClick={() => setIsAddExpenseOpen(false)}
-                        disabled={isSubmittingExpense}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        className="w-full sm:w-auto"
-                        onClick={() => void handleSubmitExpense()}
-                        disabled={isSubmittingExpense}
-                      >
-                        {isSubmittingExpense ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Submitting…
-                          </>
-                        ) : (
-                          "Submit for Approval"
-                        )}
-                      </Button>
-                    </DialogFooter>
+                          {isSubmittingExpense ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Submitting…
+                            </>
+                          ) : (
+                            "Submit for Approval"
+                          )}
+                        </MandatoryExpenseSubmitButton>
+                      </DialogFooter>
+                    </MandatoryExpenseKeyboardProvider>
                   </DialogContent>
                 </Dialog>
               </div>

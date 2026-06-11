@@ -42,6 +42,13 @@ import {
 } from "@/lib/finance/finance-actions"
 import { AddExpenseMenu, type ProjectOption } from "@/components/finance/add-expense-menu"
 import { CategorySelectField } from "@/components/finance/category-select-field"
+import { useExpenseShortcutRegistryOptional } from "@/lib/keyboard/expense-shortcut-context"
+import { buildFinanceEntryFields } from "@/lib/keyboard/build-finance-mandatory-fields"
+import {
+  MandatoryExpenseKeyboardProvider,
+  MandatoryExpenseSubmitButton,
+  useMandatoryExpenseKeyboard,
+} from "@/lib/keyboard/mandatory-expense-keyboard"
 import { DashboardHeader } from "@/components/dashboard/header"
 import {
   PageHeader,
@@ -261,6 +268,7 @@ function formatDate(date: string) {
 export function AllExpensesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const expenseShortcuts = useExpenseShortcutRegistryOptional()
 
   const tab = (searchParams.get("tab") as TabKey) || "all"
   const period = searchParams.get("period") ?? "30d"
@@ -391,6 +399,73 @@ export function AllExpensesContent() {
     }
   }, [shouldOpenAdd, shouldOpenAddIncome, tab, syncUrl])
 
+  const companyCategoryOptions = useMemo(
+    () => companyExpenseCategories.map((c) => ({ value: c.name, label: c.name })),
+    [companyExpenseCategories],
+  )
+  const companyIncomeCategoryOptions = useMemo(
+    () => companyIncomeCategories.map((c) => ({ value: c.name, label: c.name })),
+    [companyIncomeCategories],
+  )
+  const personalCategoryOptions = useMemo(
+    () => personalExpenseCategories.map((c) => ({ value: c.name, label: c.name })),
+    [personalExpenseCategories],
+  )
+
+  const companyMandatoryFields = useMemo(
+    () =>
+      buildFinanceEntryFields({
+        categoryOptions: companyCategoryOptions,
+        getCategory: () => companyForm.category,
+        setCategory: (value) =>
+          setCompanyForm((f) => ({ ...f, category: value })),
+        getDescription: () => companyForm.description,
+        getAmount: () => companyForm.amount,
+      }),
+    [
+      companyCategoryOptions,
+      companyForm.category,
+      companyForm.description,
+      companyForm.amount,
+    ],
+  )
+
+  const companyIncomeMandatoryFields = useMemo(
+    () =>
+      buildFinanceEntryFields({
+        categoryOptions: companyIncomeCategoryOptions,
+        getCategory: () => companyIncomeForm.category,
+        setCategory: (value) =>
+          setCompanyIncomeForm((f) => ({ ...f, category: value })),
+        getDescription: () => companyIncomeForm.description,
+        getAmount: () => companyIncomeForm.amount,
+      }),
+    [
+      companyIncomeCategoryOptions,
+      companyIncomeForm.category,
+      companyIncomeForm.description,
+      companyIncomeForm.amount,
+    ],
+  )
+
+  const personalMandatoryFields = useMemo(
+    () =>
+      buildFinanceEntryFields({
+        categoryOptions: personalCategoryOptions,
+        getCategory: () => personalForm.category,
+        setCategory: (value) =>
+          setPersonalForm((f) => ({ ...f, category: value })),
+        getDescription: () => personalForm.description,
+        getAmount: () => personalForm.amount,
+      }),
+    [
+      personalCategoryOptions,
+      personalForm.category,
+      personalForm.description,
+      personalForm.amount,
+    ],
+  )
+
   const projectRows = useMemo(
     () => (data?.rows ?? []).filter((r) => r.layer === "project"),
     [data?.rows],
@@ -469,6 +544,27 @@ export function AllExpensesContent() {
       notes: "",
     })
   }
+
+  useEffect(() => {
+    if (!expenseShortcuts) return
+    const unregisterCompany = expenseShortcuts.registerCompanyExpense(() => {
+      resetCompanyForm()
+      setCompanyDialogOpen(true)
+    })
+    const unregisterIncome = expenseShortcuts.registerCompanyIncome(() => {
+      resetCompanyIncomeForm()
+      setCompanyIncomeDialogOpen(true)
+    })
+    const unregisterPersonal = expenseShortcuts.registerPersonalExpense(() => {
+      resetPersonalForm()
+      setPersonalDialogOpen(true)
+    })
+    return () => {
+      unregisterCompany()
+      unregisterIncome()
+      unregisterPersonal()
+    }
+  }, [expenseShortcuts, companyExpenseCategories, companyIncomeCategories, personalExpenseCategories])
 
   const openEditCompanyIncome = (row: CompanyIncome) => {
     setEditingCompanyIncome(row)
@@ -947,83 +1043,39 @@ export function AllExpensesContent() {
           }}
         >
           <DialogContent className={FINANCE_DIALOG_CLASS}>
-            <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
-              <DialogTitle>
-                {editingCompany ? "Edit company expense" : "Add company expense"}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
-            <div className="space-y-4">
-              <CategorySelectField
-                kind="company_expense"
-                value={companyForm.category}
-                onValueChange={(v) =>
-                  setCompanyForm((f) => ({ ...f, category: v }))
-                }
-                categories={companyExpenseCategories}
-                onCategoriesChange={() => {
-                  refreshCategories()
-                  syncCategoryFields()
-                }}
+            <MandatoryExpenseKeyboardProvider
+              enabled={companyDialogOpen && !editingCompany}
+              fields={companyMandatoryFields}
+              onSubmit={() => void saveCompany()}
+            >
+              <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
+                <DialogTitle>
+                  {editingCompany ? "Edit company expense" : "Add company expense"}
+                </DialogTitle>
+              </DialogHeader>
+              <CompanyExpenseFormFields
+                companyForm={companyForm}
+                setCompanyForm={setCompanyForm}
+                companyExpenseCategories={companyExpenseCategories}
+                refreshCategories={refreshCategories}
+                syncCategoryFields={syncCategoryFields}
               />
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Input
-                  value={companyForm.description}
-                  onChange={(e) =>
-                    setCompanyForm((f) => ({ ...f, description: e.target.value }))
-                  }
-                />
-              </div>
-              <div className={FINANCE_FORM_ROW}>
-                <div className="space-y-2">
-                  <Label>Amount</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={companyForm.amount}
-                    onChange={(e) =>
-                      setCompanyForm((f) => ({ ...f, amount: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Date</Label>
-                  <Input
-                    type="date"
-                    value={companyForm.expenseDate}
-                    onChange={(e) =>
-                      setCompanyForm((f) => ({ ...f, expenseDate: e.target.value }))
-                    }
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Vendor (optional)</Label>
-                <Input
-                  value={companyForm.vendorName}
-                  onChange={(e) =>
-                    setCompanyForm((f) => ({ ...f, vendorName: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Notes (optional)</Label>
-                <Textarea
-                  value={companyForm.notes}
-                  onChange={(e) =>
-                    setCompanyForm((f) => ({ ...f, notes: e.target.value }))
-                  }
-                  rows={2}
-                />
-              </div>
-            </div>
-            </div>
-            <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:px-6">
-              <Button onClick={() => void saveCompany()} disabled={saving} className="w-full sm:w-auto">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-              </Button>
-            </DialogFooter>
+              <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:px-6">
+                {editingCompany ? (
+                  <Button onClick={() => void saveCompany()} disabled={saving} className="w-full sm:w-auto">
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                  </Button>
+                ) : (
+                  <MandatoryExpenseSubmitButton
+                    onClick={() => void saveCompany()}
+                    disabled={saving}
+                    className="w-full sm:w-auto"
+                  >
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                  </MandatoryExpenseSubmitButton>
+                )}
+              </DialogFooter>
+            </MandatoryExpenseKeyboardProvider>
           </DialogContent>
         </Dialog>
 
@@ -1035,128 +1087,45 @@ export function AllExpensesContent() {
           }}
         >
           <DialogContent className={FINANCE_DIALOG_CLASS}>
-            <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
-              <DialogTitle>
-                {editingCompanyIncome
-                  ? "Edit company income"
-                  : "Add company income"}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
-            <div className="space-y-4">
-              <CategorySelectField
-                kind="company_income"
-                value={companyIncomeForm.category}
-                onValueChange={(v) =>
-                  setCompanyIncomeForm((f) => ({ ...f, category: v }))
-                }
-                categories={companyIncomeCategories}
-                onCategoriesChange={() => {
-                  refreshCategories()
-                  syncCategoryFields()
-                }}
+            <MandatoryExpenseKeyboardProvider
+              enabled={companyIncomeDialogOpen && !editingCompanyIncome}
+              fields={companyIncomeMandatoryFields}
+              onSubmit={() => void saveCompanyIncome()}
+            >
+              <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
+                <DialogTitle>
+                  {editingCompanyIncome
+                    ? "Edit company income"
+                    : "Add company income"}
+                </DialogTitle>
+              </DialogHeader>
+              <CompanyIncomeFormFields
+                companyIncomeForm={companyIncomeForm}
+                setCompanyIncomeForm={setCompanyIncomeForm}
+                companyIncomeCategories={companyIncomeCategories}
+                refreshCategories={refreshCategories}
+                syncCategoryFields={syncCategoryFields}
               />
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Input
-                  value={companyIncomeForm.description}
-                  onChange={(e) =>
-                    setCompanyIncomeForm((f) => ({
-                      ...f,
-                      description: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className={FINANCE_FORM_ROW}>
-                <div className="space-y-2">
-                  <Label>Amount</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={companyIncomeForm.amount}
-                    onChange={(e) =>
-                      setCompanyIncomeForm((f) => ({
-                        ...f,
-                        amount: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Received date</Label>
-                  <Input
-                    type="date"
-                    value={companyIncomeForm.receivedDate}
-                    onChange={(e) =>
-                      setCompanyIncomeForm((f) => ({
-                        ...f,
-                        receivedDate: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Source / payer (optional)</Label>
-                <Input
-                  value={companyIncomeForm.sourceName}
-                  onChange={(e) =>
-                    setCompanyIncomeForm((f) => ({
-                      ...f,
-                      sourceName: e.target.value,
-                    }))
-                  }
-                  placeholder="Who paid?"
-                />
-              </div>
-              <div className={FINANCE_FORM_ROW}>
-                <div className="space-y-2">
-                  <Label>Payment method (optional)</Label>
-                  <Input
-                    value={companyIncomeForm.paymentMethod}
-                    onChange={(e) =>
-                      setCompanyIncomeForm((f) => ({
-                        ...f,
-                        paymentMethod: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Reference # (optional)</Label>
-                  <Input
-                    value={companyIncomeForm.referenceNumber}
-                    onChange={(e) =>
-                      setCompanyIncomeForm((f) => ({
-                        ...f,
-                        referenceNumber: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Notes (optional)</Label>
-                <Textarea
-                  value={companyIncomeForm.notes}
-                  onChange={(e) =>
-                    setCompanyIncomeForm((f) => ({ ...f, notes: e.target.value }))
-                  }
-                  rows={2}
-                />
-              </div>
-            </div>
-            </div>
-            <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:px-6">
-              <Button
-                onClick={() => void saveCompanyIncome()}
-                disabled={saving}
-                className="w-full sm:w-auto"
-              >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-              </Button>
-            </DialogFooter>
+              <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:px-6">
+                {editingCompanyIncome ? (
+                  <Button
+                    onClick={() => void saveCompanyIncome()}
+                    disabled={saving}
+                    className="w-full sm:w-auto"
+                  >
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                  </Button>
+                ) : (
+                  <MandatoryExpenseSubmitButton
+                    onClick={() => void saveCompanyIncome()}
+                    disabled={saving}
+                    className="w-full sm:w-auto"
+                  >
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                  </MandatoryExpenseSubmitButton>
+                )}
+              </DialogFooter>
+            </MandatoryExpenseKeyboardProvider>
           </DialogContent>
         </Dialog>
 
@@ -1168,74 +1137,39 @@ export function AllExpensesContent() {
           }}
         >
           <DialogContent className={FINANCE_DIALOG_CLASS}>
-            <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
-              <DialogTitle>
-                {editingPersonal ? "Edit personal expense" : "Add personal expense"}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
-            <div className="space-y-4">
-              <CategorySelectField
-                kind="personal_expense"
-                value={personalForm.category}
-                onValueChange={(v) =>
-                  setPersonalForm((f) => ({ ...f, category: v }))
-                }
-                categories={personalExpenseCategories}
-                onCategoriesChange={() => {
-                  refreshCategories()
-                  syncCategoryFields()
-                }}
+            <MandatoryExpenseKeyboardProvider
+              enabled={personalDialogOpen && !editingPersonal}
+              fields={personalMandatoryFields}
+              onSubmit={() => void savePersonal()}
+            >
+              <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
+                <DialogTitle>
+                  {editingPersonal ? "Edit personal expense" : "Add personal expense"}
+                </DialogTitle>
+              </DialogHeader>
+              <PersonalExpenseFormFields
+                personalForm={personalForm}
+                setPersonalForm={setPersonalForm}
+                personalExpenseCategories={personalExpenseCategories}
+                refreshCategories={refreshCategories}
+                syncCategoryFields={syncCategoryFields}
               />
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Input
-                  value={personalForm.description}
-                  onChange={(e) =>
-                    setPersonalForm((f) => ({ ...f, description: e.target.value }))
-                  }
-                />
-              </div>
-              <div className={FINANCE_FORM_ROW}>
-                <div className="space-y-2">
-                  <Label>Amount</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={personalForm.amount}
-                    onChange={(e) =>
-                      setPersonalForm((f) => ({ ...f, amount: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Date</Label>
-                  <Input
-                    type="date"
-                    value={personalForm.expenseDate}
-                    onChange={(e) =>
-                      setPersonalForm((f) => ({ ...f, expenseDate: e.target.value }))
-                    }
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Notes (optional)</Label>
-                <Textarea
-                  value={personalForm.notes}
-                  onChange={(e) =>
-                    setPersonalForm((f) => ({ ...f, notes: e.target.value }))
-                  }
-                  rows={2}
-                />
-              </div>
-            </div>
-            </div>
-            <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:px-6">
-              <Button onClick={() => void savePersonal()} disabled={saving} className="w-full sm:w-auto">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-              </Button>
-            </DialogFooter>
+              <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:px-6">
+                {editingPersonal ? (
+                  <Button onClick={() => void savePersonal()} disabled={saving} className="w-full sm:w-auto">
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                  </Button>
+                ) : (
+                  <MandatoryExpenseSubmitButton
+                    onClick={() => void savePersonal()}
+                    disabled={saving}
+                    className="w-full sm:w-auto"
+                  >
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                  </MandatoryExpenseSubmitButton>
+                )}
+              </DialogFooter>
+            </MandatoryExpenseKeyboardProvider>
           </DialogContent>
         </Dialog>
 
@@ -1408,5 +1342,345 @@ function CompanyIncomeTable({
         ))}
       </TableBody>
     </Table>
+  )
+}
+
+type CompanyFormState = {
+  category: string
+  description: string
+  amount: string
+  vendorName: string
+  expenseDate: string
+  paymentMethod: string
+  notes: string
+}
+
+function CompanyExpenseFormFields({
+  companyForm,
+  setCompanyForm,
+  companyExpenseCategories,
+  refreshCategories,
+  syncCategoryFields,
+}: {
+  companyForm: CompanyFormState
+  setCompanyForm: React.Dispatch<React.SetStateAction<CompanyFormState>>
+  companyExpenseCategories: FinanceCategory[]
+  refreshCategories: () => void
+  syncCategoryFields: () => void
+}) {
+  const kb = useMandatoryExpenseKeyboard()
+  const dateBind = kb?.bindDate("date")
+  const categoryBind = kb?.bindSelect("category")
+  const descriptionBind = kb?.bindText("description")
+  const amountBind = kb?.bindText("amount")
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label>Date</Label>
+          <Input
+            type="date"
+            value={companyForm.expenseDate}
+            onChange={(e) =>
+              setCompanyForm((f) => ({ ...f, expenseDate: e.target.value }))
+            }
+            ref={dateBind?.ref}
+            onKeyDown={dateBind?.onKeyDown}
+          />
+        </div>
+        <CategorySelectField
+          kind="company_expense"
+          value={companyForm.category}
+          onValueChange={(v) => setCompanyForm((f) => ({ ...f, category: v }))}
+          categories={companyExpenseCategories}
+          onCategoriesChange={() => {
+            refreshCategories()
+            syncCategoryFields()
+          }}
+          selectOpen={categoryBind?.open}
+          onSelectOpenChange={categoryBind?.onOpenChange}
+          onTriggerKeyDown={categoryBind?.onTriggerKeyDown}
+        />
+        <div className="space-y-2">
+          <Label>Description</Label>
+          <Input
+            value={companyForm.description}
+            onChange={(e) =>
+              setCompanyForm((f) => ({ ...f, description: e.target.value }))
+            }
+            ref={descriptionBind?.ref}
+            onKeyDown={descriptionBind?.onKeyDown}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Amount</Label>
+          <Input
+            type="number"
+            min={0}
+            value={companyForm.amount}
+            onChange={(e) =>
+              setCompanyForm((f) => ({ ...f, amount: e.target.value }))
+            }
+            ref={amountBind?.ref}
+            onKeyDown={amountBind?.onKeyDown}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Vendor (optional)</Label>
+          <Input
+            value={companyForm.vendorName}
+            onChange={(e) =>
+              setCompanyForm((f) => ({ ...f, vendorName: e.target.value }))
+            }
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Notes (optional)</Label>
+          <Textarea
+            value={companyForm.notes}
+            onChange={(e) =>
+              setCompanyForm((f) => ({ ...f, notes: e.target.value }))
+            }
+            rows={2}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+type CompanyIncomeFormState = {
+  category: string
+  description: string
+  amount: string
+  sourceName: string
+  receivedDate: string
+  paymentMethod: string
+  referenceNumber: string
+  notes: string
+}
+
+function CompanyIncomeFormFields({
+  companyIncomeForm,
+  setCompanyIncomeForm,
+  companyIncomeCategories,
+  refreshCategories,
+  syncCategoryFields,
+}: {
+  companyIncomeForm: CompanyIncomeFormState
+  setCompanyIncomeForm: React.Dispatch<React.SetStateAction<CompanyIncomeFormState>>
+  companyIncomeCategories: FinanceCategory[]
+  refreshCategories: () => void
+  syncCategoryFields: () => void
+}) {
+  const kb = useMandatoryExpenseKeyboard()
+  const dateBind = kb?.bindDate("date")
+  const categoryBind = kb?.bindSelect("category")
+  const descriptionBind = kb?.bindText("description")
+  const amountBind = kb?.bindText("amount")
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label>Received date</Label>
+          <Input
+            type="date"
+            value={companyIncomeForm.receivedDate}
+            onChange={(e) =>
+              setCompanyIncomeForm((f) => ({ ...f, receivedDate: e.target.value }))
+            }
+            ref={dateBind?.ref}
+            onKeyDown={dateBind?.onKeyDown}
+          />
+        </div>
+        <CategorySelectField
+          kind="company_income"
+          value={companyIncomeForm.category}
+          onValueChange={(v) =>
+            setCompanyIncomeForm((f) => ({ ...f, category: v }))
+          }
+          categories={companyIncomeCategories}
+          onCategoriesChange={() => {
+            refreshCategories()
+            syncCategoryFields()
+          }}
+          selectOpen={categoryBind?.open}
+          onSelectOpenChange={categoryBind?.onOpenChange}
+          onTriggerKeyDown={categoryBind?.onTriggerKeyDown}
+        />
+        <div className="space-y-2">
+          <Label>Description</Label>
+          <Input
+            value={companyIncomeForm.description}
+            onChange={(e) =>
+              setCompanyIncomeForm((f) => ({
+                ...f,
+                description: e.target.value,
+              }))
+            }
+            ref={descriptionBind?.ref}
+            onKeyDown={descriptionBind?.onKeyDown}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Amount</Label>
+          <Input
+            type="number"
+            min={0}
+            value={companyIncomeForm.amount}
+            onChange={(e) =>
+              setCompanyIncomeForm((f) => ({ ...f, amount: e.target.value }))
+            }
+            ref={amountBind?.ref}
+            onKeyDown={amountBind?.onKeyDown}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Source / payer (optional)</Label>
+          <Input
+            value={companyIncomeForm.sourceName}
+            onChange={(e) =>
+              setCompanyIncomeForm((f) => ({
+                ...f,
+                sourceName: e.target.value,
+              }))
+            }
+            placeholder="Who paid?"
+          />
+        </div>
+        <div className={FINANCE_FORM_ROW}>
+          <div className="space-y-2">
+            <Label>Payment method (optional)</Label>
+            <Input
+              value={companyIncomeForm.paymentMethod}
+              onChange={(e) =>
+                setCompanyIncomeForm((f) => ({
+                  ...f,
+                  paymentMethod: e.target.value,
+                }))
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Reference # (optional)</Label>
+            <Input
+              value={companyIncomeForm.referenceNumber}
+              onChange={(e) =>
+                setCompanyIncomeForm((f) => ({
+                  ...f,
+                  referenceNumber: e.target.value,
+                }))
+              }
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Notes (optional)</Label>
+          <Textarea
+            value={companyIncomeForm.notes}
+            onChange={(e) =>
+              setCompanyIncomeForm((f) => ({ ...f, notes: e.target.value }))
+            }
+            rows={2}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+type PersonalFormState = {
+  category: string
+  description: string
+  amount: string
+  expenseDate: string
+  notes: string
+}
+
+function PersonalExpenseFormFields({
+  personalForm,
+  setPersonalForm,
+  personalExpenseCategories,
+  refreshCategories,
+  syncCategoryFields,
+}: {
+  personalForm: PersonalFormState
+  setPersonalForm: React.Dispatch<React.SetStateAction<PersonalFormState>>
+  personalExpenseCategories: FinanceCategory[]
+  refreshCategories: () => void
+  syncCategoryFields: () => void
+}) {
+  const kb = useMandatoryExpenseKeyboard()
+  const dateBind = kb?.bindDate("date")
+  const categoryBind = kb?.bindSelect("category")
+  const descriptionBind = kb?.bindText("description")
+  const amountBind = kb?.bindText("amount")
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label>Date</Label>
+          <Input
+            type="date"
+            value={personalForm.expenseDate}
+            onChange={(e) =>
+              setPersonalForm((f) => ({ ...f, expenseDate: e.target.value }))
+            }
+            ref={dateBind?.ref}
+            onKeyDown={dateBind?.onKeyDown}
+          />
+        </div>
+        <CategorySelectField
+          kind="personal_expense"
+          value={personalForm.category}
+          onValueChange={(v) => setPersonalForm((f) => ({ ...f, category: v }))}
+          categories={personalExpenseCategories}
+          onCategoriesChange={() => {
+            refreshCategories()
+            syncCategoryFields()
+          }}
+          selectOpen={categoryBind?.open}
+          onSelectOpenChange={categoryBind?.onOpenChange}
+          onTriggerKeyDown={categoryBind?.onTriggerKeyDown}
+        />
+        <div className="space-y-2">
+          <Label>Description</Label>
+          <Input
+            value={personalForm.description}
+            onChange={(e) =>
+              setPersonalForm((f) => ({ ...f, description: e.target.value }))
+            }
+            ref={descriptionBind?.ref}
+            onKeyDown={descriptionBind?.onKeyDown}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Amount</Label>
+          <Input
+            type="number"
+            min={0}
+            value={personalForm.amount}
+            onChange={(e) =>
+              setPersonalForm((f) => ({ ...f, amount: e.target.value }))
+            }
+            ref={amountBind?.ref}
+            onKeyDown={amountBind?.onKeyDown}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Notes (optional)</Label>
+          <Textarea
+            value={personalForm.notes}
+            onChange={(e) =>
+              setPersonalForm((f) => ({ ...f, notes: e.target.value }))
+            }
+            rows={2}
+          />
+        </div>
+      </div>
+    </div>
   )
 }

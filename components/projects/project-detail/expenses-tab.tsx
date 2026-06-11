@@ -114,6 +114,13 @@ import {
   type SplitPaymentDisplayStatus,
 } from "@/lib/expense-splits/calculations"
 import * as XLSX from "xlsx"
+import { useExpenseShortcutRegistryOptional } from "@/lib/keyboard/expense-shortcut-context"
+import type { MandatoryFieldDef } from "@/lib/keyboard/mandatory-expense-fields"
+import {
+  MandatoryExpenseKeyboardProvider,
+  MandatoryExpenseSubmitButton,
+} from "@/lib/keyboard/mandatory-expense-keyboard"
+import { ProjectAddExpenseDialogForm } from "@/components/projects/project-detail/project-add-expense-dialog-form"
 
 function categoryUsesLabourTeams(
   categoryName: string,
@@ -350,6 +357,7 @@ export function ExpensesTab({
     "subcategories",
   )
   const searchParams = useSearchParams()
+  const expenseShortcuts = useExpenseShortcutRegistryOptional()
   const [splitMode, setSplitMode] = useState(false)
   const [splitFirstAmount, setSplitFirstAmount] = useState("")
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
@@ -561,6 +569,13 @@ export function ExpensesTab({
     }
   }, [searchParams])
 
+  useEffect(() => {
+    if (!expenseShortcuts || !projectId) return
+    return expenseShortcuts.registerProjectAdd(projectId, () => {
+      setIsAddDialogOpen(true)
+    })
+  }, [expenseShortcuts, projectId])
+
   const labourTeamNameById = useMemo(
     () => new Map(labourTeams.map((t) => [t.id, t.name])),
     [labourTeams],
@@ -581,6 +596,115 @@ export function ExpensesTab({
     }
     return map
   }, [expenseCategories])
+
+  const usesLabourCategory = categoryUsesLabourTeams(
+    newExpense.category,
+    expenseCategories,
+  )
+
+  const addExpenseMandatoryFields = useMemo((): MandatoryFieldDef[] => {
+    const categoryOptions = categoryNames.map((cat) => ({
+      value: cat,
+      label: cat,
+    }))
+    const labourOptions = labourTeams.map((team) => ({
+      value: team.id,
+      label: team.name,
+    }))
+    const fields: MandatoryFieldDef[] = [
+      { id: "date", kind: "date" },
+      {
+        id: "category",
+        kind: "select",
+        options: categoryOptions,
+        getValue: () => newExpense.category,
+        setValue: (value) =>
+          setNewExpense((prev) => ({
+            ...prev,
+            category: value,
+            subcategory: "",
+            labourTeamId: "",
+          })),
+        validate: () => (newExpense.category ? null : "Select category"),
+      },
+    ]
+
+    fields.push({
+      id: "subcategoryOrTeam",
+      kind: "select",
+      skip: !usesLabourCategory || !newExpense.category,
+      options: labourOptions,
+      getValue: () => newExpense.labourTeamId,
+      setValue: (value) =>
+        setNewExpense((prev) => ({ ...prev, labourTeamId: value })),
+      validate: () =>
+        newExpense.labourTeamId ? null : "Select labour team",
+    })
+
+    const subcategoryOptions = (
+      subcategoriesForCategory.get(newExpense.category) ?? []
+    ).map((sub) => ({ value: sub, label: sub }))
+
+    fields.push({
+      id: "subcategory",
+      kind: "select",
+      skip: usesLabourCategory || !newExpense.category,
+      options: subcategoryOptions,
+      getValue: () => newExpense.subcategory,
+      setValue: (value) =>
+        setNewExpense((prev) => ({ ...prev, subcategory: value })),
+      validate: () =>
+        newExpense.subcategory ? null : "Select subcategory",
+    })
+
+    fields.push(
+      {
+        id: "description",
+        kind: "text",
+        validate: () =>
+          newExpense.description.trim() ? null : "Enter description",
+      },
+      {
+        id: "amount",
+        kind: "number",
+        validate: () => {
+          const amount = parseFloat(newExpense.amount)
+          return Number.isFinite(amount) && amount > 0 ? null : "Enter amount"
+        },
+      },
+    )
+
+    if (splitMode) {
+      fields.push(
+        {
+          id: "vendor",
+          kind: "text",
+          validate: () =>
+            newExpense.vendor.trim() ? null : "Enter vendor for split payment",
+        },
+        {
+          id: "splitFirstAmount",
+          kind: "number",
+          validate: () => {
+            const amount = parseFloat(splitFirstAmount)
+            return Number.isFinite(amount) && amount > 0
+              ? null
+              : "Enter first payment amount"
+          },
+        },
+      )
+    }
+
+    return fields
+  }, [
+    categoryNames,
+    labourTeams,
+    subcategoriesForCategory,
+    newExpense,
+    usesLabourCategory,
+    splitMode,
+    splitFirstAmount,
+  ])
 
   const splitPaymentByGroupId = useMemo(() => {
     const byGroup = new Map<string, Expense[]>()
@@ -1208,6 +1332,15 @@ export function ExpensesTab({
       !newExpense.labourTeamId
     ) {
       toast.error("Select which labour team received this payment")
+      return
+    }
+
+    if (
+      !categoryUsesLabourTeams(newExpense.category, expenseCategories) &&
+      newExpense.category &&
+      !newExpense.subcategory
+    ) {
+      toast.error("Select a subcategory")
       return
     }
 
@@ -2204,6 +2337,7 @@ export function ExpensesTab({
                 type="button"
                 className="gap-2"
                 onClick={() => setIsAddDialogOpen(true)}
+                title="Add expense (Ctrl+E)"
               >
                 <Plus className="h-4 w-4" />
                 Add Expense
@@ -2216,287 +2350,38 @@ export function ExpensesTab({
                 }}
               >
                 <DialogContent className={EXPENSE_DIALOG_CLASS}>
-                  <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
-                    <DialogTitle>Add New Expense</DialogTitle>
-                  </DialogHeader>
-                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
-                  <div className="grid gap-4">
-                    <div className={EXPENSE_FORM_ROW}>
-                      <div className="space-y-2">
-                        <Label>Date *</Label>
-                        <Input 
-                          type="date" 
-                          value={newExpense.date}
-                          onChange={(e) => setNewExpense({...newExpense, date: e.target.value})}
-                          className="bg-muted border-border"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <Label>Category *</Label>
-                          {canManageProjects && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 gap-1 px-2 text-xs"
-                              onClick={() => setCategoryManageOpen(true)}
-                            >
-                              <Pencil className="h-3 w-3" />
-                              Edit
-                            </Button>
-                          )}
-                        </div>
-                        <Select 
-                          value={newExpense.category}
-                          onValueChange={(val) => setNewExpense({
-                            ...newExpense,
-                            category: val,
-                            subcategory: "",
-                            labourTeamId: "",
-                          })}
-                        >
-                          <SelectTrigger className="bg-muted border-border">
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categoryNames.map((cat) => (
-                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className={EXPENSE_FORM_ROW}>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <Label>
-                            {categoryUsesLabourTeams(newExpense.category, expenseCategories)
-                              ? "Labour team *"
-                              : "Subcategory"}
-                          </Label>
-                          {canManageProjects && newExpense.category && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 gap-1 px-2 text-xs"
-                              onClick={openSubcategoryManage}
-                            >
-                              <Pencil className="h-3 w-3" />
-                              Edit
-                            </Button>
-                          )}
-                        </div>
-                        {categoryUsesLabourTeams(newExpense.category, expenseCategories) ? (
-                          <Select
-                            value={newExpense.labourTeamId}
-                            onValueChange={(val) =>
-                              setNewExpense({ ...newExpense, labourTeamId: val })
-                            }
-                          >
-                            <SelectTrigger className="bg-muted border-border">
-                              <SelectValue placeholder="Which team was paid?" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {labourTeams.map((team) => (
-                                <SelectItem key={team.id} value={team.id}>
-                                  {team.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Select
-                            value={newExpense.subcategory}
-                            onValueChange={(val) =>
-                              setNewExpense({ ...newExpense, subcategory: val })
-                            }
-                            disabled={!newExpense.category}
-                          >
-                            <SelectTrigger className="bg-muted border-border">
-                              <SelectValue placeholder="Select subcategory" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {newExpense.category &&
-                                subcategoriesForCategory.get(newExpense.category)?.map((sub) => (
-                                  <SelectItem key={sub} value={sub}>
-                                    {sub}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Stage/Milestone</Label>
-                        <Select 
-                          value={newExpense.milestoneId}
-                          onValueChange={(val) => setNewExpense({...newExpense, milestoneId: val})}
-                        >
-                          <SelectTrigger className="bg-muted border-border">
-                            <SelectValue placeholder="Select milestone" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {milestones.map((milestone) => (
-                              <SelectItem key={milestone.id} value={milestone.id}>{milestone.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    {suggestedSplitGroup && !splitMode && (
-                      <PendingSplitSuggestion
-                        label={suggestedSplitGroup.teamLabel}
-                        category={suggestedSplitGroup.category}
-                        recorded={suggestedSplitGroup.recorded}
-                        total={suggestedSplitGroup.total}
-                        remaining={suggestedSplitGroup.remaining}
-                        splitCount={suggestedSplitGroup.splitCount}
-                        vendor={suggestedSplitGroup.vendor}
-                        onContinue={handleUseSuggestedSplit}
-                      />
-                    )}
-                    {loadingOpenSplits &&
-                      newExpense.category &&
-                      (newExpense.labourTeamId || newExpense.subcategory) &&
-                      !suggestedSplitGroup &&
-                      !splitMode && (
-                        <p className="text-xs text-muted-foreground">
-                          Checking for pending split payments…
-                        </p>
-                      )}
-                    <div className="space-y-2">
-                      <Label>Description *</Label>
-                      <Textarea 
-                        value={newExpense.description}
-                        onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
-                        placeholder="Enter expense description..."
-                        className="bg-muted border-border"
-                      />
-                    </div>
-                    <div className={EXPENSE_FORM_ROW}>
-                      <div className="space-y-2">
-                        <Label>Vendor</Label>
-                        <Input 
-                          value={newExpense.vendor}
-                          onChange={(e) => setNewExpense({...newExpense, vendor: e.target.value})}
-                          placeholder="Vendor name"
-                          className="bg-muted border-border"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <Label>{splitMode ? "Total amount *" : "Amount *"}</Label>
-                          {!splitMode && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="text-xs text-primary underline-offset-2 hover:underline"
-                                    onClick={() => {
-                                      setSplitMode(true)
-                                      setSplitFirstAmount("")
-                                    }}
-                                  >
-                                    Want to split the payment?
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
-                                  This option allows you to split the amount, and
-                                  part payment you can pay later.
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
-                        <Input 
-                          type="number"
-                          value={newExpense.amount}
-                          onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
-                          placeholder="0.00"
-                          className="bg-muted border-border"
-                        />
-                        {splitMode && (
-                          <button
-                            type="button"
-                            className="text-xs text-muted-foreground underline"
-                            onClick={() => {
-                              setSplitMode(false)
-                              setSplitFirstAmount("")
-                            }}
-                          >
-                            Cancel split (single payment)
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {splitMode && (
-                      <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-                        <Label>First payment today *</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={splitFirstAmount}
-                          onChange={(e) => setSplitFirstAmount(e.target.value)}
-                          placeholder="Amount paid today"
-                          className="bg-muted border-border"
-                          disabled={isSubmitting}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Uses the expense date above. You can record split 2, 3, and
-                          more on their actual dates later — no need to finish the full
-                          total now. Each payment appears in the expenses table by date.
-                        </p>
-                      </div>
-                    )}
-                    <div className={EXPENSE_FORM_ROW}>
-                      <div className="space-y-2">
-                        <Label>Bill Number</Label>
-                        <Input 
-                          value={newExpense.billNumber}
-                          onChange={(e) => setNewExpense({...newExpense, billNumber: e.target.value})}
-                          placeholder="INV-001"
-                          className="bg-muted border-border"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Upload Invoice</Label>
-                        <input
-                          ref={invoiceFileInputRef}
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-                          className="hidden"
-                          onChange={handleInvoiceFileChange}
-                          disabled={isSubmitting}
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="w-full gap-2 bg-muted border-border"
-                          onClick={() => invoiceFileInputRef.current?.click()}
-                          disabled={isSubmitting}
-                        >
-                          <Upload className="h-4 w-4" />
-                          {invoiceFile ? "Change Invoice" : "Upload Invoice"}
-                        </Button>
-                        {invoiceFile ? (
-                          <p className="text-xs text-muted-foreground">
-                            {invoiceFile.name} ({formatFileSize(invoiceFile.size)})
-                          </p>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">
-                            PDF, JPG, JPEG, or PNG up to 10MB. Optional — works with split
-                            payments too (invoice links to the split group).
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  </div>
-                  <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:px-6">
+                  <MandatoryExpenseKeyboardProvider
+                    enabled={isAddDialogOpen}
+                    fields={addExpenseMandatoryFields}
+                    onSubmit={() => void handleAddExpense()}
+                  >
+                    <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
+                      <DialogTitle>Add New Expense</DialogTitle>
+                    </DialogHeader>
+                    <ProjectAddExpenseDialogForm
+                      newExpense={newExpense}
+                      setNewExpense={setNewExpense}
+                      categoryNames={categoryNames}
+                      labourTeams={labourTeams}
+                      subcategoriesForCategory={subcategoriesForCategory}
+                      milestones={milestones}
+                      canManageProjects={canManageProjects}
+                      usesLabourCategory={usesLabourCategory}
+                      splitMode={splitMode}
+                      setSplitMode={setSplitMode}
+                      splitFirstAmount={splitFirstAmount}
+                      setSplitFirstAmount={setSplitFirstAmount}
+                      suggestedSplitGroup={suggestedSplitGroup}
+                      loadingOpenSplits={loadingOpenSplits}
+                      isSubmitting={isSubmitting}
+                      invoiceFile={invoiceFile}
+                      invoiceFileInputRef={invoiceFileInputRef}
+                      handleInvoiceFileChange={handleInvoiceFileChange}
+                      handleUseSuggestedSplit={handleUseSuggestedSplit}
+                      openSubcategoryManage={openSubcategoryManage}
+                      setCategoryManageOpen={setCategoryManageOpen}
+                    />
+                    <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:px-6">
                       <Button
                         type="button"
                         variant="outline"
@@ -2506,8 +2391,7 @@ export function ExpensesTab({
                       >
                         Cancel
                       </Button>
-                      <Button
-                        type="button"
+                      <MandatoryExpenseSubmitButton
                         className="w-full sm:w-auto"
                         onClick={() => void handleAddExpense()}
                         disabled={isSubmitting}
@@ -2520,8 +2404,9 @@ export function ExpensesTab({
                         ) : (
                           "Add Expense"
                         )}
-                      </Button>
-                  </DialogFooter>
+                      </MandatoryExpenseSubmitButton>
+                    </DialogFooter>
+                  </MandatoryExpenseKeyboardProvider>
                 </DialogContent>
               </Dialog>
               <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>

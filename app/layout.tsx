@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
 import { AuthProvider } from '@/lib/providers/auth-provider'
+import { ExpenseShortcutShell } from '@/components/keyboard/expense-shortcut-shell'
 import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
@@ -55,7 +56,7 @@ export default function RootLayout({
       <body className="font-sans antialiased min-h-screen bg-background text-foreground">
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
           <AuthProvider>
-            {children}
+            <ExpenseShortcutShell>{children}</ExpenseShortcutShell>
           </AuthProvider>
         </ThemeProvider>
         <Toaster richColors position="top-right" />

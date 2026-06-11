@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type KeyboardEvent } from "react"
 import { Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -21,6 +21,9 @@ interface CategorySelectFieldProps {
   onValueChange: (value: string) => void
   categories: FinanceCategory[]
   onCategoriesChange: () => void
+  selectOpen?: boolean
+  onSelectOpenChange?: (open: boolean) => void
+  onTriggerKeyDown?: (e: KeyboardEvent<HTMLButtonElement>) => void
 }
 
 export function CategorySelectField({
@@ -30,6 +33,9 @@ export function CategorySelectField({
   onValueChange,
   categories,
   onCategoriesChange,
+  selectOpen,
+  onSelectOpenChange,
+  onTriggerKeyDown,
 }: CategorySelectFieldProps) {
   const [manageOpen, setManageOpen] = useState(false)
 
@@ -51,8 +57,13 @@ export function CategorySelectField({
             Edit categories
           </Button>
         </div>
-        <Select value={value} onValueChange={onValueChange}>
-          <SelectTrigger>
+        <Select
+          value={value}
+          onValueChange={onValueChange}
+          open={selectOpen}
+          onOpenChange={onSelectOpenChange}
+        >
+          <SelectTrigger onKeyDown={onTriggerKeyDown}>
             <SelectValue placeholder="Select category" />
           </SelectTrigger>
           <SelectContent>
