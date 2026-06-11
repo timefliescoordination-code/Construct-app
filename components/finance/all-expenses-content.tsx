@@ -1047,6 +1047,7 @@ export function AllExpensesContent() {
               enabled={companyDialogOpen && !editingCompany}
               fields={companyMandatoryFields}
               onSubmit={() => void saveCompany()}
+              autoAdvanceSelectOnLetter
             >
               <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
                 <DialogTitle>
@@ -1091,6 +1092,7 @@ export function AllExpensesContent() {
               enabled={companyIncomeDialogOpen && !editingCompanyIncome}
               fields={companyIncomeMandatoryFields}
               onSubmit={() => void saveCompanyIncome()}
+              autoAdvanceSelectOnLetter
             >
               <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
                 <DialogTitle>
@@ -1141,6 +1143,7 @@ export function AllExpensesContent() {
               enabled={personalDialogOpen && !editingPersonal}
               fields={personalMandatoryFields}
               onSubmit={() => void savePersonal()}
+              autoAdvanceSelectOnLetter
             >
               <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
                 <DialogTitle>
@@ -1401,6 +1404,7 @@ function CompanyExpenseFormFields({
           selectOpen={categoryBind?.open}
           onSelectOpenChange={categoryBind?.onOpenChange}
           onTriggerKeyDown={categoryBind?.onTriggerKeyDown}
+          triggerRef={categoryBind?.triggerRef}
         />
         <div className="space-y-2">
           <Label>Description</Label>
@@ -1509,6 +1513,7 @@ function CompanyIncomeFormFields({
           selectOpen={categoryBind?.open}
           onSelectOpenChange={categoryBind?.onOpenChange}
           onTriggerKeyDown={categoryBind?.onTriggerKeyDown}
+          triggerRef={categoryBind?.triggerRef}
         />
         <div className="space-y-2">
           <Label>Description</Label>
@@ -1645,6 +1650,7 @@ function PersonalExpenseFormFields({
           selectOpen={categoryBind?.open}
           onSelectOpenChange={categoryBind?.onOpenChange}
           onTriggerKeyDown={categoryBind?.onTriggerKeyDown}
+          triggerRef={categoryBind?.triggerRef}
         />
         <div className="space-y-2">
           <Label>Description</Label>

@@ -222,6 +222,7 @@ export function ProjectAddExpenseDialogForm({
               onOpenChange={categoryBind?.onOpenChange}
             >
               <SelectTrigger
+                ref={categoryBind?.triggerRef}
                 className={cn(
                   "bg-muted border-border",
                   categoryBind?.typePrefix && "ring-1 ring-primary/40",
@@ -280,6 +281,7 @@ export function ProjectAddExpenseDialogForm({
                 onOpenChange={teamBind?.onOpenChange}
               >
                 <SelectTrigger
+                  ref={teamBind?.triggerRef}
                   className={cn(
                     "bg-muted border-border",
                     teamBind?.typePrefix && "ring-1 ring-primary/40",
@@ -324,6 +326,7 @@ export function ProjectAddExpenseDialogForm({
                 onOpenChange={subcategoryBind?.onOpenChange}
               >
                 <SelectTrigger
+                  ref={subcategoryBind?.triggerRef}
                   className={cn(
                     "bg-muted border-border",
                     subcategoryBind?.typePrefix && "ring-1 ring-primary/40",
@@ -370,6 +373,7 @@ export function ProjectAddExpenseDialogForm({
               onOpenChange={milestoneBind?.onOpenChange}
             >
               <SelectTrigger
+                ref={milestoneBind?.triggerRef}
                 className={cn(
                   "bg-muted border-border",
                   milestoneBind?.typePrefix && "ring-1 ring-primary/40",

@@ -315,7 +315,10 @@ function EngineerAddExpenseForm({
             open={categoryBind?.open}
             onOpenChange={categoryBind?.onOpenChange}
           >
-            <SelectTrigger onKeyDown={categoryBind?.onTriggerKeyDown}>
+            <SelectTrigger
+              ref={categoryBind?.triggerRef}
+              onKeyDown={categoryBind?.onTriggerKeyDown}
+            >
               <SelectValue placeholder="Select category" />
             </SelectTrigger>
             <SelectContent>
@@ -678,6 +681,7 @@ export function EngineerDashboard() {
                       enabled={isAddExpenseOpen}
                       fields={engineerMandatoryFields}
                       onSubmit={() => void handleSubmitExpense()}
+                      autoAdvanceSelectOnLetter
                     >
                       <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
                         <DialogTitle>Add New Expense</DialogTitle>

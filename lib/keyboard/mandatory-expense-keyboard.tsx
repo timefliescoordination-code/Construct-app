@@ -42,6 +42,7 @@ type MandatoryExpenseKeyboardContextValue = {
     isOptionVisible: (label: string, value: string) => boolean
     onOpenChange: (open: boolean) => void
     onTriggerKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => void
+    triggerRef: (el: HTMLButtonElement | null) => void
   }
 }
 
@@ -75,6 +76,7 @@ export function MandatoryExpenseKeyboardProvider({
   const [submitStepReached, setSubmitStepReached] = useState(false)
   const [selectTypePrefix, setSelectTypePrefix] = useState("")
   const letterIndexRef = useRef<Record<string, number>>({})
+  const keyboardNavigatingRef = useRef(false)
 
   const chain = useMemo(() => activeMandatoryFields(fields), [fields])
   const chainKey = useMemo(() => chain.map((f) => f.id).join("|"), [chain])
@@ -85,6 +87,7 @@ export function MandatoryExpenseKeyboardProvider({
       if (!field) return
       setActiveIndex(index)
       if (field.kind === "select") {
+        keyboardNavigatingRef.current = true
         setOpenSelectId(field.id)
         setSelectTypePrefix("")
         letterIndexRef.current[field.id] = -1
@@ -97,6 +100,9 @@ export function MandatoryExpenseKeyboardProvider({
       }
       requestAnimationFrame(() => {
         elementRefs.current.get(field.id)?.focus()
+        requestAnimationFrame(() => {
+          keyboardNavigatingRef.current = false
+        })
       })
     },
     [chain],
@@ -112,6 +118,9 @@ export function MandatoryExpenseKeyboardProvider({
     (fieldId: string) => {
       const idx = chain.findIndex((f) => f.id === fieldId)
       if (idx < 0) return
+      if (chain[idx]?.kind === "date") {
+        setDatePickerOpened(false)
+      }
       const next = idx + 1
       if (next >= chain.length) {
         setActiveIndex(idx)
@@ -172,12 +181,14 @@ export function MandatoryExpenseKeyboardProvider({
       onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => {
         if (e.key !== "Enter" || e.shiftKey) return
         e.preventDefault()
-        if (!datePickerOpened) {
-          tryOpenDatePicker(e.currentTarget)
-          setDatePickerOpened(true)
-        } else {
+        if (datePickerOpened) {
           setDatePickerOpened(false)
           advance()
+        } else if (e.currentTarget.value.trim()) {
+          advance()
+        } else {
+          tryOpenDatePicker(e.currentTarget)
+          setDatePickerOpened(true)
         }
       },
     }),
@@ -226,6 +237,7 @@ export function MandatoryExpenseKeyboardProvider({
         isOptionVisible: (label: string, value: string) =>
           !isActive || optionMatchesPrefix(label, value, typePrefix),
         onOpenChange: (open: boolean) => {
+          if (!open && keyboardNavigatingRef.current) return
           if (open) {
             setOpenSelectId(fieldId)
             setSelectTypePrefix("")
@@ -234,6 +246,7 @@ export function MandatoryExpenseKeyboardProvider({
             setSelectTypePrefix("")
           }
         },
+        triggerRef: (el: HTMLButtonElement | null) => setElementRef(fieldId, el),
         onTriggerKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => {
           const field = chain.find((f) => f.id === fieldId)
           if (!field || field.kind !== "select" || !field.options) return
@@ -306,6 +319,7 @@ export function MandatoryExpenseKeyboardProvider({
       confirmSelectMatch,
       openSelectId,
       selectTypePrefix,
+      setElementRef,
     ],
   )
 

@@ -24,6 +24,7 @@ interface CategorySelectFieldProps {
   selectOpen?: boolean
   onSelectOpenChange?: (open: boolean) => void
   onTriggerKeyDown?: (e: KeyboardEvent<HTMLButtonElement>) => void
+  triggerRef?: (el: HTMLButtonElement | null) => void
 }
 
 export function CategorySelectField({
@@ -36,6 +37,7 @@ export function CategorySelectField({
   selectOpen,
   onSelectOpenChange,
   onTriggerKeyDown,
+  triggerRef,
 }: CategorySelectFieldProps) {
   const [manageOpen, setManageOpen] = useState(false)
 
@@ -63,7 +65,7 @@ export function CategorySelectField({
           open={selectOpen}
           onOpenChange={onSelectOpenChange}
         >
-          <SelectTrigger onKeyDown={onTriggerKeyDown}>
+          <SelectTrigger ref={triggerRef} onKeyDown={onTriggerKeyDown}>
             <SelectValue placeholder="Select category" />
           </SelectTrigger>
           <SelectContent>
