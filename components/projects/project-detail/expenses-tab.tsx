@@ -657,6 +657,23 @@ export function ExpensesTab({
         newExpense.subcategory ? null : "Select subcategory",
     })
 
+    const milestoneOptions = milestones.map((m) => ({
+      value: m.id,
+      label: m.name,
+    }))
+
+    fields.push({
+      id: "milestone",
+      kind: "select",
+      skip: milestones.length === 0,
+      options: milestoneOptions,
+      getValue: () => newExpense.milestoneId,
+      setValue: (value) =>
+        setNewExpense((prev) => ({ ...prev, milestoneId: value })),
+      validate: () =>
+        newExpense.milestoneId ? null : "Select stage/milestone",
+    })
+
     fields.push(
       {
         id: "description",
@@ -700,6 +717,7 @@ export function ExpensesTab({
     categoryNames,
     labourTeams,
     subcategoriesForCategory,
+    milestones,
     newExpense,
     usesLabourCategory,
     splitMode,
@@ -1341,6 +1359,11 @@ export function ExpensesTab({
       !newExpense.subcategory
     ) {
       toast.error("Select a subcategory")
+      return
+    }
+
+    if (milestones.length > 0 && !newExpense.milestoneId) {
+      toast.error("Select a stage/milestone")
       return
     }
 

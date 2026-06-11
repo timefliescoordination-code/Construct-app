@@ -103,6 +103,7 @@ export function ProjectAddExpenseDialogForm({
   const categoryBind = kb?.bindSelect("category")
   const teamBind = kb?.bindSelect("subcategoryOrTeam")
   const subcategoryBind = kb?.bindSelect("subcategory")
+  const milestoneBind = kb?.bindSelect("milestone")
   const descriptionBind = kb?.bindText("description")
   const amountBind = kb?.bindText("amount")
   const vendorBind = kb?.bindText("vendor")
@@ -240,14 +241,19 @@ export function ProjectAddExpenseDialogForm({
             )}
           </div>
           <div className="space-y-2">
-            <Label>Stage/Milestone</Label>
+            <Label>Stage/Milestone *</Label>
             <Select
               value={newExpense.milestoneId}
               onValueChange={(val) =>
                 setNewExpense({ ...newExpense, milestoneId: val })
               }
+              open={milestoneBind?.open}
+              onOpenChange={milestoneBind?.onOpenChange}
             >
-              <SelectTrigger className="bg-muted border-border">
+              <SelectTrigger
+                className="bg-muted border-border"
+                onKeyDown={milestoneBind?.onTriggerKeyDown}
+              >
                 <SelectValue placeholder="Select milestone" />
               </SelectTrigger>
               <SelectContent>
