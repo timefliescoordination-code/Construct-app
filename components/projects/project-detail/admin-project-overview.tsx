@@ -233,41 +233,6 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
   return (
     <div className="space-y-6">
       <DashboardSection
-        layer="plan"
-        title="Contract & fixed profit (plan)"
-        description="Target margin is reserved at setup — not cash in hand until the job completes successfully."
-      >
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricTile
-            label="Total contract value"
-            value={formatINR(financials.totalContractValue)}
-            hint="Original contract + approved additional works"
-          />
-          <MetricTile
-            label="Fixed profit (reserved)"
-            value={formatINR(financials.plannedProfit)}
-            hint={`${projectData.expectedProfitPercent}% of contract — do not spend`}
-            valueClassName="text-success"
-          />
-          <MetricTile
-            label="Total stage budget"
-            value={formatINR(financials.totalStageBudget)}
-            hint="Maximum planned spend on construction"
-            valueClassName="text-primary"
-          />
-          <MetricTile
-            label="Remaining stage budget"
-            value={formatINR(financials.remainingStageBudget)}
-            hint={`${financials.budgetUsagePercent}% of stage budget used`}
-            timelineLines={remainingBudgetTimelineLines}
-            valueClassName={
-              financials.remainingStageBudget >= 0 ? "text-foreground" : "text-destructive"
-            }
-          />
-        </div>
-      </DashboardSection>
-
-      <DashboardSection
         layer="cash"
         title="Cash position"
         description="Based on payments actually received from the client — use this for day-to-day spending decisions."
@@ -299,6 +264,41 @@ export function AdminProjectOverview({ projectData }: AdminProjectOverviewProps)
             value={formatINR(financials.balanceToCollect)}
             hint="Contract value still due from client"
             valueClassName="text-primary"
+          />
+        </div>
+      </DashboardSection>
+
+      <DashboardSection
+        layer="plan"
+        title="Contract & fixed profit (plan)"
+        description="Target margin is reserved at setup — not cash in hand until the job completes successfully."
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricTile
+            label="Total contract value"
+            value={formatINR(financials.totalContractValue)}
+            hint="Original contract + approved additional works"
+          />
+          <MetricTile
+            label="Fixed profit (reserved)"
+            value={formatINR(financials.plannedProfit)}
+            hint={`${projectData.expectedProfitPercent}% of contract — do not spend`}
+            valueClassName="text-success"
+          />
+          <MetricTile
+            label="Total stage budget"
+            value={formatINR(financials.totalStageBudget)}
+            hint="Maximum planned spend on construction"
+            valueClassName="text-primary"
+          />
+          <MetricTile
+            label="Remaining stage budget"
+            value={formatINR(financials.remainingStageBudget)}
+            hint={`${financials.budgetUsagePercent}% of stage budget used`}
+            timelineLines={remainingBudgetTimelineLines}
+            valueClassName={
+              financials.remainingStageBudget >= 0 ? "text-foreground" : "text-destructive"
+            }
           />
         </div>
       </DashboardSection>
