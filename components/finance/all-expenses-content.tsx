@@ -1405,6 +1405,8 @@ function CompanyExpenseFormFields({
           onSelectOpenChange={categoryBind?.onOpenChange}
           onTriggerKeyDown={categoryBind?.onTriggerKeyDown}
           triggerRef={categoryBind?.triggerRef}
+          typePrefix={categoryBind?.typePrefix}
+          isOptionVisible={categoryBind?.isOptionVisible}
         />
         <div className="space-y-2">
           <Label>Description</Label>
@@ -1514,6 +1516,8 @@ function CompanyIncomeFormFields({
           onSelectOpenChange={categoryBind?.onOpenChange}
           onTriggerKeyDown={categoryBind?.onTriggerKeyDown}
           triggerRef={categoryBind?.triggerRef}
+          typePrefix={categoryBind?.typePrefix}
+          isOptionVisible={categoryBind?.isOptionVisible}
         />
         <div className="space-y-2">
           <Label>Description</Label>
@@ -1651,6 +1655,8 @@ function PersonalExpenseFormFields({
           onSelectOpenChange={categoryBind?.onOpenChange}
           onTriggerKeyDown={categoryBind?.onTriggerKeyDown}
           triggerRef={categoryBind?.triggerRef}
+          typePrefix={categoryBind?.typePrefix}
+          isOptionVisible={categoryBind?.isOptionVisible}
         />
         <div className="space-y-2">
           <Label>Description</Label>

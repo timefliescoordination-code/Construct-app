@@ -32,7 +32,10 @@ type MandatoryExpenseKeyboardContextValue = {
     ref: (el: HTMLInputElement | null) => void
     onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void
   }
-  bindText: (fieldId: string) => {
+  bindText: (
+    fieldId: string,
+    opts?: { multiline?: boolean },
+  ) => {
     ref: (el: HTMLInputElement | HTMLTextAreaElement | null) => void
     onKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void
   }
@@ -69,12 +72,12 @@ export function MandatoryExpenseKeyboardProvider({
   const submitRef = useRef<HTMLButtonElement>(null)
   const elementRefs = useRef<Map<string, HTMLElement>>(new Map())
   const didInitialFocusRef = useRef(false)
-  const pendingAdvanceFromRef = useRef<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [datePickerOpened, setDatePickerOpened] = useState(false)
   const [openSelectId, setOpenSelectId] = useState<string | null>(null)
   const [submitStepReached, setSubmitStepReached] = useState(false)
   const [selectTypePrefix, setSelectTypePrefix] = useState("")
+  const [pendingAdvanceFrom, setPendingAdvanceFrom] = useState<string | null>(null)
   const letterIndexRef = useRef<Record<string, number>>({})
   const keyboardNavigatingRef = useRef(false)
 
@@ -100,9 +103,9 @@ export function MandatoryExpenseKeyboardProvider({
       }
       requestAnimationFrame(() => {
         elementRefs.current.get(field.id)?.focus()
-        requestAnimationFrame(() => {
+        window.setTimeout(() => {
           keyboardNavigatingRef.current = false
-        })
+        }, 120)
       })
     },
     [chain],
@@ -150,7 +153,7 @@ export function MandatoryExpenseKeyboardProvider({
     if (!enabled || chain.length === 0) {
       didInitialFocusRef.current = false
       setSubmitStepReached(false)
-      pendingAdvanceFromRef.current = null
+      setPendingAdvanceFrom(null)
       return
     }
     if (didInitialFocusRef.current) return
@@ -164,11 +167,11 @@ export function MandatoryExpenseKeyboardProvider({
   }, [enabled, chainKey, focusField, chain.length])
 
   useEffect(() => {
-    const fromId = pendingAdvanceFromRef.current
-    if (!fromId || !enabled) return
-    pendingAdvanceFromRef.current = null
+    if (!pendingAdvanceFrom || !enabled) return
+    const fromId = pendingAdvanceFrom
+    setPendingAdvanceFrom(null)
     advanceFromFieldId(fromId)
-  }, [chainKey, enabled, advanceFromFieldId])
+  }, [pendingAdvanceFrom, enabled, advanceFromFieldId])
 
   const setElementRef = useCallback((id: string, el: HTMLElement | null) => {
     if (el) elementRefs.current.set(id, el)
@@ -196,11 +199,12 @@ export function MandatoryExpenseKeyboardProvider({
   )
 
   const bindText = useCallback(
-    (fieldId: string) => ({
+    (fieldId: string, opts?: { multiline?: boolean }) => ({
       ref: (el: HTMLInputElement | HTMLTextAreaElement | null) =>
         setElementRef(fieldId, el),
       onKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         if (e.key !== "Enter" || e.shiftKey) return
+        if (opts?.multiline && !(e.ctrlKey || e.metaKey)) return
         const field = chain.find((f) => f.id === fieldId)
         if (!field) return
         const err = field.validate?.()
@@ -220,7 +224,7 @@ export function MandatoryExpenseKeyboardProvider({
       setSelectTypePrefix("")
       setOpenSelectId(null)
       if (autoAdvanceSelectOnLetter) {
-        pendingAdvanceFromRef.current = fieldId
+        setPendingAdvanceFrom(fieldId)
       }
     },
     [autoAdvanceSelectOnLetter, chain],
@@ -276,7 +280,8 @@ export function MandatoryExpenseKeyboardProvider({
               return
             }
             const value = field.getValue?.() ?? ""
-            if (value) {
+            const isOptional = !field.validate
+            if (value || isOptional) {
               setSelectTypePrefix("")
               setOpenSelectId(null)
               advance()

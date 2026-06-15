@@ -170,7 +170,7 @@ export function ProjectAddExpenseDialogForm({
   const teamBind = kb?.bindSelect("subcategoryOrTeam")
   const subcategoryBind = kb?.bindSelect("subcategory")
   const milestoneBind = kb?.bindSelect("milestone")
-  const descriptionBind = kb?.bindText("description")
+  const descriptionBind = kb?.bindText("description", { multiline: true })
   const amountBind = kb?.bindText("amount")
   const vendorBind = kb?.bindText("vendor")
   const splitFirstBind = kb?.bindText("splitFirstAmount")

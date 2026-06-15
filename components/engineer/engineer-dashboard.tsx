@@ -282,9 +282,18 @@ function EngineerAddExpenseForm({
   milestones: { id: string; name: string }[]
 }) {
   const kb = useMandatoryExpenseKeyboard()
+  const milestoneBind = kb?.bindSelect("milestone")
   const categoryBind = kb?.bindSelect("category")
   const descriptionBind = kb?.bindText("description")
+  const vendorBind = kb?.bindText("vendor")
   const amountBind = kb?.bindText("amount")
+
+  const visibleCategories = ENGINEER_CATEGORY_OPTIONS.filter(
+    (opt) => categoryBind?.isOptionVisible(opt.label, opt.value) ?? true,
+  )
+  const visibleMilestones = milestones.filter(
+    (ms) => milestoneBind?.isOptionVisible(ms.name, ms.id) ?? true,
+  )
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
@@ -294,16 +303,42 @@ function EngineerAddExpenseForm({
           <Select
             value={expenseForm.milestoneId}
             onValueChange={(v) => setExpenseForm({ ...expenseForm, milestoneId: v })}
+            open={milestoneBind?.open}
+            onOpenChange={milestoneBind?.onOpenChange}
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Select stage" />
+            <SelectTrigger
+              ref={milestoneBind?.triggerRef}
+              className={cn(milestoneBind?.typePrefix && "ring-1 ring-primary/40")}
+              onKeyDown={milestoneBind?.onTriggerKeyDown}
+            >
+              {milestoneBind?.typePrefix ? (
+                <span className="truncate text-muted-foreground text-sm">
+                  type to filter…
+                </span>
+              ) : (
+                <SelectValue placeholder="Select stage" />
+              )}
             </SelectTrigger>
             <SelectContent>
-              {milestones.map((ms) => (
-                <SelectItem key={ms.id} value={ms.id}>
-                  {ms.name}
-                </SelectItem>
-              ))}
+              {milestoneBind?.typePrefix ? (
+                <div className="border-b border-border px-2 py-1.5 text-xs text-muted-foreground">
+                  Filter:{" "}
+                  <kbd className="rounded border bg-muted px-1 font-mono">
+                    {milestoneBind.typePrefix}
+                  </kbd>
+                </div>
+              ) : null}
+              {visibleMilestones.length === 0 && milestoneBind?.typePrefix ? (
+                <p className="px-2 py-3 text-center text-sm text-muted-foreground">
+                  No matches — Backspace to edit
+                </p>
+              ) : (
+                visibleMilestones.map((ms) => (
+                  <SelectItem key={ms.id} value={ms.id}>
+                    {ms.name}
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -317,16 +352,37 @@ function EngineerAddExpenseForm({
           >
             <SelectTrigger
               ref={categoryBind?.triggerRef}
+              className={cn(categoryBind?.typePrefix && "ring-1 ring-primary/40")}
               onKeyDown={categoryBind?.onTriggerKeyDown}
             >
-              <SelectValue placeholder="Select category" />
+              {categoryBind?.typePrefix ? (
+                <span className="truncate text-muted-foreground text-sm">
+                  type to filter…
+                </span>
+              ) : (
+                <SelectValue placeholder="Select category" />
+              )}
             </SelectTrigger>
             <SelectContent>
-              {ENGINEER_CATEGORY_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
+              {categoryBind?.typePrefix ? (
+                <div className="border-b border-border px-2 py-1.5 text-xs text-muted-foreground">
+                  Filter:{" "}
+                  <kbd className="rounded border bg-muted px-1 font-mono">
+                    {categoryBind.typePrefix}
+                  </kbd>
+                </div>
+              ) : null}
+              {visibleCategories.length === 0 && categoryBind?.typePrefix ? (
+                <p className="px-2 py-3 text-center text-sm text-muted-foreground">
+                  No matches — Backspace to edit
+                </p>
+              ) : (
+                visibleCategories.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -348,6 +404,8 @@ function EngineerAddExpenseForm({
             value={expenseForm.vendor}
             onChange={(e) => setExpenseForm({ ...expenseForm, vendor: e.target.value })}
             placeholder="Vendor name"
+            ref={vendorBind?.ref}
+            onKeyDown={vendorBind?.onKeyDown}
           />
         </div>
         <div className="space-y-2">
@@ -421,8 +479,36 @@ export function EngineerDashboard() {
     setSelectedProjectId(SHOW_ALL_PROJECTS)
   }, [assignedProjects, selectedProjectId])
 
+  const engineerData = useMemo((): EngineerDashboardView | null => {
+    if (!assignedProjects.length) return null
+
+    if (effectiveProjectId === SHOW_ALL_PROJECTS) {
+      return buildViewFromAllProjects(assignedProjects)
+    }
+
+    const project = assignedProjects.find((p) => p.id === effectiveProjectId)
+    if (!project) {
+      return buildViewFromAllProjects(assignedProjects)
+    }
+
+    return buildViewFromProject(project)
+  }, [assignedProjects, effectiveProjectId])
+
   const engineerMandatoryFields = useMemo((): MandatoryFieldDef[] => {
+    const milestoneOptions = (engineerData?.milestones ?? []).map((ms) => ({
+      value: ms.id,
+      label: ms.name,
+    }))
     return [
+      {
+        id: "milestone",
+        kind: "select",
+        skip: milestoneOptions.length === 0,
+        options: milestoneOptions,
+        getValue: () => expenseForm.milestoneId,
+        setValue: (value) =>
+          setExpenseForm((prev) => ({ ...prev, milestoneId: value })),
+      },
       {
         id: "category",
         kind: "select",
@@ -439,6 +525,10 @@ export function EngineerDashboard() {
           expenseForm.description.trim() ? null : "Enter description",
       },
       {
+        id: "vendor",
+        kind: "text",
+      },
+      {
         id: "amount",
         kind: "number",
         validate: () => {
@@ -447,22 +537,14 @@ export function EngineerDashboard() {
         },
       },
     ]
-  }, [expenseForm.category, expenseForm.description, expenseForm.amount])
-
-  const engineerData = useMemo((): EngineerDashboardView | null => {
-    if (!assignedProjects.length) return null
-
-    if (effectiveProjectId === SHOW_ALL_PROJECTS) {
-      return buildViewFromAllProjects(assignedProjects)
-    }
-
-    const project = assignedProjects.find((p) => p.id === effectiveProjectId)
-    if (!project) {
-      return buildViewFromAllProjects(assignedProjects)
-    }
-
-    return buildViewFromProject(project)
-  }, [assignedProjects, effectiveProjectId])
+  }, [
+    engineerData?.milestones,
+    expenseForm.category,
+    expenseForm.description,
+    expenseForm.amount,
+    expenseForm.milestoneId,
+    expenseForm.vendor,
+  ])
 
   useEffect(() => {
     if (!expenseShortcuts || engineerData?.showAll) return
