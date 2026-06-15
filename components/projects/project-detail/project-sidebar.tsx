@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/lib/hooks/use-auth"
 
 export interface ProjectSidebarTab {
   id: string
@@ -56,6 +57,18 @@ export function ProjectSidebar({
   className,
   onNavigate,
 }: ProjectSidebarProps) {
+  const { role } = useAuth()
+  const dashboardHref =
+    role === "admin"
+      ? "/admin"
+      : role === "pm"
+        ? "/pm"
+        : role === "engineer"
+          ? "/engineer"
+          : role === "customer"
+            ? "/customer"
+            : "/projects"
+
   const handleTab = (tabId: string) => {
     onTabChange(tabId)
     onNavigate?.()
@@ -69,7 +82,11 @@ export function ProjectSidebar({
       )}
     >
       <div className="border-b border-sidebar-border px-4 py-5">
-        <div className="flex items-center gap-3">
+        <Link
+          href={dashboardHref}
+          onClick={onNavigate}
+          className="flex items-center gap-3 rounded-lg transition-opacity hover:opacity-90"
+        >
           <img
             src="/images/vra-logo.png"
             alt="VRA HOMES"
@@ -79,7 +96,7 @@ export function ProjectSidebar({
             <p className="truncate text-sm font-bold text-foreground">VRA HOMES</p>
             <p className="text-[11px] text-muted-foreground">Build Unique One</p>
           </div>
-        </div>
+        </Link>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
