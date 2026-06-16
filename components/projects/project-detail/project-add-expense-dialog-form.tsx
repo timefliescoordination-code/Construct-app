@@ -10,7 +10,6 @@ import type {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -170,7 +169,7 @@ export function ProjectAddExpenseDialogForm({
   const teamBind = kb?.bindSelect("subcategoryOrTeam")
   const subcategoryBind = kb?.bindSelect("subcategory")
   const milestoneBind = kb?.bindSelect("milestone")
-  const descriptionBind = kb?.bindText("description", { multiline: true })
+  const descriptionBind = kb?.bindText("description")
   const amountBind = kb?.bindText("amount")
   const vendorBind = kb?.bindText("vendor")
   const splitFirstBind = kb?.bindText("splitFirstAmount")
@@ -434,7 +433,7 @@ export function ProjectAddExpenseDialogForm({
           )}
         <div className="space-y-2">
           <Label>Description *</Label>
-          <Textarea
+          <Input
             value={newExpense.description}
             onChange={(e) =>
               setNewExpense({ ...newExpense, description: e.target.value })
