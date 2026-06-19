@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { format } from "date-fns"
 import { Loader2, Plus } from "lucide-react"
 import { toast } from "sonner"
@@ -50,11 +50,6 @@ import {
   mapProjectBulkRowToCreate,
   validateProjectBulkRow,
 } from "@/lib/expense/bulk-entry-project"
-import type { MandatoryFieldDef } from "@/lib/keyboard/mandatory-expense-fields"
-import {
-  MandatoryExpenseKeyboardProvider,
-  MandatoryExpenseSubmitButton,
-} from "@/lib/keyboard/mandatory-expense-keyboard"
 import {
   bulkCreateCompanyExpensesAction,
   bulkCreateCompanyIncomeAction,
@@ -137,6 +132,13 @@ export type ExpenseBulkEntryDialogProps =
 
 export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
   const today = format(new Date(), "yyyy-MM-dd")
+  const variant = props.variant
+  const financeDefaultCategory =
+    variant === "company_expense" ||
+    variant === "company_income" ||
+    variant === "personal_expense"
+      ? props.defaultCategory ?? ""
+      : ""
 
   const [saving, setSaving] = useState(false)
   const [projectCompleted, setProjectCompleted] = useState<ProjectBulkRow[]>([])
@@ -171,26 +173,29 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
     setPersonalCompleted([])
     setProjectActive(emptyProjectBulkRow(today))
     setEngineerActive(emptyEngineerRow())
-    if (props.variant === "company_expense") {
-      setCompanyExpenseActive(emptyCompanyExpenseRow(today, props.defaultCategory ?? ""))
+    if (variant === "company_expense") {
+      setCompanyExpenseActive(emptyCompanyExpenseRow(today, financeDefaultCategory))
     } else {
       setCompanyExpenseActive(emptyCompanyExpenseRow(today))
     }
-    if (props.variant === "company_income") {
-      setCompanyIncomeActive(emptyCompanyIncomeRow(today, props.defaultCategory ?? ""))
+    if (variant === "company_income") {
+      setCompanyIncomeActive(emptyCompanyIncomeRow(today, financeDefaultCategory))
     } else {
       setCompanyIncomeActive(emptyCompanyIncomeRow(today))
     }
-    if (props.variant === "personal_expense") {
-      setPersonalActive(emptyPersonalExpenseRow(today, props.defaultCategory ?? ""))
+    if (variant === "personal_expense") {
+      setPersonalActive(emptyPersonalExpenseRow(today, financeDefaultCategory))
     } else {
       setPersonalActive(emptyPersonalExpenseRow(today))
     }
-  }, [props, today])
+  }, [financeDefaultCategory, today, variant])
 
+  const wasOpenRef = useRef(false)
   useEffect(() => {
-    if (!props.open) return
-    resetAll()
+    if (props.open && !wasOpenRef.current) {
+      resetAll()
+    }
+    wasOpenRef.current = props.open
   }, [props.open, resetAll])
 
   const projectNewExpense = useMemo(
@@ -212,91 +217,6 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
     props.variant === "project"
       ? categoryUsesLabourTeams(projectActive.category, props.expenseCategories)
       : false
-
-  const projectMandatoryFields = useMemo((): MandatoryFieldDef[] => {
-    if (props.variant !== "project") return []
-    const categoryOptions = props.categoryNames.map((cat) => ({
-      value: cat,
-      label: cat,
-    }))
-    const labourOptions = props.labourTeams.map((team) => ({
-      value: team.id,
-      label: team.name,
-    }))
-    const subcategoryOptions = (
-      props.subcategoriesForCategory.get(projectActive.category) ?? []
-    ).map((sub) => ({ value: sub, label: sub }))
-    const milestoneOptions = props.milestones.map((m) => ({
-      value: m.id,
-      label: m.name,
-    }))
-
-    const fields: MandatoryFieldDef[] = [
-      { id: "date", kind: "date" },
-      {
-        id: "category",
-        kind: "select",
-        options: categoryOptions,
-        getValue: () => projectActive.category,
-        setValue: (value) =>
-          setProjectActive((prev) => ({
-            ...prev,
-            category: value,
-            subcategory: "",
-            labourTeamId: "",
-          })),
-        validate: () => (projectActive.category ? null : "Select category"),
-      },
-      {
-        id: "subcategoryOrTeam",
-        kind: "select",
-        skip: !usesLabourCategory || !projectActive.category,
-        options: labourOptions,
-        getValue: () => projectActive.labourTeamId,
-        setValue: (value) =>
-          setProjectActive((prev) => ({ ...prev, labourTeamId: value })),
-        validate: () =>
-          projectActive.labourTeamId ? null : "Select labour team",
-      },
-      {
-        id: "subcategory",
-        kind: "select",
-        skip: usesLabourCategory || !projectActive.category,
-        options: subcategoryOptions,
-        getValue: () => projectActive.subcategory,
-        setValue: (value) =>
-          setProjectActive((prev) => ({ ...prev, subcategory: value })),
-        validate: () =>
-          projectActive.subcategory ? null : "Select subcategory",
-      },
-      {
-        id: "milestone",
-        kind: "select",
-        skip: props.milestones.length === 0,
-        options: milestoneOptions,
-        getValue: () => projectActive.milestoneId,
-        setValue: (value) =>
-          setProjectActive((prev) => ({ ...prev, milestoneId: value })),
-        validate: () =>
-          projectActive.milestoneId ? null : "Select stage/milestone",
-      },
-      {
-        id: "description",
-        kind: "text",
-        validate: () =>
-          projectActive.description.trim() ? null : "Enter description",
-      },
-      {
-        id: "amount",
-        kind: "number",
-        validate: () => {
-          const amount = parseFloat(projectActive.amount)
-          return Number.isFinite(amount) && amount > 0 ? null : "Enter amount"
-        },
-      },
-    ]
-    return fields
-  }, [projectActive, props, usesLabourCategory])
 
   const addProjectLine = useCallback(() => {
     if (props.variant !== "project") return
@@ -521,8 +441,9 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
         <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
           <DialogTitle>{title}</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Complete one line at a time. The next line copies Date, Category,
-            Subcategory/Team, and Milestone from the previous line.
+            Fill in the current line, click <strong>Add line</strong>, then repeat.
+            The next line keeps Date, Category, Subcategory/Team, and Milestone.
+            Click <strong>Update expense</strong> when all lines are queued below.
           </p>
         </DialogHeader>
 
@@ -531,12 +452,7 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
             <p className="mb-3 text-sm font-medium">Current line</p>
 
             {props.variant === "project" && (
-              <MandatoryExpenseKeyboardProvider
-                enabled={props.open}
-                fields={projectMandatoryFields}
-                onSubmit={addProjectLine}
-                autoAdvanceSelectOnLetter
-              >
+              <>
                 <ProjectAddExpenseDialogForm
                   newExpense={projectNewExpense}
                   setNewExpense={(updater) => {
@@ -589,15 +505,17 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
                   bulkMode
                 />
                 <div className="mt-3 flex justify-end">
-                  <MandatoryExpenseSubmitButton
-                    onClick={addProjectLine}
+                  <Button
+                    type="button"
                     className="gap-2"
+                    onClick={addProjectLine}
+                    disabled={saving}
                   >
                     <Plus className="h-4 w-4" />
                     Add line
-                  </MandatoryExpenseSubmitButton>
+                  </Button>
                 </div>
-              </MandatoryExpenseKeyboardProvider>
+              </>
             )}
 
             {props.variant === "engineer" && (
@@ -613,7 +531,7 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
                     <SelectTrigger>
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[100]">
                       {ENGINEER_CATEGORIES.map((c) => (
                         <SelectItem key={c} value={c}>
                           {c}
@@ -633,7 +551,7 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
                     <SelectTrigger>
                       <SelectValue placeholder="Select milestone" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[100]">
                       {props.milestones.map((m) => (
                         <SelectItem key={m.id} value={m.id}>
                           {m.name}
@@ -830,7 +748,7 @@ function FinanceActiveRow({
           <SelectTrigger>
             <SelectValue placeholder="Select category" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[100]">
             {categories.map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
