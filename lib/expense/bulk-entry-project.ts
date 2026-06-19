@@ -47,11 +47,6 @@ export function validateProjectBulkRow(
   rowLabel: string,
 ): string | null {
   if (!row.category) return `${rowLabel}: select category`
-  if (!row.description.trim()) return `${rowLabel}: enter description`
-  const amount = parseFloat(row.amount)
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return `${rowLabel}: enter a valid amount`
-  }
   const usesLabour = categoryUsesLabourTeams(row.category, expenseCategories)
   if (usesLabour && !row.labourTeamId) {
     return `${rowLabel}: select labour team`
@@ -59,8 +54,13 @@ export function validateProjectBulkRow(
   if (!usesLabour && !row.subcategory) {
     return `${rowLabel}: select subcategory`
   }
+  if (!row.description.trim()) return `${rowLabel}: enter description`
   if (milestoneCount > 0 && !row.milestoneId) {
     return `${rowLabel}: select stage/milestone`
+  }
+  const amount = parseFloat(row.amount)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return `${rowLabel}: enter a valid amount`
   }
   return null
 }

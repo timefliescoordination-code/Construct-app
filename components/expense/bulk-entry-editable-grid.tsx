@@ -194,11 +194,15 @@ function ProjectBulkGrid({
             <TableHead className="w-[11%]">
               <RequiredLabel>Category</RequiredLabel>
             </TableHead>
-            <TableHead className="w-[13%]">Subcategory/Team</TableHead>
+            <TableHead className="w-[13%]">
+              <RequiredLabel>Subcategory/Team</RequiredLabel>
+            </TableHead>
             <TableHead className="w-[13%]">
               <RequiredLabel>Stage/Milestone</RequiredLabel>
             </TableHead>
-            <TableHead className="w-[22%]">Description</TableHead>
+            <TableHead className="w-[22%]">
+              <RequiredLabel>Description</RequiredLabel>
+            </TableHead>
             <TableHead className="w-[14%]">Vendor</TableHead>
             <TableHead className="w-[10%] text-right">
               <RequiredLabel>Amount</RequiredLabel>
@@ -782,7 +786,7 @@ function PersonalBulkGrid({
 export function bulkEntryRequiredNote(variant: BulkEntryEditableGridProps["variant"]) {
   switch (variant) {
     case "project":
-      return "Date, Category, Stage/Milestone, and Amount are required for each line."
+      return "Date, Category, Subcategory/Team, Stage/Milestone, Description, and Amount are required for each line."
     case "engineer":
       return "Category, Description, and Amount are required for each line."
     case "company_expense":
