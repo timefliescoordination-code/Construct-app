@@ -62,6 +62,7 @@ import {
   MandatoryExpenseSubmitButton,
   useMandatoryExpenseKeyboard,
 } from "@/lib/keyboard/mandatory-expense-keyboard"
+import { ExpenseBulkEntryDialog } from "@/components/expense/expense-bulk-entry-dialog"
 import { DashboardHeader } from "@/components/dashboard/header"
 import { MetricCard } from "@/components/layout/metric-card"
 import {
@@ -431,6 +432,7 @@ export function EngineerDashboard() {
   const { projects: assignedProjects, isLoading, error, mutate } = useProjectDetailsList()
   const [selectedProjectId, setSelectedProjectId] = useState(SHOW_ALL_PROJECTS)
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false)
+  const [isBulkEntryOpen, setIsBulkEntryOpen] = useState(false)
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false)
   const [expenseForm, setExpenseForm] = useState({
     category: '',
@@ -743,21 +745,35 @@ export function EngineerDashboard() {
                     All Expenses
                   </TabsTrigger>
                 </TabsList>
-                <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
-                  <DialogTrigger asChild>
-                    <Button
-                      className="w-full gap-2 sm:w-auto"
-                      disabled={engineerData.showAll}
-                      title={
-                        engineerData.showAll
-                          ? "Select a single project to add an expense"
-                          : "Add expense (Ctrl+E)"
-                      }
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Expense
-                    </Button>
-                  </DialogTrigger>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2 sm:w-auto"
+                    disabled={engineerData.showAll}
+                    title={
+                      engineerData.showAll
+                        ? "Select a single project for bulk entry"
+                        : undefined
+                    }
+                    onClick={() => setIsBulkEntryOpen(true)}
+                  >
+                    Bulk entry
+                  </Button>
+                  <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
+                    <DialogTrigger asChild>
+                      <Button
+                        className="w-full gap-2 sm:w-auto"
+                        disabled={engineerData.showAll}
+                        title={
+                          engineerData.showAll
+                            ? "Select a single project to add an expense"
+                            : "Add expense (Ctrl+E)"
+                        }
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Expense
+                      </Button>
+                    </DialogTrigger>
                   <DialogContent className="flex max-h-[min(92dvh,100dvh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[500px]">
                     <MandatoryExpenseKeyboardProvider
                       enabled={isAddExpenseOpen}
@@ -803,6 +819,17 @@ export function EngineerDashboard() {
                     </MandatoryExpenseKeyboardProvider>
                   </DialogContent>
                 </Dialog>
+                {engineerData.activeProject ? (
+                  <ExpenseBulkEntryDialog
+                    variant="engineer"
+                    open={isBulkEntryOpen}
+                    onOpenChange={setIsBulkEntryOpen}
+                    projectId={engineerData.activeProject.id}
+                    milestones={engineerData.milestones}
+                    onSaved={() => void mutate()}
+                  />
+                ) : null}
+                </div>
               </div>
 
               <TabsContent value="today">

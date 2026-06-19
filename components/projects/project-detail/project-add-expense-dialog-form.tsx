@@ -138,6 +138,7 @@ interface ProjectAddExpenseDialogFormProps {
   handleUseSuggestedSplit: () => void
   openSubcategoryManage: () => void
   setCategoryManageOpen: (open: boolean) => void
+  bulkMode?: boolean
 }
 
 export function ProjectAddExpenseDialogForm({
@@ -162,6 +163,7 @@ export function ProjectAddExpenseDialogForm({
   handleUseSuggestedSplit,
   openSubcategoryManage,
   setCategoryManageOpen,
+  bulkMode = false,
 }: ProjectAddExpenseDialogFormProps) {
   const kb = useMandatoryExpenseKeyboard()
   const dateBind = kb?.bindDate("date")
@@ -175,7 +177,13 @@ export function ProjectAddExpenseDialogForm({
   const splitFirstBind = kb?.bindText("splitFirstAmount")
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+    <div
+      className={
+        bulkMode
+          ? ""
+          : "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6"
+      }
+    >
       <div className="grid gap-4">
         <div className={EXPENSE_FORM_ROW}>
           <div className="space-y-2">
@@ -410,7 +418,7 @@ export function ProjectAddExpenseDialogForm({
             </Select>
           </div>
         </div>
-        {suggestedSplitGroup && !splitMode && (
+        {suggestedSplitGroup && !splitMode && !bulkMode && (
           <PendingSplitSuggestion
             label={suggestedSplitGroup.teamLabel}
             category={suggestedSplitGroup.category}
@@ -423,6 +431,7 @@ export function ProjectAddExpenseDialogForm({
           />
         )}
         {loadingOpenSplits &&
+          !bulkMode &&
           newExpense.category &&
           (newExpense.labourTeamId || newExpense.subcategory) &&
           !suggestedSplitGroup &&
@@ -446,7 +455,7 @@ export function ProjectAddExpenseDialogForm({
         </div>
         <div className={EXPENSE_FORM_ROW}>
           <div className="space-y-2">
-            <Label>{splitMode ? "Vendor *" : "Vendor"}</Label>
+              <Label>{splitMode && !bulkMode ? "Vendor *" : "Vendor"}</Label>
             <Input
               value={newExpense.vendor}
               onChange={(e) =>
@@ -460,8 +469,8 @@ export function ProjectAddExpenseDialogForm({
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <Label>{splitMode ? "Total amount *" : "Amount *"}</Label>
-              {!splitMode && (
+              <Label>{splitMode && !bulkMode ? "Total amount *" : "Amount *"}</Label>
+              {!splitMode && !bulkMode && (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -495,7 +504,7 @@ export function ProjectAddExpenseDialogForm({
               ref={amountBind?.ref}
               onKeyDown={amountBind?.onKeyDown}
             />
-            {splitMode && (
+            {splitMode && !bulkMode && (
               <button
                 type="button"
                 className="text-xs text-muted-foreground underline"
@@ -509,7 +518,7 @@ export function ProjectAddExpenseDialogForm({
             )}
           </div>
         </div>
-        {splitMode && (
+        {splitMode && !bulkMode && (
           <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
             <Label>First payment today *</Label>
             <Input
@@ -531,6 +540,7 @@ export function ProjectAddExpenseDialogForm({
             </p>
           </div>
         )}
+        {!bulkMode && (
         <div className={EXPENSE_FORM_ROW}>
           <div className="space-y-2">
             <Label>Bill Number</Label>
@@ -575,6 +585,7 @@ export function ProjectAddExpenseDialogForm({
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   )

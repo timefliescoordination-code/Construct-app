@@ -121,6 +121,7 @@ import {
   MandatoryExpenseSubmitButton,
 } from "@/lib/keyboard/mandatory-expense-keyboard"
 import { ProjectAddExpenseDialogForm } from "@/components/projects/project-detail/project-add-expense-dialog-form"
+import { ExpenseBulkEntryDialog } from "@/components/expense/expense-bulk-entry-dialog"
 
 function categoryUsesLabourTeams(
   categoryName: string,
@@ -338,6 +339,7 @@ export function ExpensesTab({
     () => new Set(),
   )
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isBulkEntryOpen, setIsBulkEntryOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
@@ -2358,6 +2360,14 @@ export function ExpensesTab({
               </Select>
               <Button
                 type="button"
+                variant="outline"
+                className="gap-2"
+                onClick={() => setIsBulkEntryOpen(true)}
+              >
+                Bulk entry
+              </Button>
+              <Button
+                type="button"
                 className="gap-2"
                 onClick={() => setIsAddDialogOpen(true)}
                 title="Add expense (Ctrl+E)"
@@ -2434,6 +2444,21 @@ export function ExpensesTab({
                   </MandatoryExpenseKeyboardProvider>
                 </DialogContent>
               </Dialog>
+              {projectId ? (
+                <ExpenseBulkEntryDialog
+                  variant="project"
+                  open={isBulkEntryOpen}
+                  onOpenChange={setIsBulkEntryOpen}
+                  projectId={projectId}
+                  categoryNames={categoryNames}
+                  expenseCategories={expenseCategories}
+                  labourTeams={labourTeams}
+                  milestones={milestones}
+                  subcategoriesForCategory={subcategoriesForCategory}
+                  canManageProjects={canManageProjects}
+                  onSaved={() => void refreshExpensesWithJoin()}
+                />
+              ) : null}
               <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                 <DialogContent className={EXPENSE_DIALOG_CLASS}>
                   <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">

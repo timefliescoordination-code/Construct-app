@@ -41,6 +41,7 @@ import {
   updatePersonalExpenseAction,
 } from "@/lib/finance/finance-actions"
 import { AddExpenseMenu, type ProjectOption } from "@/components/finance/add-expense-menu"
+import { ExpenseBulkEntryDialog } from "@/components/expense/expense-bulk-entry-dialog"
 import { CategorySelectField } from "@/components/finance/category-select-field"
 import { useExpenseShortcutRegistryOptional } from "@/lib/keyboard/expense-shortcut-context"
 import { buildFinanceEntryFields } from "@/lib/keyboard/build-finance-mandatory-fields"
@@ -312,6 +313,19 @@ export function AllExpensesContent() {
   const personalExpenseCategories =
     categoriesData?.categories.personal_expense ?? []
 
+  const companyExpenseCategoryNames = useMemo(
+    () => companyExpenseCategories.map((c) => c.name),
+    [companyExpenseCategories],
+  )
+  const companyIncomeCategoryNames = useMemo(
+    () => companyIncomeCategories.map((c) => c.name),
+    [companyIncomeCategories],
+  )
+  const personalExpenseCategoryNames = useMemo(
+    () => personalExpenseCategories.map((c) => c.name),
+    [personalExpenseCategories],
+  )
+
   const refreshCategories = () => void mutateCategories()
 
   const projects: ProjectOption[] = data?.projects ?? []
@@ -319,6 +333,9 @@ export function AllExpensesContent() {
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false)
   const [companyIncomeDialogOpen, setCompanyIncomeDialogOpen] = useState(false)
   const [personalDialogOpen, setPersonalDialogOpen] = useState(false)
+  const [companyBulkOpen, setCompanyBulkOpen] = useState(false)
+  const [companyIncomeBulkOpen, setCompanyIncomeBulkOpen] = useState(false)
+  const [personalBulkOpen, setPersonalBulkOpen] = useState(false)
   const [editingCompany, setEditingCompany] = useState<CompanyExpense | null>(null)
   const [editingCompanyIncome, setEditingCompanyIncome] =
     useState<CompanyIncome | null>(null)
@@ -959,12 +976,24 @@ export function AllExpensesContent() {
             <div className="flex flex-wrap justify-end gap-2">
               <Button
                 variant="outline"
+                onClick={() => setCompanyBulkOpen(true)}
+              >
+                Bulk entry
+              </Button>
+              <Button
+                variant="outline"
                 onClick={() => {
                   resetCompanyForm()
                   setCompanyDialogOpen(true)
                 }}
               >
                 Add company expense
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setCompanyIncomeBulkOpen(true)}
+              >
+                Bulk income entry
               </Button>
               <Button
                 onClick={() => {
@@ -1011,7 +1040,10 @@ export function AllExpensesContent() {
           </TabsContent>
 
           <TabsContent value="personal">
-            <div className="flex justify-end mb-3">
+            <div className="flex justify-end mb-3 gap-2">
+              <Button variant="outline" onClick={() => setPersonalBulkOpen(true)}>
+                Bulk entry
+              </Button>
               <Button
                 onClick={() => {
                   resetPersonalForm()
@@ -1175,6 +1207,31 @@ export function AllExpensesContent() {
             </MandatoryExpenseKeyboardProvider>
           </DialogContent>
         </Dialog>
+
+        <ExpenseBulkEntryDialog
+          variant="company_expense"
+          open={companyBulkOpen}
+          onOpenChange={setCompanyBulkOpen}
+          categories={companyExpenseCategoryNames}
+          defaultCategory={firstCategoryName(companyExpenseCategories)}
+          onSaved={() => void mutate()}
+        />
+        <ExpenseBulkEntryDialog
+          variant="company_income"
+          open={companyIncomeBulkOpen}
+          onOpenChange={setCompanyIncomeBulkOpen}
+          categories={companyIncomeCategoryNames}
+          defaultCategory={firstCategoryName(companyIncomeCategories)}
+          onSaved={() => void mutate()}
+        />
+        <ExpenseBulkEntryDialog
+          variant="personal_expense"
+          open={personalBulkOpen}
+          onOpenChange={setPersonalBulkOpen}
+          categories={personalExpenseCategoryNames}
+          defaultCategory={firstCategoryName(personalExpenseCategories)}
+          onSaved={() => void mutate()}
+        />
 
         <AlertDialog
           open={Boolean(deleteTarget)}
