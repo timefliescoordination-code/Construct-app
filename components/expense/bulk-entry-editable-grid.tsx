@@ -184,23 +184,23 @@ function ProjectBulkGrid({
 
   return (
     <div className="overflow-x-auto rounded-md border border-border">
-      <Table>
+      <Table className="w-full table-fixed min-w-[1000px] lg:min-w-0">
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
             <TableHead className="w-10 text-center">#</TableHead>
-            <TableHead className="min-w-[130px]">
+            <TableHead className="w-[9%]">
               <RequiredLabel>Date</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[140px]">
+            <TableHead className="w-[11%]">
               <RequiredLabel>Category</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[160px]">Subcategory/Team</TableHead>
-            <TableHead className="min-w-[160px]">
+            <TableHead className="w-[13%]">Subcategory/Team</TableHead>
+            <TableHead className="w-[13%]">
               <RequiredLabel>Stage/Milestone</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[180px]">Description</TableHead>
-            <TableHead className="min-w-[140px]">Vendor</TableHead>
-            <TableHead className="min-w-[110px] text-right">
+            <TableHead className="w-[22%]">Description</TableHead>
+            <TableHead className="w-[14%]">Vendor</TableHead>
+            <TableHead className="w-[10%] text-right">
               <RequiredLabel>Amount</RequiredLabel>
             </TableHead>
           </TableRow>
@@ -359,19 +359,19 @@ function EngineerBulkGrid({
 
   return (
     <div className="overflow-x-auto rounded-md border border-border">
-      <Table>
+      <Table className="w-full table-fixed min-w-[1000px] lg:min-w-0">
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
             <TableHead className="w-10 text-center">#</TableHead>
-            <TableHead className="min-w-[140px]">
+            <TableHead className="w-[14%]">
               <RequiredLabel>Category</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[160px]">Milestone</TableHead>
-            <TableHead className="min-w-[180px]">
+            <TableHead className="w-[16%]">Milestone</TableHead>
+            <TableHead className="w-[32%]">
               <RequiredLabel>Description</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[140px]">Vendor</TableHead>
-            <TableHead className="min-w-[110px] text-right">
+            <TableHead className="w-[18%]">Vendor</TableHead>
+            <TableHead className="w-[12%] text-right">
               <RequiredLabel>Amount</RequiredLabel>
             </TableHead>
           </TableRow>
@@ -474,21 +474,21 @@ function CompanyExpenseBulkGrid({
 
   return (
     <div className="overflow-x-auto rounded-md border border-border">
-      <Table>
+      <Table className="w-full table-fixed min-w-[900px] lg:min-w-0">
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
             <TableHead className="w-10 text-center">#</TableHead>
-            <TableHead className="min-w-[130px]">
+            <TableHead className="w-[12%]">
               <RequiredLabel>Date</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[140px]">
+            <TableHead className="w-[14%]">
               <RequiredLabel>Category</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[180px]">
+            <TableHead className="w-[32%]">
               <RequiredLabel>Description</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[140px]">Vendor</TableHead>
-            <TableHead className="min-w-[110px] text-right">
+            <TableHead className="w-[18%]">Vendor</TableHead>
+            <TableHead className="w-[12%] text-right">
               <RequiredLabel>Amount</RequiredLabel>
             </TableHead>
           </TableRow>
@@ -583,21 +583,21 @@ function CompanyIncomeBulkGrid({
 
   return (
     <div className="overflow-x-auto rounded-md border border-border">
-      <Table>
+      <Table className="w-full table-fixed min-w-[900px] lg:min-w-0">
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
             <TableHead className="w-10 text-center">#</TableHead>
-            <TableHead className="min-w-[130px]">
+            <TableHead className="w-[12%]">
               <RequiredLabel>Date</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[140px]">
+            <TableHead className="w-[14%]">
               <RequiredLabel>Category</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[180px]">
+            <TableHead className="w-[30%]">
               <RequiredLabel>Description</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[140px]">Source</TableHead>
-            <TableHead className="min-w-[110px] text-right">
+            <TableHead className="w-[18%]">Source</TableHead>
+            <TableHead className="w-[12%] text-right">
               <RequiredLabel>Amount</RequiredLabel>
             </TableHead>
           </TableRow>
@@ -692,20 +692,20 @@ function PersonalBulkGrid({
 
   return (
     <div className="overflow-x-auto rounded-md border border-border">
-      <Table>
+      <Table className="w-full table-fixed min-w-[720px] lg:min-w-0">
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
             <TableHead className="w-10 text-center">#</TableHead>
-            <TableHead className="min-w-[130px]">
+            <TableHead className="w-[14%]">
               <RequiredLabel>Date</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[140px]">
+            <TableHead className="w-[16%]">
               <RequiredLabel>Category</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[180px]">
+            <TableHead className="w-[44%]">
               <RequiredLabel>Description</RequiredLabel>
             </TableHead>
-            <TableHead className="min-w-[110px] text-right">
+            <TableHead className="w-[14%] text-right">
               <RequiredLabel>Amount</RequiredLabel>
             </TableHead>
           </TableRow>
