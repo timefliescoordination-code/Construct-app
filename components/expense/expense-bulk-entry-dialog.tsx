@@ -1,12 +1,10 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { format } from "date-fns"
-import { Loader2, Plus } from "lucide-react"
+import { Download, Loader2, Plus, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
@@ -15,15 +13,27 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { BulkEntryCompletedTable } from "@/components/expense/bulk-entry-completed-table"
-import { ProjectAddExpenseDialogForm } from "@/components/projects/project-detail/project-add-expense-dialog-form"
+  BulkEntryEditableGrid,
+  bulkEntryRequiredNote,
+  companyExpenseRowHasContent,
+  companyIncomeRowHasContent,
+  engineerRowHasContent,
+  personalRowHasContent,
+  projectRowHasContent,
+} from "@/components/expense/bulk-entry-editable-grid"
 import type { ExpenseCategoryView } from "@/lib/data/expense-categories"
+import {
+  exportEngineerBulkCsv,
+  exportFinanceExpenseCsv,
+  exportFinanceIncomeCsv,
+  exportPersonalExpenseCsv,
+  exportProjectBulkRowsCsv,
+  parseEngineerBulkCsv,
+  parseFinanceExpenseCsv,
+  parseFinanceIncomeCsv,
+  parsePersonalExpenseCsv,
+  parseProjectBulkCsv,
+} from "@/lib/expense/bulk-entry-csv"
 import {
   newRowId,
   type CompanyExpenseBulkRow,
@@ -45,7 +55,6 @@ import {
 } from "@/lib/expense/bulk-entry-finance"
 import {
   carryForwardProjectRow,
-  categoryUsesLabourTeams,
   emptyProjectBulkRow,
   mapProjectBulkRowToCreate,
   validateProjectBulkRow,
@@ -61,17 +70,16 @@ import {
 } from "@/lib/projects/tab-actions"
 
 const IMPORT_SERVER_CHUNK_SIZE = 50
+const INITIAL_ROW_COUNT = 5
 const BULK_DIALOG_CLASS =
-  "flex max-h-[min(92dvh,100dvh)] flex-col gap-0 overflow-hidden border-border bg-card p-0 w-[95vw] max-w-5xl"
+  "flex max-h-[min(92dvh,100dvh)] flex-col gap-0 overflow-hidden border-border bg-card p-0 w-[98vw] max-w-6xl"
 
 type Milestone = { id: string; name: string }
 type LabourTeam = { id: string; name: string }
 
-const ENGINEER_CATEGORIES = ["Materials", "Labour", "Equipment", "Miscellaneous"]
-
 function emptyEngineerRow(): EngineerBulkRow {
   return {
-    id: "",
+    id: newRowId(),
     category: "",
     milestoneId: "",
     description: "",
@@ -94,6 +102,50 @@ function validateEngineerRow(row: EngineerBulkRow, label: string) {
   const amount = parseFloat(row.amount)
   if (!Number.isFinite(amount) || amount <= 0) return `${label}: enter valid amount`
   return null
+}
+
+function createInitialProjectRows(date: string, count: number): ProjectBulkRow[] {
+  return Array.from({ length: count }, () => ({
+    ...emptyProjectBulkRow(date),
+    id: newRowId(),
+  }))
+}
+
+function createInitialCompanyExpenseRows(
+  date: string,
+  category: string,
+  count: number,
+): CompanyExpenseBulkRow[] {
+  return Array.from({ length: count }, () => ({
+    ...emptyCompanyExpenseRow(date, category),
+    id: newRowId(),
+  }))
+}
+
+function createInitialCompanyIncomeRows(
+  date: string,
+  category: string,
+  count: number,
+): CompanyIncomeBulkRow[] {
+  return Array.from({ length: count }, () => ({
+    ...emptyCompanyIncomeRow(date, category),
+    id: newRowId(),
+  }))
+}
+
+function createInitialPersonalRows(
+  date: string,
+  category: string,
+  count: number,
+): PersonalExpenseBulkRow[] {
+  return Array.from({ length: count }, () => ({
+    ...emptyPersonalExpenseRow(date, category),
+    id: newRowId(),
+  }))
+}
+
+function createInitialEngineerRows(count: number): EngineerBulkRow[] {
+  return Array.from({ length: count }, () => emptyEngineerRow())
 }
 
 type BaseProps = {
@@ -141,54 +193,39 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
       : ""
 
   const [saving, setSaving] = useState(false)
-  const [projectCompleted, setProjectCompleted] = useState<ProjectBulkRow[]>([])
-  const [engineerCompleted, setEngineerCompleted] = useState<EngineerBulkRow[]>([])
-  const [companyExpenseCompleted, setCompanyExpenseCompleted] = useState<
-    CompanyExpenseBulkRow[]
-  >([])
-  const [companyIncomeCompleted, setCompanyIncomeCompleted] = useState<
-    CompanyIncomeBulkRow[]
-  >([])
-  const [personalCompleted, setPersonalCompleted] = useState<PersonalExpenseBulkRow[]>(
-    [],
-  )
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [projectActive, setProjectActive] = useState(() => emptyProjectBulkRow(today))
-  const [engineerActive, setEngineerActive] = useState(emptyEngineerRow)
-  const [companyExpenseActive, setCompanyExpenseActive] = useState(() =>
-    emptyCompanyExpenseRow(today, props.variant === "company_expense" ? props.defaultCategory ?? "" : ""),
+  const [projectRows, setProjectRows] = useState<ProjectBulkRow[]>(() =>
+    createInitialProjectRows(today, INITIAL_ROW_COUNT),
   )
-  const [companyIncomeActive, setCompanyIncomeActive] = useState(() =>
-    emptyCompanyIncomeRow(today, props.variant === "company_income" ? props.defaultCategory ?? "" : ""),
+  const [engineerRows, setEngineerRows] = useState<EngineerBulkRow[]>(() =>
+    createInitialEngineerRows(INITIAL_ROW_COUNT),
   )
-  const [personalActive, setPersonalActive] = useState(() =>
-    emptyPersonalExpenseRow(today, props.variant === "personal_expense" ? props.defaultCategory ?? "" : ""),
+  const [companyExpenseRows, setCompanyExpenseRows] = useState<CompanyExpenseBulkRow[]>(
+    () => createInitialCompanyExpenseRows(today, financeDefaultCategory, INITIAL_ROW_COUNT),
+  )
+  const [companyIncomeRows, setCompanyIncomeRows] = useState<CompanyIncomeBulkRow[]>(() =>
+    createInitialCompanyIncomeRows(today, financeDefaultCategory, INITIAL_ROW_COUNT),
+  )
+  const [personalRows, setPersonalRows] = useState<PersonalExpenseBulkRow[]>(() =>
+    createInitialPersonalRows(today, financeDefaultCategory, INITIAL_ROW_COUNT),
   )
 
   const resetAll = useCallback(() => {
-    setProjectCompleted([])
-    setEngineerCompleted([])
-    setCompanyExpenseCompleted([])
-    setCompanyIncomeCompleted([])
-    setPersonalCompleted([])
-    setProjectActive(emptyProjectBulkRow(today))
-    setEngineerActive(emptyEngineerRow())
-    if (variant === "company_expense") {
-      setCompanyExpenseActive(emptyCompanyExpenseRow(today, financeDefaultCategory))
-    } else {
-      setCompanyExpenseActive(emptyCompanyExpenseRow(today))
-    }
-    if (variant === "company_income") {
-      setCompanyIncomeActive(emptyCompanyIncomeRow(today, financeDefaultCategory))
-    } else {
-      setCompanyIncomeActive(emptyCompanyIncomeRow(today))
-    }
-    if (variant === "personal_expense") {
-      setPersonalActive(emptyPersonalExpenseRow(today, financeDefaultCategory))
-    } else {
-      setPersonalActive(emptyPersonalExpenseRow(today))
-    }
-  }, [financeDefaultCategory, today, variant])
+    setSelectedRowId(null)
+    setProjectRows(createInitialProjectRows(today, INITIAL_ROW_COUNT))
+    setEngineerRows(createInitialEngineerRows(INITIAL_ROW_COUNT))
+    setCompanyExpenseRows(
+      createInitialCompanyExpenseRows(today, financeDefaultCategory, INITIAL_ROW_COUNT),
+    )
+    setCompanyIncomeRows(
+      createInitialCompanyIncomeRows(today, financeDefaultCategory, INITIAL_ROW_COUNT),
+    )
+    setPersonalRows(
+      createInitialPersonalRows(today, financeDefaultCategory, INITIAL_ROW_COUNT),
+    )
+  }, [financeDefaultCategory, today])
 
   const wasOpenRef = useRef(false)
   useEffect(() => {
@@ -198,112 +235,186 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
     wasOpenRef.current = props.open
   }, [props.open, resetAll])
 
-  const projectNewExpense = useMemo(
-    () => ({
-      date: projectActive.date,
-      category: projectActive.category,
-      subcategory: projectActive.subcategory,
-      labourTeamId: projectActive.labourTeamId,
-      description: projectActive.description,
-      vendor: projectActive.vendor,
-      amount: projectActive.amount,
-      billNumber: "",
-      milestoneId: projectActive.milestoneId,
-    }),
-    [projectActive],
-  )
-
-  const usesLabourCategory =
-    props.variant === "project"
-      ? categoryUsesLabourTeams(projectActive.category, props.expenseCategories)
-      : false
-
-  const addProjectLine = useCallback(() => {
-    if (props.variant !== "project") return
-    const err = validateProjectBulkRow(
-      projectActive,
-      props.expenseCategories,
-      props.milestones.length,
-      "Current line",
-    )
-    if (err) {
-      toast.error(err)
+  const addRow = () => {
+    if (variant === "project") {
+      setProjectRows((prev) => {
+        const source = prev.find((r) => r.id === selectedRowId) ?? prev[prev.length - 1]
+        const next = { ...carryForwardProjectRow(source), id: newRowId() }
+        setSelectedRowId(next.id)
+        return [...prev, next]
+      })
       return
     }
-    const saved = { ...projectActive, id: newRowId() }
-    setProjectCompleted((prev) => [...prev, saved])
-    setProjectActive(carryForwardProjectRow(saved))
-    toast.success(`Line ${projectCompleted.length + 1} added`)
-  }, [projectActive, projectCompleted.length, props])
-
-  const addEngineerLine = useCallback(() => {
-    const err = validateEngineerRow(engineerActive, "Current line")
-    if (err) {
-      toast.error(err)
+    if (variant === "engineer") {
+      setEngineerRows((prev) => {
+        const source = prev.find((r) => r.id === selectedRowId) ?? prev[prev.length - 1]
+        const next = carryForwardEngineerRow(source)
+        setSelectedRowId(next.id)
+        return [...prev, next]
+      })
       return
     }
-    const saved = { ...engineerActive, id: newRowId() }
-    setEngineerCompleted((prev) => [...prev, saved])
-    setEngineerActive(carryForwardEngineerRow(saved))
-  }, [engineerActive])
-
-  const addCompanyExpenseLine = useCallback(() => {
-    const err = validateCompanyExpenseRow(companyExpenseActive, "Current line")
-    if (err) {
-      toast.error(err)
+    if (variant === "company_expense") {
+      setCompanyExpenseRows((prev) => {
+        const source = prev.find((r) => r.id === selectedRowId) ?? prev[prev.length - 1]
+        const next = { ...carryForwardCompanyExpenseRow(source), id: newRowId() }
+        setSelectedRowId(next.id)
+        return [...prev, next]
+      })
       return
     }
-    const saved = { ...companyExpenseActive, id: newRowId() }
-    setCompanyExpenseCompleted((prev) => [...prev, saved])
-    setCompanyExpenseActive(carryForwardCompanyExpenseRow(saved))
-  }, [companyExpenseActive])
-
-  const addCompanyIncomeLine = useCallback(() => {
-    const err = validateCompanyIncomeRow(companyIncomeActive, "Current line")
-    if (err) {
-      toast.error(err)
+    if (variant === "company_income") {
+      setCompanyIncomeRows((prev) => {
+        const source = prev.find((r) => r.id === selectedRowId) ?? prev[prev.length - 1]
+        const next = { ...carryForwardCompanyIncomeRow(source), id: newRowId() }
+        setSelectedRowId(next.id)
+        return [...prev, next]
+      })
       return
     }
-    const saved = { ...companyIncomeActive, id: newRowId() }
-    setCompanyIncomeCompleted((prev) => [...prev, saved])
-    setCompanyIncomeActive(carryForwardCompanyIncomeRow(saved))
-  }, [companyIncomeActive])
+    setPersonalRows((prev) => {
+      const source = prev.find((r) => r.id === selectedRowId) ?? prev[prev.length - 1]
+      const next = { ...carryForwardPersonalExpenseRow(source), id: newRowId() }
+      setSelectedRowId(next.id)
+      return [...prev, next]
+    })
+  }
 
-  const addPersonalLine = useCallback(() => {
-    const err = validatePersonalExpenseRow(personalActive, "Current line")
-    if (err) {
-      toast.error(err)
-      return
+  const deleteRow = () => {
+    const removeFrom = <T extends { id: string }>(
+      rows: T[],
+      createEmpty: () => T,
+      setRows: (rows: T[]) => void,
+    ) => {
+      if (rows.length <= 1) {
+        toast.error("At least one row is required.")
+        return
+      }
+      const targetId = selectedRowId ?? rows[rows.length - 1]?.id
+      if (!targetId) return
+      const next = rows.filter((r) => r.id !== targetId)
+      setRows(next.length ? next : [createEmpty()])
+      setSelectedRowId(next[0]?.id ?? null)
     }
-    const saved = { ...personalActive, id: newRowId() }
-    setPersonalCompleted((prev) => [...prev, saved])
-    setPersonalActive(carryForwardPersonalExpenseRow(saved))
-  }, [personalActive])
 
-  const completedCount =
-    props.variant === "project"
-      ? projectCompleted.length
-      : props.variant === "engineer"
-        ? engineerCompleted.length
-        : props.variant === "company_expense"
-          ? companyExpenseCompleted.length
-          : props.variant === "company_income"
-            ? companyIncomeCompleted.length
-            : personalCompleted.length
+    if (variant === "project") {
+      removeFrom(projectRows, () => ({ ...emptyProjectBulkRow(today), id: newRowId() }), setProjectRows)
+    } else if (variant === "engineer") {
+      removeFrom(engineerRows, emptyEngineerRow, setEngineerRows)
+    } else if (variant === "company_expense") {
+      removeFrom(
+        companyExpenseRows,
+        () => ({ ...emptyCompanyExpenseRow(today, financeDefaultCategory), id: newRowId() }),
+        setCompanyExpenseRows,
+      )
+    } else if (variant === "company_income") {
+      removeFrom(
+        companyIncomeRows,
+        () => ({ ...emptyCompanyIncomeRow(today, financeDefaultCategory), id: newRowId() }),
+        setCompanyIncomeRows,
+      )
+    } else {
+      removeFrom(
+        personalRows,
+        () => ({ ...emptyPersonalExpenseRow(today, financeDefaultCategory), id: newRowId() }),
+        setPersonalRows,
+      )
+    }
+  }
+
+  const handleImportFile = async (file: File) => {
+    const text = await file.text()
+    try {
+      if (variant === "project") {
+        const imported = parseProjectBulkCsv(text, today, props.milestones)
+        if (!imported.length) {
+          toast.error("No rows found in CSV.")
+          return
+        }
+        setProjectRows(imported)
+        setSelectedRowId(imported[0]?.id ?? null)
+        toast.success(`Imported ${imported.length} row(s) from CSV.`)
+      } else if (variant === "engineer") {
+        const imported = parseEngineerBulkCsv(text, props.milestones)
+        if (!imported.length) {
+          toast.error("No rows found in CSV.")
+          return
+        }
+        setEngineerRows(imported)
+        setSelectedRowId(imported[0]?.id ?? null)
+        toast.success(`Imported ${imported.length} row(s) from CSV.`)
+      } else if (variant === "company_expense") {
+        const imported = parseFinanceExpenseCsv(text, today)
+        if (!imported.length) {
+          toast.error("No rows found in CSV.")
+          return
+        }
+        setCompanyExpenseRows(imported)
+        setSelectedRowId(imported[0]?.id ?? null)
+        toast.success(`Imported ${imported.length} row(s) from CSV.`)
+      } else if (variant === "company_income") {
+        const imported = parseFinanceIncomeCsv(text, today)
+        if (!imported.length) {
+          toast.error("No rows found in CSV.")
+          return
+        }
+        setCompanyIncomeRows(imported)
+        setSelectedRowId(imported[0]?.id ?? null)
+        toast.success(`Imported ${imported.length} row(s) from CSV.`)
+      } else {
+        const imported = parsePersonalExpenseCsv(text, today)
+        if (!imported.length) {
+          toast.error("No rows found in CSV.")
+          return
+        }
+        setPersonalRows(imported)
+        setSelectedRowId(imported[0]?.id ?? null)
+        toast.success(`Imported ${imported.length} row(s) from CSV.`)
+      }
+    } catch {
+      toast.error("Could not parse CSV file.")
+    }
+  }
+
+  const handleExport = () => {
+    if (variant === "project") {
+      exportProjectBulkRowsCsv(projectRows.filter(projectRowHasContent), props.milestones)
+    } else if (variant === "engineer") {
+      exportEngineerBulkCsv(engineerRows.filter(engineerRowHasContent), props.milestones)
+    } else if (variant === "company_expense") {
+      exportFinanceExpenseCsv(companyExpenseRows.filter(companyExpenseRowHasContent))
+    } else if (variant === "company_income") {
+      exportFinanceIncomeCsv(companyIncomeRows.filter(companyIncomeRowHasContent))
+    } else {
+      exportPersonalExpenseCsv(personalRows.filter(personalRowHasContent))
+    }
+  }
 
   const handleUpdateExpense = async () => {
-    if (completedCount === 0) {
-      toast.error("Add at least one completed line first.")
-      return
-    }
-
     setSaving(true)
     try {
-      if (props.variant === "project") {
+      if (variant === "project") {
+        const rows = projectRows.filter(projectRowHasContent)
+        if (rows.length === 0) {
+          toast.error("Enter at least one expense line in the table.")
+          return
+        }
+        for (let i = 0; i < rows.length; i++) {
+          const err = validateProjectBulkRow(
+            rows[i],
+            props.expenseCategories,
+            props.milestones.length,
+            `Row ${i + 1}`,
+          )
+          if (err) {
+            toast.error(err)
+            return
+          }
+        }
         const labourTeamNameById = new Map(
           props.labourTeams.map((t) => [t.id, t.name]),
         )
-        const rowsToCreate = projectCompleted.map((row) =>
+        const rowsToCreate = rows.map((row) =>
           mapProjectBulkRowToCreate(
             row,
             props.expenseCategories,
@@ -331,8 +442,20 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
         }
         await syncProjectMilestoneMetricsAction(props.projectId)
         toast.success(`Updated ${created} expense(s).`)
-      } else if (props.variant === "engineer") {
-        const rowsToCreate = engineerCompleted.map((row) => ({
+      } else if (variant === "engineer") {
+        const rows = engineerRows.filter(engineerRowHasContent)
+        if (rows.length === 0) {
+          toast.error("Enter at least one expense line in the table.")
+          return
+        }
+        for (let i = 0; i < rows.length; i++) {
+          const err = validateEngineerRow(rows[i], `Row ${i + 1}`)
+          if (err) {
+            toast.error(err)
+            return
+          }
+        }
+        const rowsToCreate = rows.map((row) => ({
           milestoneId: row.milestoneId || null,
           category: row.category,
           description: row.description.trim(),
@@ -351,9 +474,21 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
           return
         }
         toast.success(`Submitted ${result.data.created} expense(s) for approval.`)
-      } else if (props.variant === "company_expense") {
+      } else if (variant === "company_expense") {
+        const rows = companyExpenseRows.filter(companyExpenseRowHasContent)
+        if (rows.length === 0) {
+          toast.error("Enter at least one expense line in the table.")
+          return
+        }
+        for (let i = 0; i < rows.length; i++) {
+          const err = validateCompanyExpenseRow(rows[i], `Row ${i + 1}`)
+          if (err) {
+            toast.error(err)
+            return
+          }
+        }
         const result = await bulkCreateCompanyExpensesAction({
-          rows: companyExpenseCompleted.map((row) => ({
+          rows: rows.map((row) => ({
             category: row.category,
             description: row.description.trim(),
             amount: Number(row.amount),
@@ -366,9 +501,21 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
           return
         }
         toast.success(`Updated ${result.data.created} company expense(s).`)
-      } else if (props.variant === "company_income") {
+      } else if (variant === "company_income") {
+        const rows = companyIncomeRows.filter(companyIncomeRowHasContent)
+        if (rows.length === 0) {
+          toast.error("Enter at least one expense line in the table.")
+          return
+        }
+        for (let i = 0; i < rows.length; i++) {
+          const err = validateCompanyIncomeRow(rows[i], `Row ${i + 1}`)
+          if (err) {
+            toast.error(err)
+            return
+          }
+        }
         const result = await bulkCreateCompanyIncomeAction({
-          rows: companyIncomeCompleted.map((row) => ({
+          rows: rows.map((row) => ({
             category: row.category,
             description: row.description.trim(),
             amount: Number(row.amount),
@@ -382,8 +529,20 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
         }
         toast.success(`Updated ${result.data.created} income entry(ies).`)
       } else {
+        const rows = personalRows.filter(personalRowHasContent)
+        if (rows.length === 0) {
+          toast.error("Enter at least one expense line in the table.")
+          return
+        }
+        for (let i = 0; i < rows.length; i++) {
+          const err = validatePersonalExpenseRow(rows[i], `Row ${i + 1}`)
+          if (err) {
+            toast.error(err)
+            return
+          }
+        }
         const result = await bulkCreatePersonalExpensesAction({
-          rows: personalCompleted.map((row) => ({
+          rows: rows.map((row) => ({
             category: row.category,
             description: row.description.trim(),
             amount: Number(row.amount),
@@ -405,29 +564,26 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
   }
 
   const title =
-    props.variant === "project"
+    variant === "project"
       ? "Bulk expense entry"
-      : props.variant === "engineer"
+      : variant === "engineer"
         ? "Bulk site expenses"
-        : props.variant === "company_expense"
+        : variant === "company_expense"
           ? "Bulk company expenses"
-          : props.variant === "company_income"
+          : variant === "company_income"
             ? "Bulk company income"
             : "Bulk personal expenses"
 
-  const removeRow = (id: string) => {
-    if (props.variant === "project") {
-      setProjectCompleted((prev) => prev.filter((r) => r.id !== id))
-    } else if (props.variant === "engineer") {
-      setEngineerCompleted((prev) => prev.filter((r) => r.id !== id))
-    } else if (props.variant === "company_expense") {
-      setCompanyExpenseCompleted((prev) => prev.filter((r) => r.id !== id))
-    } else if (props.variant === "company_income") {
-      setCompanyIncomeCompleted((prev) => prev.filter((r) => r.id !== id))
-    } else {
-      setPersonalCompleted((prev) => prev.filter((r) => r.id !== id))
-    }
-  }
+  const filledCount =
+    variant === "project"
+      ? projectRows.filter(projectRowHasContent).length
+      : variant === "engineer"
+        ? engineerRows.filter(engineerRowHasContent).length
+        : variant === "company_expense"
+          ? companyExpenseRows.filter(companyExpenseRowHasContent).length
+          : variant === "company_income"
+            ? companyIncomeRows.filter(companyIncomeRowHasContent).length
+            : personalRows.filter(personalRowHasContent).length
 
   return (
     <Dialog
@@ -441,367 +597,167 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
         <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-3 pr-12 text-left sm:px-6">
           <DialogTitle>{title}</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Fill in the current line, click <strong>Add line</strong>, then repeat.
-            The next line keeps Date, Category, Subcategory/Team, and Milestone.
-            Click <strong>Update expense</strong> when all lines are queued below.
+            Enter multiple expense lines in the table below. You can add, edit, or
+            delete rows as needed. Click Update expense when all lines are completed.
           </p>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 space-y-4">
-          <div className="rounded-lg border border-border bg-muted/20 p-3">
-            <p className="mb-3 text-sm font-medium">Current line</p>
-
-            {props.variant === "project" && (
-              <>
-                <ProjectAddExpenseDialogForm
-                  newExpense={projectNewExpense}
-                  setNewExpense={(updater) => {
-                    setProjectActive((prev) => {
-                      const current = {
-                        date: prev.date,
-                        category: prev.category,
-                        subcategory: prev.subcategory,
-                        labourTeamId: prev.labourTeamId,
-                        description: prev.description,
-                        vendor: prev.vendor,
-                        amount: prev.amount,
-                        billNumber: "",
-                        milestoneId: prev.milestoneId,
-                      }
-                      const next =
-                        typeof updater === "function" ? updater(current) : updater
-                      return {
-                        ...prev,
-                        date: next.date,
-                        category: next.category,
-                        subcategory: next.subcategory,
-                        labourTeamId: next.labourTeamId,
-                        description: next.description,
-                        vendor: next.vendor,
-                        amount: next.amount,
-                        milestoneId: next.milestoneId,
-                      }
-                    })
-                  }}
-                  categoryNames={props.categoryNames}
-                  labourTeams={props.labourTeams}
-                  subcategoriesForCategory={props.subcategoriesForCategory}
-                  milestones={props.milestones}
-                  canManageProjects={props.canManageProjects}
-                  usesLabourCategory={usesLabourCategory}
-                  splitMode={false}
-                  setSplitMode={() => {}}
-                  splitFirstAmount=""
-                  setSplitFirstAmount={() => {}}
-                  suggestedSplitGroup={null}
-                  loadingOpenSplits={false}
-                  isSubmitting={saving}
-                  invoiceFile={null}
-                  invoiceFileInputRef={{ current: null }}
-                  handleInvoiceFileChange={() => {}}
-                  handleUseSuggestedSplit={() => {}}
-                  openSubcategoryManage={() => {}}
-                  setCategoryManageOpen={() => {}}
-                  bulkMode
-                />
-                <div className="mt-3 flex justify-end">
-                  <Button
-                    type="button"
-                    className="gap-2"
-                    onClick={addProjectLine}
-                    disabled={saving}
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add line
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {props.variant === "engineer" && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Category *</Label>
-                  <Select
-                    value={engineerActive.category}
-                    onValueChange={(v) =>
-                      setEngineerActive({ ...engineerActive, category: v })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent className="z-[100]">
-                      {ENGINEER_CATEGORIES.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Milestone</Label>
-                  <Select
-                    value={engineerActive.milestoneId}
-                    onValueChange={(v) =>
-                      setEngineerActive({ ...engineerActive, milestoneId: v })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select milestone" />
-                    </SelectTrigger>
-                    <SelectContent className="z-[100]">
-                      {props.milestones.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>Description *</Label>
-                  <Input
-                    value={engineerActive.description}
-                    onChange={(e) =>
-                      setEngineerActive({
-                        ...engineerActive,
-                        description: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Amount *</Label>
-                  <Input
-                    type="number"
-                    value={engineerActive.amount}
-                    onChange={(e) =>
-                      setEngineerActive({ ...engineerActive, amount: e.target.value })
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault()
-                        addEngineerLine()
-                      }
-                    }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Vendor</Label>
-                  <Input
-                    value={engineerActive.vendor}
-                    onChange={(e) =>
-                      setEngineerActive({ ...engineerActive, vendor: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="sm:col-span-2 flex justify-end">
-                  <Button type="button" className="gap-2" onClick={addEngineerLine}>
-                    <Plus className="h-4 w-4" />
-                    Add line
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {props.variant === "company_expense" && (
-              <FinanceActiveRow
-                date={companyExpenseActive.date}
-                category={companyExpenseActive.category}
-                description={companyExpenseActive.description}
-                amount={companyExpenseActive.amount}
-                vendor={companyExpenseActive.vendor}
-                categories={props.categories}
-                onChange={(field, value) =>
-                  setCompanyExpenseActive((prev) => ({ ...prev, [field]: value }))
-                }
-                onAddLine={addCompanyExpenseLine}
-                showVendor
-              />
-            )}
-
-            {props.variant === "company_income" && (
-              <FinanceActiveRow
-                date={companyIncomeActive.date}
-                category={companyIncomeActive.category}
-                description={companyIncomeActive.description}
-                amount={companyIncomeActive.amount}
-                source={companyIncomeActive.source}
-                categories={props.categories}
-                onChange={(field, value) =>
-                  setCompanyIncomeActive((prev) => ({ ...prev, [field]: value }))
-                }
-                onAddLine={addCompanyIncomeLine}
-                showSource
-              />
-            )}
-
-            {props.variant === "personal_expense" && (
-              <FinanceActiveRow
-                date={personalActive.date}
-                category={personalActive.category}
-                description={personalActive.description}
-                amount={personalActive.amount}
-                categories={props.categories}
-                onChange={(field, value) =>
-                  setPersonalActive((prev) => ({ ...prev, [field]: value }))
-                }
-                onAddLine={addPersonalLine}
-              />
-            )}
-          </div>
-
-          <div>
-            <p className="mb-2 text-sm font-medium">
-              Completed lines ({completedCount})
-            </p>
-            <BulkEntryCompletedTable
-              variant={props.variant}
-              projectRows={projectCompleted}
-              engineerRows={engineerCompleted}
-              companyExpenseRows={companyExpenseCompleted}
-              companyIncomeRows={companyIncomeCompleted}
-              personalRows={personalCompleted}
-              expenseCategories={
-                props.variant === "project" ? props.expenseCategories : []
-              }
-              labourTeams={props.variant === "project" ? props.labourTeams : []}
-              milestones={
-                props.variant === "project" || props.variant === "engineer"
-                  ? props.milestones
-                  : []
-              }
-              onRemove={removeRow}
-            />
-          </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2 sm:px-6">
+          <Button type="button" size="sm" className="gap-1.5" onClick={addRow}>
+            <Plus className="h-4 w-4" />
+            Add row
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="gap-1.5"
+            onClick={deleteRow}
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete row
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="gap-1.5"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="h-4 w-4" />
+            Import
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="gap-1.5"
+            onClick={handleExport}
+            disabled={filledCount === 0}
+          >
+            <Download className="h-4 w-4" />
+            Export
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) void handleImportFile(file)
+              e.target.value = ""
+            }}
+          />
         </div>
 
-        <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:px-6">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => props.onOpenChange(false)}
-            disabled={saving}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void handleUpdateExpense()}
-            disabled={saving || completedCount === 0}
-          >
-            {saving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving…
-              </>
-            ) : (
-              "Update expense"
-            )}
-          </Button>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
+          {variant === "project" && (
+            <BulkEntryEditableGrid
+              variant="project"
+              rows={projectRows}
+              selectedRowId={selectedRowId}
+              onSelectRow={setSelectedRowId}
+              onUpdateRow={(id, patch) =>
+                setProjectRows((prev) =>
+                  prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+                )
+              }
+              categoryNames={props.categoryNames}
+              expenseCategories={props.expenseCategories}
+              labourTeams={props.labourTeams}
+              milestones={props.milestones}
+              subcategoriesForCategory={props.subcategoriesForCategory}
+            />
+          )}
+          {variant === "engineer" && (
+            <BulkEntryEditableGrid
+              variant="engineer"
+              rows={engineerRows}
+              selectedRowId={selectedRowId}
+              onSelectRow={setSelectedRowId}
+              onUpdateRow={(id, patch) =>
+                setEngineerRows((prev) =>
+                  prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+                )
+              }
+              milestones={props.milestones}
+            />
+          )}
+          {variant === "company_expense" && (
+            <BulkEntryEditableGrid
+              variant="company_expense"
+              rows={companyExpenseRows}
+              selectedRowId={selectedRowId}
+              onSelectRow={setSelectedRowId}
+              onUpdateRow={(id, patch) =>
+                setCompanyExpenseRows((prev) =>
+                  prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+                )
+              }
+              categories={props.categories}
+            />
+          )}
+          {variant === "company_income" && (
+            <BulkEntryEditableGrid
+              variant="company_income"
+              rows={companyIncomeRows}
+              selectedRowId={selectedRowId}
+              onSelectRow={setSelectedRowId}
+              onUpdateRow={(id, patch) =>
+                setCompanyIncomeRows((prev) =>
+                  prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+                )
+              }
+              categories={props.categories}
+            />
+          )}
+          {variant === "personal_expense" && (
+            <BulkEntryEditableGrid
+              variant="personal_expense"
+              rows={personalRows}
+              selectedRowId={selectedRowId}
+              onSelectRow={setSelectedRowId}
+              onUpdateRow={(id, patch) =>
+                setPersonalRows((prev) =>
+                  prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+                )
+              }
+              categories={props.categories}
+            />
+          )}
+        </div>
+
+        <DialogFooter className="shrink-0 flex-col items-stretch gap-2 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <p className="text-xs text-muted-foreground sm:max-w-md">
+            Note: {bulkEntryRequiredNote(variant)}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => props.onOpenChange(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleUpdateExpense()}
+              disabled={saving || filledCount === 0}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                "Update expense"
+              )}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function FinanceActiveRow({
-  date,
-  category,
-  description,
-  amount,
-  vendor,
-  source,
-  categories,
-  onChange,
-  onAddLine,
-  showVendor,
-  showSource,
-}: {
-  date: string
-  category: string
-  description: string
-  amount: string
-  vendor?: string
-  source?: string
-  categories: string[]
-  onChange: (field: string, value: string) => void
-  onAddLine: () => void
-  showVendor?: boolean
-  showSource?: boolean
-}) {
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <div className="space-y-2">
-        <Label>Date *</Label>
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => onChange("date", e.target.value)}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>Category *</Label>
-        <Select value={category} onValueChange={(v) => onChange("category", v)}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select category" />
-          </SelectTrigger>
-          <SelectContent className="z-[100]">
-            {categories.map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2 sm:col-span-2">
-        <Label>Description *</Label>
-        <Input
-          value={description}
-          onChange={(e) => onChange("description", e.target.value)}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>Amount *</Label>
-        <Input
-          type="number"
-          value={amount}
-          onChange={(e) => onChange("amount", e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault()
-              onAddLine()
-            }
-          }}
-        />
-      </div>
-      {showVendor && (
-        <div className="space-y-2">
-          <Label>Vendor</Label>
-          <Input
-            value={vendor ?? ""}
-            onChange={(e) => onChange("vendor", e.target.value)}
-          />
-        </div>
-      )}
-      {showSource && (
-        <div className="space-y-2">
-          <Label>Source</Label>
-          <Input
-            value={source ?? ""}
-            onChange={(e) => onChange("source", e.target.value)}
-          />
-        </div>
-      )}
-      <div className="sm:col-span-2 flex justify-end">
-        <Button type="button" className="gap-2" onClick={onAddLine}>
-          <Plus className="h-4 w-4" />
-          Add line
-        </Button>
-      </div>
-    </div>
   )
 }
