@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import type { UserRole } from "@/lib/hooks/use-auth"
 import { useAuth } from "@/lib/hooks/use-auth"
@@ -61,7 +61,9 @@ export function LoginForm() {
   } = useAuth()
 
   // #region agent log
-  fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'login-form.tsx:render',message:'LoginForm render state',data:{authLoading,isAuthenticated,showSpinner:authLoading&&isAuthenticated},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+  useEffect(() => {
+    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'login-form.tsx:render',message:'LoginForm render state',data:{authLoading,isAuthenticated},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+  }, [authLoading, isAuthenticated])
   // #endregion
 
   const [selectedRole, setSelectedRole] = useState<UserRole>("pm")
