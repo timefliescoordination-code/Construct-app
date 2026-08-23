@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { requireAdminSession, type SupabaseServerClient } from '@/lib/auth/require-admin'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import { COMPANY_LOGO_CONFIG, COMPANY_SETTINGS_ID } from '@/lib/company/constants'
 import { deleteCompanyLogoFile, uploadCompanyLogoFile } from '@/lib/company/storage'
@@ -11,29 +11,6 @@ type ActionResult<T = undefined> =
   | { ok: true; data?: T }
   | { ok: false; error: string }
 
-async function requireAdmin() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { ok: false as const, error: 'You must be signed in.' }
-  }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .maybeSingle()
-
-  if (profile?.role !== 'admin') {
-    return { ok: false as const, error: 'Admin access required.' }
-  }
-
-  return { ok: true as const, supabase, userId: user.id }
-}
-
 function normalizeOptional(value: FormDataEntryValue | null): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
@@ -41,7 +18,7 @@ function normalizeOptional(value: FormDataEntryValue | null): string | null {
 }
 
 async function syncAdminProfileCompanyFields(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: SupabaseServerClient,
   companyName: string | null,
   phone: string | null,
 ) {
@@ -68,7 +45,7 @@ async function syncAdminProfileCompanyFields(
 export async function updateCompanySettingsAction(
   formData: FormData,
 ): Promise<ActionResult> {
-  const auth = await requireAdmin()
+  const auth = await requireAdminSession()
   if (!auth.ok) return auth
 
   const companyName = normalizeOptional(formData.get('company_name'))
@@ -94,7 +71,7 @@ export async function updateCompanySettingsAction(
       email,
       address,
       website,
-      updated_by: auth.userId,
+      updated_by: auth.user.id,
       updated_at: new Date().toISOString(),
     })
 
@@ -112,7 +89,7 @@ export async function updateCompanySettingsAction(
 export async function uploadCompanyLogoAction(
   formData: FormData,
 ): Promise<ActionResult<{ logo_url: string | null }>> {
-  const auth = await requireAdmin()
+  const auth = await requireAdminSession()
   if (!auth.ok) return auth
 
   const file = formData.get('logo')
@@ -156,7 +133,7 @@ export async function uploadCompanyLogoAction(
     .upsert({
       id: COMPANY_SETTINGS_ID,
       logo_path: upload.filePath,
-      updated_by: auth.userId,
+      updated_by: auth.user.id,
       updated_at: new Date().toISOString(),
     })
 
@@ -171,7 +148,7 @@ export async function uploadCompanyLogoAction(
 }
 
 export async function removeCompanyLogoAction(): Promise<ActionResult> {
-  const auth = await requireAdmin()
+  const auth = await requireAdminSession()
   if (!auth.ok) return auth
 
   const { data: existing } = await getCompanySettings(auth.supabase)
@@ -183,7 +160,7 @@ export async function removeCompanyLogoAction(): Promise<ActionResult> {
     .from('company_settings')
     .update({
       logo_path: null,
-      updated_by: auth.userId,
+      updated_by: auth.user.id,
       updated_at: new Date().toISOString(),
     })
     .eq('id', COMPANY_SETTINGS_ID)
@@ -199,7 +176,7 @@ export async function removeCompanyLogoAction(): Promise<ActionResult> {
 export async function getCompanySettingsAction(): Promise<
   ActionResult<{ settings: Awaited<ReturnType<typeof getCompanySettings>>['data'] }>
 > {
-  const auth = await requireAdmin()
+  const auth = await requireAdminSession()
   if (!auth.ok) return auth
 
   const { data, error } = await getCompanySettings(auth.supabase)

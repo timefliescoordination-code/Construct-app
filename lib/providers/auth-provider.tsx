@@ -32,7 +32,6 @@ export interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  signIn: (email: string, password: string) => ReturnType<ReturnType<typeof createClient>["auth"]["signInWithPassword"]>
   signOut: () => ReturnType<ReturnType<typeof createClient>["auth"]["signOut"]>
   /** Reload user/profile after server-side sign-in (AuthProvider does not remount on router.push). */
   refreshAuth: () => Promise<void>
@@ -75,56 +74,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   })
 
   const refreshAuth = useCallback(async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'auth-provider.tsx:refreshAuth:start',message:'refreshAuth called',data:{browserConfigured:isSupabaseConfiguredForBrowser()},timestamp:Date.now(),hypothesisId:'H1-H3'})}).catch(()=>{});
-    // #endregion
-    setAuthState((prev) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'auth-provider.tsx:refreshAuth:setLoading',message:'setting isLoading true',data:{prevIsAuthenticated:prev.isAuthenticated,prevIsLoading:prev.isLoading},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
-      return { ...prev, isLoading: true }
-    })
+    setAuthState((prev) => ({ ...prev, isLoading: true }))
 
     try {
-    if (!isSupabaseConfiguredForBrowser()) {
-      const session = await fetchSessionFromApi()
-      if (session) {
-        setAuthState({
-          user: session.user,
-          profile: session.profile,
-          isLoading: false,
-          isAuthenticated: true,
-          role: session.profile.role ?? null,
-        })
-      } else {
-        setAuthState({
-          user: null,
-          profile: null,
-          isLoading: false,
-          isAuthenticated: false,
-          role: null,
-        })
+      if (!isSupabaseConfiguredForBrowser()) {
+        const session = await fetchSessionFromApi()
+        if (session) {
+          setAuthState({
+            user: session.user,
+            profile: session.profile,
+            isLoading: false,
+            isAuthenticated: true,
+            role: session.profile.role ?? null,
+          })
+        } else {
+          setAuthState({
+            user: null,
+            profile: null,
+            isLoading: false,
+            isAuthenticated: false,
+            role: null,
+          })
+        }
+        return
       }
-      return
-    }
 
-    const supabase = createClient()
+      const supabase = createClient()
 
-    const applySession = async (user: User) => {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single()
+      const applySession = async (user: User) => {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single()
 
-      if (profile?.role) {
+        if (profile?.role) {
+          setAuthState({
+            user,
+            profile,
+            isLoading: false,
+            isAuthenticated: true,
+            role: profile.role,
+          })
+          return
+        }
+
+        const fromApi = await fetchSessionFromApi()
+        if (fromApi) {
+          setAuthState({
+            user: fromApi.user,
+            profile: fromApi.profile,
+            isLoading: false,
+            isAuthenticated: true,
+            role: fromApi.profile.role ?? null,
+          })
+          return
+        }
+
         setAuthState({
           user,
-          profile,
+          profile: profile ?? null,
           isLoading: false,
           isAuthenticated: true,
-          role: profile.role,
+          role: profile?.role ?? null,
         })
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (user) {
+        await applySession(user)
         return
       }
 
@@ -141,51 +162,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setAuthState({
-        user,
-        profile: profile ?? null,
+        user: null,
+        profile: null,
         isLoading: false,
-        isAuthenticated: true,
-        role: profile?.role ?? null,
+        isAuthenticated: false,
+        role: null,
       })
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    // #region agent log
-    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'auth-provider.tsx:refreshAuth:afterGetUser',message:'getUser completed',data:{hasUser:Boolean(user)},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
-
-    if (user) {
-      await applySession(user)
-      return
-    }
-
-    const fromApi = await fetchSessionFromApi()
-    if (fromApi) {
-      setAuthState({
-        user: fromApi.user,
-        profile: fromApi.profile,
-        isLoading: false,
-        isAuthenticated: true,
-        role: fromApi.profile.role ?? null,
-      })
-      return
-    }
-
-    setAuthState({
-      user: null,
-      profile: null,
-      isLoading: false,
-      isAuthenticated: false,
-      role: null,
-    })
-    // #region agent log
-    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'auth-provider.tsx:refreshAuth:done',message:'refreshAuth finished unauthenticated',data:{isLoading:false,isAuthenticated:false},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
     } catch (error) {
-      console.error('[refreshAuth]', error)
+      console.error("[refreshAuth]", error)
       setAuthState({
         user: null,
         profile: null,
@@ -210,11 +194,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const {
         data: { subscription: sub },
       } = supabase.auth.onAuthStateChange(async (event, session) => {
-        // #region agent log
-        fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'auth-provider.tsx:onAuthStateChange',message:'auth state change',data:{event,hasSession:Boolean(session)},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
         if (session?.user) {
-          if (event === 'INITIAL_SESSION') return
+          if (event === "INITIAL_SESSION") return
           await refreshAuth()
         } else if (event === "SIGNED_OUT") {
           setAuthState({
@@ -243,18 +224,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAdmin: role === "admin",
       canManageProjects: role === "admin" || role === "pm",
     }
-    const notConfiguredError = {
-      data: { user: null, session: null },
-      error: {
-        message:
-          "Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel (or .env.local locally).",
-      },
-    } as const
 
     if (!isSupabaseConfiguredForBrowser()) {
       return {
         ...authState,
-        signIn: async () => notConfiguredError,
         signOut: async () => {
           window.location.href = "/auth/signout"
           return { error: null }
@@ -268,8 +241,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return {
       ...authState,
-      signIn: (email: string, password: string) =>
-        supabase.auth.signInWithPassword({ email, password }),
       signOut: () => supabase.auth.signOut(),
       refreshAuth,
       ...permissions,

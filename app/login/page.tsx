@@ -2,6 +2,9 @@ import { LoginForm } from "@/components/auth/login-form"
 import { ThemeToggle } from "@/components/theme-toggle"
 import type { Metadata } from "next"
 
+/** Avoid stale static HTML + mismatched JS chunks after rapid Hostinger redeploys. */
+export const dynamic = "force-dynamic"
+
 export const metadata: Metadata = {
   title: "Login | VRA HOMES",
   description: "Sign in to your VRA HOMES account",

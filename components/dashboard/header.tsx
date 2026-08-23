@@ -18,6 +18,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/use-auth"
+import { dashboardPath } from "@/lib/auth/dashboard-path"
 import { toast } from "sonner"
 import type { AppNotification } from "@/lib/notifications"
 import { formatDistanceToNow } from "date-fns"
@@ -89,20 +90,7 @@ export function DashboardHeader({ notificationCount = 0, hideAppNav = false }: D
 
   const badgeCount = Math.max(unreadCount, notificationCount)
 
-  const getDashboardHome = () => {
-    switch (role) {
-      case "admin":
-        return "/admin"
-      case "pm":
-        return "/pm"
-      case "engineer":
-        return "/engineer"
-      case "customer":
-        return "/customer"
-      default:
-        return "/"
-    }
-  }
+  const getDashboardHome = () => dashboardPath(role)
 
   const handleSignOut = async () => {
     const { error } = await signOut()

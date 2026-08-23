@@ -5,35 +5,12 @@ import {
 } from "@/lib/money-timeline/build-timeline"
 import { normalizeDateValue, unwrapProject } from "@/lib/money-timeline/dates"
 import type { MoneyTimelineFilters } from "@/lib/money-timeline/types"
-import { createClient } from "@/lib/supabase/server"
+import { requireAdminApi } from "@/lib/auth/require-admin"
 import { getSupabaseErrorMessage } from "@/lib/supabase/db-errors"
 import { NextRequest, NextResponse } from "next/server"
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 100
-
-async function requireAdmin() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  if (profile?.role !== "admin") {
-    return { error: NextResponse.json({ error: "Admin access required" }, { status: 403 }) }
-  }
-
-  return { supabase }
-}
 
 function parseFilters(searchParams: URLSearchParams): MoneyTimelineFilters {
   const type = searchParams.get("type")
@@ -52,7 +29,7 @@ function parseFilters(searchParams: URLSearchParams): MoneyTimelineFilters {
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdmin()
+    const auth = await requireAdminApi()
     if ("error" in auth && auth.error) {
       return auth.error
     }

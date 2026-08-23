@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { requireAdminApi } from "@/lib/auth/require-admin"
 import { getSupabaseErrorMessage } from "@/lib/supabase/db-errors"
 import {
   COMPANY_EXPENSE_CATEGORIES,
@@ -15,34 +15,9 @@ const FALLBACK: Record<FinanceCategoryKind, readonly string[]> = {
   personal_expense: PERSONAL_EXPENSE_CATEGORIES,
 }
 
-async function requireAdmin() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single()
-
-  if (profile?.role !== "admin") {
-    return {
-      error: NextResponse.json({ error: "Admin access required" }, { status: 403 }),
-    }
-  }
-
-  return { supabase }
-}
-
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdmin()
+    const auth = await requireAdminApi()
     if ("error" in auth && auth.error) {
       return auth.error
     }

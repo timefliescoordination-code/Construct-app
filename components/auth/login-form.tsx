@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import type { UserRole } from "@/lib/hooks/use-auth"
 import { useAuth } from "@/lib/hooks/use-auth"
@@ -60,12 +60,6 @@ export function LoginForm() {
     refreshAuth,
   } = useAuth()
 
-  // #region agent log
-  useEffect(() => {
-    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'login-form.tsx:render',message:'LoginForm render state',data:{authLoading,isAuthenticated},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-  }, [authLoading, isAuthenticated])
-  // #endregion
-
   const [selectedRole, setSelectedRole] = useState<UserRole>("pm")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -110,10 +104,6 @@ export function LoginForm() {
         setIsLoading(false)
         return
       }
-
-      // #region agent log
-      fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'login-form.tsx:handleSubmit:success',message:'login API ok',data:{redirectTo:result.redirectTo,role:result.role},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
 
       toast.success("Signed in successfully!")
       const target = result.redirectTo ?? dashboardPath(result.role)

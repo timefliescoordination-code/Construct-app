@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { absoluteAppUrl } from '@/lib/app-url'
+import { dashboardPath } from '@/lib/auth/dashboard-path'
 import { getSupabaseEnv, isSupabaseConfigured } from '@/lib/supabase/env'
 
 // Public routes that don't require authentication
@@ -82,19 +83,7 @@ export async function updateSession(request: NextRequest) {
 
     // If user is logged in and accessing root (/), redirect to their dashboard
     if (pathname === '/') {
-      if (role === 'admin') {
-        return redirectTo(request, '/admin')
-      }
-      if (role === 'pm') {
-        return redirectTo(request, '/pm')
-      }
-      if (role === 'engineer') {
-        return redirectTo(request, '/engineer')
-      }
-      if (role === 'customer') {
-        return redirectTo(request, '/customer')
-      }
-      return redirectTo(request, '/admin')
+      return redirectTo(request, dashboardPath(role))
     }
 
     // Role-based route guard (site engineers and customers have limited surfaces)

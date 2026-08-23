@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { createClient } from "@/lib/supabase/server"
+import { requireAdminSession } from "@/lib/auth/require-admin"
 import { getSupabaseErrorMessage } from "@/lib/supabase/db-errors"
 import {
   FINANCE_MIGRATIONS_HINT,
@@ -12,33 +12,6 @@ import type { FinanceCategory, FinanceCategoryKind } from "@/lib/types/database"
 export type FinanceCategoryActionResult<T = void> =
   | { ok: true; data: T }
   | { ok: false; error: string }
-
-async function requireAdminSession() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { ok: false as const, error: "You must be signed in." }
-  }
-
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle()
-
-  if (error) {
-    return { ok: false as const, error: getSupabaseErrorMessage(error) }
-  }
-
-  if (profile?.role !== "admin") {
-    return { ok: false as const, error: "Admin access required." }
-  }
-
-  return { ok: true as const, supabase }
-}
 
 function revalidateFinanceCategories() {
   revalidatePath("/admin/expenses")
