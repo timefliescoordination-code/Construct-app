@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import { dashboardPath } from "@/lib/auth/dashboard-path"
 
 export default async function AdminLayout({
   children,
@@ -22,7 +23,7 @@ export default async function AdminLayout({
     .maybeSingle()
 
   if (profile?.role !== "admin") {
-    redirect("/login")
+    redirect(dashboardPath(profile?.role ?? null))
   }
 
   return children

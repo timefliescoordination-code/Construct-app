@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   description: "View your project payments and progress",
 }
 
+export const dynamic = "force-dynamic"
+
 function CustomerDashboardFallback() {
   return (
     <div className="flex items-center justify-center py-24">

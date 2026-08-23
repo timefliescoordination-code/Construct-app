@@ -6,6 +6,8 @@ export const metadata: Metadata = {
   description: "Manage daily site activities and expenses",
 }
 
+export const dynamic = "force-dynamic"
+
 export default function EngineerPage() {
   return <EngineerDashboard />
 }
