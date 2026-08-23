@@ -188,6 +188,129 @@ export interface VendorPayment {
   updated_at: string
 }
 
+export type AdditionalWorkStatus = 'pending' | 'approved' | 'rejected'
+
+export type ChangeRequestCategory =
+  | 'design'
+  | 'material'
+  | 'electrical'
+  | 'plumbing'
+  | 'civil_work'
+  | 'finishing'
+  | 'other'
+
+export type ChangeRequestStatus =
+  | 'draft'
+  | 'submitted'
+  | 'under_review'
+  | 'costing_prepared'
+  | 'internal_approval_pending'
+  | 'customer_approval_pending'
+  | 'approved'
+  | 'scheduled'
+  | 'in_progress'
+  | 'completed'
+  | 'rejected'
+  | 'cancelled'
+
+export interface ConstructionChangeRequest {
+  id: string
+  project_id: string
+  customer_id: string
+  request_number: string
+  title: string
+  description: string
+  category: ChangeRequestCategory
+  related_milestone_id: string | null
+  preferred_completion_date: string | null
+  status: ChangeRequestStatus
+  assigned_reviewer_id: string | null
+  estimated_additional_days: number | null
+  affected_milestone_id: string | null
+  internal_notes: string | null
+  customer_visible_explanation: string | null
+  active_costing_revision_id: string | null
+  additional_work_id: string | null
+  client_payment_id: string | null
+  submitted_at: string | null
+  cancelled_at: string | null
+  cancelled_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ConstructionChangeAttachment {
+  id: string
+  change_request_id: string
+  uploaded_by: string | null
+  file_path: string
+  file_name: string
+  file_mime_type: string
+  visibility: 'customer' | 'internal'
+  created_at: string
+}
+
+export interface ConstructionChangeCostingRow {
+  id: string
+  revision_id: string
+  line_order: number
+  description: string
+  unit: string
+  price: number
+}
+
+export interface ConstructionChangeCostingRevision {
+  id: string
+  change_request_id: string
+  revision_number: number
+  author_id: string
+  reason_for_change: string | null
+  estimated_additional_days: number | null
+  affected_milestone_id: string | null
+  internal_notes: string | null
+  customer_visible_explanation: string | null
+  total_price: number
+  created_at: string
+  rows?: ConstructionChangeCostingRow[]
+  author?: Profile | null
+}
+
+export interface ConstructionChangeAuditEvent {
+  id: string
+  change_request_id: string
+  event_type: string
+  from_status: string | null
+  to_status: string | null
+  actor_id: string | null
+  actor_role: string | null
+  comments: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+  actor?: Profile | null
+}
+
+export interface ConstructionChangeCustomerDecision {
+  id: string
+  change_request_id: string
+  revision_id: string
+  decision: 'accepted' | 'rejected'
+  confirmation_text: string
+  user_id: string
+  created_at: string
+}
+
+export interface ConstructionChangeRequestDetail extends ConstructionChangeRequest {
+  attachments: ConstructionChangeAttachment[]
+  costing_revisions: ConstructionChangeCostingRevision[]
+  audit_events: ConstructionChangeAuditEvent[]
+  customer_decisions: ConstructionChangeCustomerDecision[]
+  related_milestone?: Milestone | null
+  affected_milestone?: Milestone | null
+  project?: Pick<Project, 'id' | 'name' | 'customer_id' | 'pm_id'> | null
+  customer?: Profile | null
+  active_revision?: ConstructionChangeCostingRevision | null
+}
+
 export interface AdditionalWork {
   id: string
   project_id: string

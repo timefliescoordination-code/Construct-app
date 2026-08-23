@@ -8,6 +8,7 @@ export type CustomerNotificationType =
   | 'payment_request'
   | 'site_photos'
   | 'expense_status'
+  | 'change_request'
 
 export type AppNotification = {
   id: string

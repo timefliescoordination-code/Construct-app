@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Wallet,
   Building2,
+  ClipboardList,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/use-auth"
@@ -54,7 +55,19 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
       icon: LayoutDashboard,
     },
     ...(role !== "customer"
-      ? [{ id: "projects", href: "/projects", label: "Projects", icon: FolderKanban }]
+      ? [
+          { id: "projects", href: "/projects", label: "Projects", icon: FolderKanban },
+          ...(role === "admin" || role === "pm" || role === "engineer"
+            ? [
+                {
+                  id: "change-requests",
+                  href: "/change-requests",
+                  label: "Change requests",
+                  icon: ClipboardList,
+                },
+              ]
+            : []),
+        ]
       : []),
     ...(role === "admin"
       ? [{ id: "expenses", href: "/admin/expenses", label: "All expenses", icon: Wallet }]
@@ -99,6 +112,9 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     }
     if (href === "/admin/expenses") {
       return pathname.startsWith("/admin/expenses")
+    }
+    if (href === "/change-requests") {
+      return pathname.startsWith("/change-requests")
     }
     if (href === "/admin/company") {
       return pathname.startsWith("/admin/company")

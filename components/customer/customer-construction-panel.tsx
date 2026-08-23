@@ -35,6 +35,7 @@ import {
 } from "@/lib/hooks/use-project-data"
 import { shouldUseLiveFinancials } from "@/lib/projects/lifecycle"
 import { SitePhotosGallery } from "@/components/projects/project-detail/site-photos-gallery"
+import { CustomerChangeRequestsPanel } from "@/components/customer/customer-change-requests-panel"
 import { CONSTRUCTION_PREVIEW_PAYMENTS } from "@/lib/projects/construction-preview"
 import {
   calculateCompletionPercent,
@@ -44,14 +45,16 @@ import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
 
 interface CustomerConstructionPanelProps {
   project: ProjectWithDetails
-  initialTab?: "milestones" | "upcoming" | "photos"
+  initialTab?: "milestones" | "upcoming" | "photos" | "changes"
+  selectedRequestId?: string
 }
 
 export function CustomerConstructionPanel({
   project,
   initialTab,
+  selectedRequestId,
 }: CustomerConstructionPanelProps) {
-  const [activeTab, setActiveTab] = useState<"milestones" | "upcoming" | "photos">(
+  const [activeTab, setActiveTab] = useState<"milestones" | "upcoming" | "photos" | "changes">(
     initialTab ?? "milestones",
   )
 
@@ -296,10 +299,11 @@ export function CustomerConstructionPanel({
           )}
 
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="milestones">Milestones</TabsTrigger>
               <TabsTrigger value="upcoming">Payments</TabsTrigger>
               <TabsTrigger value="photos">Site Photos</TabsTrigger>
+              <TabsTrigger value="changes">Change requests</TabsTrigger>
             </TabsList>
 
             <TabsContent value="milestones" className="mt-4">
@@ -430,6 +434,19 @@ export function CustomerConstructionPanel({
                 </p>
               ) : (
                 <SitePhotosGallery projectId={project.id} customerMode />
+              )}
+            </TabsContent>
+
+            <TabsContent value="changes" className="mt-4">
+              {isPreview ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Change requests will be available once construction begins.
+                </p>
+              ) : (
+                <CustomerChangeRequestsPanel
+                  project={project}
+                  selectedRequestId={selectedRequestId}
+                />
               )}
             </TabsContent>
           </Tabs>

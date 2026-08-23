@@ -68,11 +68,15 @@ export function CustomerDashboard() {
   const constructionTab =
     tabParam === "photos"
       ? "photos"
-      : focusParam === "payments"
-        ? "upcoming"
-        : focusParam === "milestones"
-          ? "milestones"
-          : undefined
+      : tabParam === "changes"
+        ? "changes"
+        : focusParam === "payments"
+          ? "upcoming"
+          : focusParam === "milestones"
+            ? "milestones"
+            : undefined
+
+  const selectedRequestId = searchParams.get("requestId") ?? undefined
 
   return (
     <PageShell>
@@ -124,6 +128,7 @@ export function CustomerDashboard() {
               <CustomerConstructionPanel
                 project={project}
                 initialTab={constructionTab}
+                selectedRequestId={selectedRequestId}
               />
             )}
           </div>
