@@ -11,6 +11,10 @@ function isTelegramWebhookRoute(pathname: string) {
   return pathname === '/api/telegram/webhook'
 }
 
+function isPublicApiRoute(pathname: string) {
+  return pathname.startsWith('/api/auth/')
+}
+
 function redirectTo(request: NextRequest, pathname: string) {
   return NextResponse.redirect(absoluteAppUrl(pathname, request))
 }
@@ -19,7 +23,8 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const isPublicRoute =
     publicRoutes.some((route) => pathname.startsWith(route)) ||
-    isTelegramWebhookRoute(pathname)
+    isTelegramWebhookRoute(pathname) ||
+    isPublicApiRoute(pathname)
 
   if (!isSupabaseConfigured()) {
     if (pathname.startsWith('/setup') || isPublicRoute) {

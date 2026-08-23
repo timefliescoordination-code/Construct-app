@@ -72,7 +72,6 @@ export function LoginForm() {
     profile,
     signOut,
     refreshAuth,
-    signIn,
   } = useAuth()
   const [selectedRole, setSelectedRole] = useState<UserRole>("pm")
   const [showPassword, setShowPassword] = useState(false)
@@ -101,30 +100,27 @@ export function LoginForm() {
     setIsLoading(true)
 
     try {
-      const { error } = await signIn(formData.email, formData.password)
-
-      if (error) {
-        toast.error(error.message)
-        setIsLoading(false)
-        return
-      }
-
-      const ensureRes = await fetch("/api/auth/ensure-profile", {
+      const loginRes = await fetch("/api/auth/login", {
         method: "POST",
         credentials: "include",
         cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+        }),
       })
-      const ensure = await ensureRes.json()
+      const result = await loginRes.json()
 
-      if (!ensure.ok) {
-        toast.error(ensure.error ?? "Could not load your profile.")
+      if (!result.ok) {
+        toast.error(result.error ?? "Sign in failed.")
         setIsLoading(false)
         return
       }
 
       toast.success("Signed in successfully!")
       await refreshAuth()
-      router.push(ensure.redirectTo ?? getDashboardPath(ensure.role))
+      router.push(result.redirectTo ?? getDashboardPath(result.role))
       router.refresh()
     } catch (error) {
       console.error("Login error:", error)
@@ -136,7 +132,7 @@ export function LoginForm() {
     }
   }
 
-  if (authLoading) {
+  if (authLoading && isAuthenticated) {
     return (
       <div className="w-full max-w-md flex flex-col items-center gap-4 py-12">
         <span className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
