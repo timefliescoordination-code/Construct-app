@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "node -e \"const fs=require('fs');if(!fs.existsSync('.next/standalone/server.js')){console.error('Missing prebuilt standalone');process.exit(1)}\"",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint ."
   },
