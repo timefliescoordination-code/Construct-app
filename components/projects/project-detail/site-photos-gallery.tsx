@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
 import { Image as ImageIcon, Loader2 } from "lucide-react"
 import type { ProjectSitePhoto } from "@/lib/types/database"
-import { formatStageLabel } from "@/lib/site-photos/stage"
+import { formatStageLabel } from "@/lib/site-photos/stage-label"
 
 interface SitePhotosGalleryProps {
   projectId: string

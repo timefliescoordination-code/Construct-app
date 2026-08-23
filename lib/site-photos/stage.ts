@@ -1,16 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { formatStageLabel } from '@/lib/site-photos/stage-label'
 
 export type ProjectStageContext = {
   milestoneId: string
   stageName: string
   stageLabel: string
-}
-
-export function formatStageLabel(stageName: string): string {
-  const trimmed = stageName.trim()
-  if (!trimmed) return 'Site photos'
-  if (/stage$/i.test(trimmed)) return trimmed
-  return `${trimmed} stage`
 }
 
 export async function getLatestProjectStageFromExpenses(
