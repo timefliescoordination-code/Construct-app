@@ -55,7 +55,6 @@ import {
 import { ScrollTable } from "@/components/layout/scroll-table"
 import { MoneyTimelineSection } from "@/components/admin/money-timeline"
 import { ProjectMilestoneLink } from "@/components/admin/project-milestone-link"
-import { AdminSettingsLinks } from "@/components/admin/admin-settings-links"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useAuth } from "@/lib/hooks/use-auth"
 
