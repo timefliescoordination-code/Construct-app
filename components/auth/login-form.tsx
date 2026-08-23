@@ -12,22 +12,8 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { dashboardPath } from "@/lib/auth/dashboard-path"
 import { toast } from "sonner"
-
-function getDashboardPath(role: UserRole | null): string {
-  switch (role) {
-    case "admin":
-      return "/admin"
-    case "pm":
-      return "/pm"
-    case "engineer":
-      return "/engineer"
-    case "customer":
-      return "/customer"
-    default:
-      return "/admin"
-  }
-}
 
 interface RoleOption {
   id: UserRole
@@ -128,7 +114,7 @@ export function LoginForm() {
       // #endregion
 
       toast.success("Signed in successfully!")
-      const target = result.redirectTo ?? getDashboardPath(result.role)
+      const target = result.redirectTo ?? dashboardPath(result.role)
       // Full navigation so new session cookies from /api/auth/login are sent on the next request.
       window.location.assign(target)
       return
@@ -172,7 +158,7 @@ export function LoginForm() {
               size="lg"
               onClick={async () => {
                 await refreshAuth()
-                router.push(getDashboardPath(role))
+                router.push(dashboardPath(role))
                 router.refresh()
               }}
             >
