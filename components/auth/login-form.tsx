@@ -134,7 +134,6 @@ export function LoginForm() {
       const message =
         error instanceof Error ? error.message : "An unexpected error occurred"
       toast.error(message)
-    } finally {
       setIsLoading(false)
     }
   }

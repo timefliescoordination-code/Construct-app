@@ -2,6 +2,10 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { dashboardPath } from '@/lib/auth/dashboard-path'
+import {
+  applyAuthCookiesFromStore,
+  applyPendingAuthCookies,
+} from '@/lib/auth/session-cookies'
 import { ensureUserProfile } from '@/lib/supabase/ensure-profile'
 import { getSupabaseEnv, isSupabaseConfigured } from '@/lib/supabase/env'
 
@@ -89,14 +93,9 @@ export async function POST(request: Request) {
       redirectTo,
     })
 
-    for (const { name, value, options } of pendingCookies) {
-      response.cookies.set(name, value, options)
-    }
-
-    for (const cookie of cookieStore.getAll()) {
-      if (cookie.name.startsWith('sb-')) {
-        response.cookies.set(cookie.name, cookie.value)
-      }
+    applyPendingAuthCookies(response, pendingCookies)
+    if (pendingCookies.length === 0) {
+      applyAuthCookiesFromStore(response, cookieStore.getAll())
     }
 
     // #region agent log
