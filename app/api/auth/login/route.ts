@@ -1,7 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { absoluteAppUrl } from '@/lib/app-url'
 import { dashboardPath } from '@/lib/auth/dashboard-path'
 import { ensureUserProfile } from '@/lib/supabase/ensure-profile'
 import { getSupabaseEnv, isSupabaseConfigured } from '@/lib/supabase/env'
@@ -84,8 +83,11 @@ export async function POST(request: Request) {
     }
 
     const redirectTo = dashboardPath(role)
-    const destination = absoluteAppUrl(redirectTo, request)
-    const response = NextResponse.redirect(destination, { status: 303 })
+    const response = NextResponse.json({
+      ok: true,
+      role,
+      redirectTo,
+    })
 
     for (const { name, value, options } of pendingCookies) {
       response.cookies.set(name, value, options)
@@ -98,7 +100,7 @@ export async function POST(request: Request) {
     }
 
     // #region agent log
-    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'api/auth/login/route.ts:redirect',message:'login redirect prepared',data:{redirectTo,destination,pendingCookieCount:pendingCookies.length,responseCookieCount:response.cookies.getAll().length,role},timestamp:Date.now(),hypothesisId:'H1-H2'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'api/auth/login/route.ts:success',message:'login json success',data:{redirectTo,pendingCookieCount:pendingCookies.length,responseCookieCount:response.cookies.getAll().length,role},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
     // #endregion
 
     return response

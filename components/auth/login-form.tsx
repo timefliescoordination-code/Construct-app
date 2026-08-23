@@ -91,7 +91,6 @@ export function LoginForm() {
         method: "POST",
         credentials: "include",
         cache: "no-store",
-        redirect: "manual",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: formData.email,
@@ -99,18 +98,26 @@ export function LoginForm() {
         }),
       })
 
+      const responseText = await loginRes.text()
+
       // #region agent log
-      fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'login-form.tsx:handleSubmit:response',message:'login fetch completed',data:{status:loginRes.status,location:loginRes.headers.get('Location')},timestamp:Date.now(),hypothesisId:'H2-H3'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'login-form.tsx:handleSubmit:response',message:'login fetch completed',data:{status:loginRes.status,bodyLength:responseText.length},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
       // #endregion
 
-      if (loginRes.status >= 300 && loginRes.status < 400) {
-        const location = loginRes.headers.get("Location")
-        toast.success("Signed in successfully!")
-        window.location.assign(location ?? "/")
+      if (!responseText.trim()) {
+        toast.error("Sign in failed: empty server response.")
+        setIsLoading(false)
         return
       }
 
-      const result = await loginRes.json()
+      let result: { ok?: boolean; error?: string; redirectTo?: string; role?: UserRole }
+      try {
+        result = JSON.parse(responseText) as typeof result
+      } catch {
+        toast.error("Sign in failed: invalid server response.")
+        setIsLoading(false)
+        return
+      }
 
       if (!result.ok) {
         toast.error(result.error ?? "Sign in failed.")
@@ -119,7 +126,7 @@ export function LoginForm() {
       }
 
       toast.success("Signed in successfully!")
-      const target = result.redirectTo ?? dashboardPath(result.role)
+      const target = result.redirectTo ?? dashboardPath(result.role ?? null)
       window.location.assign(target)
       return
     } catch (error) {
