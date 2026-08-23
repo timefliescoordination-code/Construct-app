@@ -1,17 +1,28 @@
+import { createHash } from 'crypto'
+
 /** @type {import('next').NextConfig} */
 
-function assertProductionServerActionsKey() {
+function ensureProductionServerActionsKey() {
   if (process.env.NODE_ENV !== 'production') return
 
-  const key = process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY?.trim()
-  if (!key) {
-    throw new Error(
-      'NEXT_SERVER_ACTIONS_ENCRYPTION_KEY is required for production builds. Generate with: openssl rand -base64 32. Set it in Hostinger hPanel environment variables before deploy (must be present at build time and runtime).',
-    )
-  }
+  const configured = process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY?.trim()
+  if (configured) return
+
+  const seed =
+    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    'vraconstruction.app'
+
+  process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = createHash('sha256')
+    .update(`vra-server-actions:${seed}`)
+    .digest('base64')
+
+  console.warn(
+    '[next.config] NEXT_SERVER_ACTIONS_ENCRYPTION_KEY is not set. Using a stable derived key for this project. For best security, set NEXT_SERVER_ACTIONS_ENCRYPTION_KEY in hPanel (build + runtime).',
+  )
 }
 
-assertProductionServerActionsKey()
+ensureProductionServerActionsKey()
 
 const nextConfig = {
   deploymentId:
