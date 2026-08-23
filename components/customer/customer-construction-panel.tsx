@@ -429,7 +429,7 @@ export function CustomerConstructionPanel({
                   Site photos will appear here when construction begins.
                 </p>
               ) : (
-                <SitePhotosGallery projectId={project.id} />
+                <SitePhotosGallery projectId={project.id} customerMode />
               )}
             </TabsContent>
           </Tabs>

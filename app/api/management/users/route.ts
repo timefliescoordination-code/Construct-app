@@ -134,10 +134,25 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json()
-    const { email, password, full_name, phone, role } = body
-    
+    const { email, password, full_name, phone, role, company_name } = body
+
     if (!email || !password || !full_name || !role) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    if (role === "admin") {
+      if (!phone?.trim()) {
+        return NextResponse.json(
+          { error: "Company phone number is required for admin accounts." },
+          { status: 400 },
+        )
+      }
+      if (!company_name?.trim()) {
+        return NextResponse.json(
+          { error: "Company name is required for admin accounts." },
+          { status: 400 },
+        )
+      }
     }
     
     let adminClient
@@ -166,8 +181,14 @@ export async function POST(request: NextRequest) {
     }
     
     if (newUser.user) {
-      if (phone) {
-        await adminClient.from("profiles").update({ phone }).eq("id", newUser.user.id)
+      const profileUpdate: Record<string, string> = {}
+      if (phone?.trim()) profileUpdate.phone = phone.trim()
+      if (role === "admin" && company_name?.trim()) {
+        profileUpdate.company_name = company_name.trim()
+      }
+
+      if (Object.keys(profileUpdate).length > 0) {
+        await adminClient.from("profiles").update(profileUpdate).eq("id", newUser.user.id)
       }
 
       await adminClient.from("user_credentials").upsert(

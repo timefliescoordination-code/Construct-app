@@ -56,6 +56,7 @@ import {
   canEnterManpowerData,
   canViewProjectFinancials,
   canAccessProjectTab,
+  canUserUploadSitePhotosOnProject,
   isCustomerRole,
   CUSTOMER_ALLOWED_PROJECT_TABS,
 } from "@/lib/permissions"
@@ -116,7 +117,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
-  const { role, canManageProjects } = useAuth()
+  const { role, user, canManageProjects } = useAuth()
   const isCustomer = isCustomerRole(role)
   const showFinancials = canViewProjectFinancials(role)
   const canEditManpower = canEnterManpowerData(role)
@@ -158,6 +159,11 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   }
   
   const metrics = useProjectMetrics(project)
+
+  const canUploadProjectPhotos = useMemo(() => {
+    if (!project || isCustomer) return false
+    return canUserUploadSitePhotosOnProject(role, user?.id, project)
+  }, [project, role, user?.id, isCustomer])
 
   // Calculate all derived values for OverviewTab
   const calculatedData = useMemo(() => {
@@ -536,7 +542,8 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           <PhotosTab
             projectId={project.id}
             projectName={project.name}
-            canUpload={canManageProjects}
+            canUpload={canUploadProjectPhotos}
+            customerMode={isCustomer}
           />
         )
       default:

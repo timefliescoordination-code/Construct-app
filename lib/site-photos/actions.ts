@@ -4,22 +4,15 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import { notifySitePhotosBatch } from '@/lib/notifications'
+import { canUserUploadSitePhotosToProject } from '@/lib/site-photos/access'
+import { getCompanyWatermarkDetails } from '@/lib/site-photos/company-watermark'
+import { compressAndWatermarkSitePhoto } from '@/lib/site-photos/process'
 import { uploadSitePhotoFile } from '@/lib/site-photos/storage'
 import { resolveSitePhotoMimeType, validateSitePhotoFile } from '@/lib/site-photos/validate'
 import { SITE_PHOTO_UPLOAD_CONFIG } from '@/lib/site-photos/constants'
+import type { ProjectSitePhoto } from '@/lib/types/database'
 import type { TabActionResult } from '@/lib/projects/tab-actions'
-
-export type ProjectSitePhoto = {
-  id: string
-  project_id: string
-  upload_batch_id: string
-  file_path: string
-  file_name: string
-  file_mime_type: string
-  caption: string | null
-  uploaded_by: string | null
-  created_at: string
-}
+import type { UserRole } from '@/lib/types/database'
 
 function revalidatePhotoPaths(projectId: string) {
   revalidatePath(`/projects/${projectId}`)
@@ -67,8 +60,29 @@ export async function uploadSitePhotosAction(
     .eq('id', user.id)
     .maybeSingle()
 
-  if (profile?.role !== 'admin' && profile?.role !== 'pm') {
-    return { ok: false, error: 'Only admins and project managers can upload site photos.' }
+  const role = profile?.role as UserRole | undefined
+  if (!role) {
+    return { ok: false, error: 'Your account role could not be determined.' }
+  }
+
+  const canUpload = await canUserUploadSitePhotosToProject(
+    supabase,
+    user.id,
+    role,
+    projectId,
+  )
+  if (!canUpload) {
+    return { ok: false, error: 'You do not have permission to upload site photos for this project.' }
+  }
+
+  const { data: companyDetails, error: companyError } = await getCompanyWatermarkDetails(supabase)
+  if (!companyDetails) {
+    return {
+      ok: false,
+      error:
+        companyError ??
+        'Company name and phone are required on the company admin profile before site photos can be uploaded.',
+    }
   }
 
   const uploadBatchId = crypto.randomUUID()
@@ -77,15 +91,21 @@ export async function uploadSitePhotosAction(
 
   for (const file of files) {
     const photoId = crypto.randomUUID()
-    const mimeType = resolveSitePhotoMimeType(file)
-    const fileBuffer = await file.arrayBuffer()
+    const sourceMimeType = resolveSitePhotoMimeType(file)
+    const inputBuffer = Buffer.from(await file.arrayBuffer())
+
+    const processed = await compressAndWatermarkSitePhoto(
+      inputBuffer,
+      companyDetails.watermarkText,
+      sourceMimeType,
+    )
 
     const upload = await uploadSitePhotoFile(supabase, {
       projectId,
+      uploadBatchId,
       photoId,
-      fileName: file.name,
-      mimeType,
-      fileBuffer,
+      mimeType: processed.contentType,
+      fileBuffer: processed.buffer,
     })
 
     if ('error' in upload) {
@@ -101,8 +121,10 @@ export async function uploadSitePhotosAction(
       upload_batch_id: uploadBatchId,
       file_path: upload.filePath,
       file_name: file.name,
-      file_mime_type: mimeType,
+      file_mime_type: processed.contentType,
       uploaded_by: user.id,
+      company_name: companyDetails.companyName,
+      company_phone: companyDetails.companyPhone,
     })
 
     if (error) {
@@ -133,7 +155,12 @@ export async function listSitePhotosForProject(
 
   const { data, error } = await supabase
     .from('project_site_photos')
-    .select('*')
+    .select(
+      `
+      *,
+      uploader:profiles!uploaded_by(id, full_name)
+    `,
+    )
     .eq('project_id', projectId)
     .order('created_at', { ascending: false })
 

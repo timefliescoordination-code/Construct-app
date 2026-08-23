@@ -75,7 +75,10 @@ export interface ProjectSitePhoto {
   file_mime_type: string
   caption: string | null
   uploaded_by: string | null
+  company_name: string | null
+  company_phone: string | null
   created_at: string
+  uploader?: Pick<Profile, 'id' | 'full_name'> | null
 }
 
 export interface Milestone {

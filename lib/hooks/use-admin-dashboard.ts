@@ -4,7 +4,7 @@ import useSWR from "swr"
 import type { AdminDashboardData } from "@/lib/admin-dashboard-data"
 
 async function fetchAdminDashboard(): Promise<AdminDashboardData> {
-  const response = await fetch("/api/admin/dashboard")
+  const response = await fetch("/api/management/dashboard")
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
     throw new Error(body.error ?? "Failed to load admin dashboard")

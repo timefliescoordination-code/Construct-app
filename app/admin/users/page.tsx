@@ -49,6 +49,7 @@ interface UserProfile {
   full_name: string
   role: UserRole
   phone?: string
+  company_name?: string
   created_at: string
   password?: string | null
 }
@@ -80,6 +81,7 @@ export default function AdminUsersPage() {
     newPassword: "",
     full_name: "",
     phone: "",
+    company_name: "",
     role: "engineer" as UserRole,
   })
 
@@ -96,7 +98,7 @@ export default function AdminUsersPage() {
 
   async function fetchUsers() {
     try {
-      const response = await fetch("/api/admin/users")
+      const response = await fetch("/api/management/users")
       const result = await response.json()
 
       if (!response.ok) {
@@ -117,12 +119,23 @@ export default function AdminUsersPage() {
       toast.error("Please fill in all required fields")
       return
     }
+
+    if (formData.role === "admin") {
+      if (!formData.company_name.trim()) {
+        toast.error("Company name is required for admin accounts")
+        return
+      }
+      if (!formData.phone.trim()) {
+        toast.error("Company phone number is required for admin accounts")
+        return
+      }
+    }
     
     setSaving(true)
     
     try {
       // Call server action to create user
-      const response = await fetch("/api/admin/users", {
+      const response = await fetch("/api/management/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -136,7 +149,15 @@ export default function AdminUsersPage() {
       
       toast.success("User created successfully")
       setCreateDialogOpen(false)
-      setFormData({ email: "", password: "", newPassword: "", full_name: "", phone: "", role: "engineer" })
+      setFormData({
+        email: "",
+        password: "",
+        newPassword: "",
+        full_name: "",
+        phone: "",
+        company_name: "",
+        role: "engineer",
+      })
       fetchUsers()
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to create user"
@@ -148,7 +169,18 @@ export default function AdminUsersPage() {
 
   async function handleUpdateUser() {
     if (!selectedUser) return
-    
+
+    if (formData.role === "admin") {
+      if (!formData.company_name.trim()) {
+        toast.error("Company name is required for admin accounts")
+        return
+      }
+      if (!formData.phone.trim()) {
+        toast.error("Company phone number is required for admin accounts")
+        return
+      }
+    }
+
     setSaving(true)
     const supabase = createClient()
     
@@ -158,6 +190,8 @@ export default function AdminUsersPage() {
         .update({
           full_name: formData.full_name,
           phone: formData.phone,
+          company_name:
+            formData.role === "admin" ? formData.company_name.trim() : null,
           role: formData.role,
         })
         .eq("id", selectedUser.id)
@@ -167,7 +201,7 @@ export default function AdminUsersPage() {
       }
 
       if (formData.newPassword) {
-        const response = await fetch("/api/admin/users", {
+        const response = await fetch("/api/management/users", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -209,7 +243,7 @@ export default function AdminUsersPage() {
     setSaving(true)
     
     try {
-      const response = await fetch(`/api/admin/users?id=${selectedUser.id}`, {
+      const response = await fetch(`/api/management/users?id=${selectedUser.id}`, {
         method: "DELETE",
       })
       
@@ -235,6 +269,7 @@ export default function AdminUsersPage() {
       newPassword: "",
       full_name: user.full_name,
       phone: user.phone || "",
+      company_name: user.company_name || "",
       role: user.role,
     })
     setEditDialogOpen(true)
@@ -283,6 +318,7 @@ export default function AdminUsersPage() {
                   newPassword: "",
                   full_name: "",
                   phone: "",
+                  company_name: "",
                   role: "engineer",
                 })
                 setCreateDialogOpen(true)
@@ -428,14 +464,34 @@ export default function AdminUsersPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
+              <Label htmlFor="phone">
+                Phone{formData.role === "admin" ? " *" : ""}
+              </Label>
               <Input
                 id="phone"
                 placeholder="+91 98765 43210"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               />
+              {formData.role === "admin" && (
+                <p className="text-xs text-muted-foreground">
+                  Used on watermarked site photos shared with customers.
+                </p>
+              )}
             </div>
+            {formData.role === "admin" && (
+              <div className="space-y-2">
+                <Label htmlFor="company_name">Company Name *</Label>
+                <Input
+                  id="company_name"
+                  placeholder="VRA Construction"
+                  value={formData.company_name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, company_name: e.target.value })
+                  }
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="role">Role *</Label>
               <Select
@@ -516,13 +572,27 @@ export default function AdminUsersPage() {
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit_phone">Phone</Label>
+              <Label htmlFor="edit_phone">
+                Phone{formData.role === "admin" ? " *" : ""}
+              </Label>
               <Input
                 id="edit_phone"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               />
             </div>
+            {formData.role === "admin" && (
+              <div className="space-y-2">
+                <Label htmlFor="edit_company_name">Company Name *</Label>
+                <Input
+                  id="edit_company_name"
+                  value={formData.company_name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, company_name: e.target.value })
+                  }
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="edit_role">Role</Label>
               <Select

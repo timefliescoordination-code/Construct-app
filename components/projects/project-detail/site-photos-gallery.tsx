@@ -8,15 +8,18 @@ import type { ProjectSitePhoto } from "@/lib/types/database"
 interface SitePhotosGalleryProps {
   projectId: string
   emptyMessage?: string
+  customerMode?: boolean
+  refreshKey?: number
 }
 
 export function SitePhotosGallery({
   projectId,
   emptyMessage = "Site photos will appear here as your project progresses.",
+  customerMode = false,
+  refreshKey = 0,
 }: SitePhotosGalleryProps) {
   const [photos, setPhotos] = useState<ProjectSitePhoto[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [urlById, setUrlById] = useState<Record<string, string>>({})
 
   const loadPhotos = useCallback(async () => {
     setIsLoading(true)
@@ -37,42 +40,7 @@ export function SitePhotosGallery({
 
   useEffect(() => {
     void loadPhotos()
-  }, [loadPhotos])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadUrls() {
-      const entries: Record<string, string> = {}
-      for (const photo of photos) {
-        try {
-          const res = await fetch(
-            `/api/projects/${projectId}/site-photos/${photo.id}/view`,
-            { credentials: "include", cache: "no-store" },
-          )
-          const json = await res.json()
-          if (res.ok && json.data?.url) {
-            entries[photo.id] = json.data.url
-          }
-        } catch {
-          // skip failed thumbnail
-        }
-      }
-      if (!cancelled) {
-        setUrlById(entries)
-      }
-    }
-
-    if (photos.length > 0) {
-      void loadUrls()
-    } else {
-      setUrlById({})
-    }
-
-    return () => {
-      cancelled = true
-    }
-  }, [photos, projectId])
+  }, [loadPhotos, refreshKey])
 
   if (isLoading) {
     return (
@@ -93,32 +61,37 @@ export function SitePhotosGallery({
 
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-      {photos.map((photo) => (
-        <div
-          key={photo.id}
-          className="flex flex-col overflow-hidden rounded-lg border border-border"
-        >
-          <div className="relative aspect-square bg-muted">
-            {urlById[photo.id] ? (
+      {photos.map((photo) => {
+        const imageSrc = `/api/projects/${projectId}/site-photos/${photo.id}/view`
+        const uploaderName = photo.uploader?.full_name?.trim()
+        const caption = photo.caption?.trim()
+
+        return (
+          <div
+            key={photo.id}
+            className="flex flex-col overflow-hidden rounded-lg border border-border"
+          >
+            <div className="relative aspect-square bg-muted">
               <img
-                src={urlById[photo.id]}
-                alt={photo.file_name}
-                className="h-full w-full object-cover"
+                src={imageSrc}
+                alt={caption || photo.file_name}
+                className={`h-full w-full object-cover ${customerMode ? "select-none" : ""}`}
+                draggable={!customerMode}
+                onContextMenu={customerMode ? (e) => e.preventDefault() : undefined}
               />
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <ImageIcon className="h-10 w-10 text-muted-foreground/40" />
-              </div>
-            )}
+            </div>
+            <div className="p-2 space-y-0.5">
+              {caption ? (
+                <p className="text-xs font-medium line-clamp-2">{caption}</p>
+              ) : null}
+              <p className="text-[10px] text-muted-foreground">
+                {format(new Date(photo.created_at), "dd MMM yyyy")}
+                {uploaderName ? ` · ${uploaderName}` : ""}
+              </p>
+            </div>
           </div>
-          <div className="p-2">
-            <p className="text-xs font-medium truncate">{photo.file_name}</p>
-            <p className="text-[10px] text-muted-foreground">
-              {format(new Date(photo.created_at), "dd MMM yyyy")}
-            </p>
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

@@ -48,7 +48,7 @@ function buildQuery(filters: MoneyTimelineFilters, offset: number) {
 }
 
 async function fetchTimeline(query: string): Promise<MoneyTimelineResponse> {
-  const response = await fetch(`/api/admin/money-timeline?${query}`)
+  const response = await fetch(`/api/management/money-timeline?${query}`)
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
     throw new Error(body.error ?? "Failed to load money timeline")

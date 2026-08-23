@@ -141,7 +141,7 @@ function buildQuery(
 }
 
 async function fetchAllExpenses(query: string): Promise<AllExpensesResponse> {
-  const res = await fetch(`/api/admin/all-expenses?${query}`)
+  const res = await fetch(`/api/management/all-expenses?${query}`)
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error ?? "Failed to load expenses")
@@ -158,7 +158,7 @@ type FinanceCategoriesResponse = {
 }
 
 async function fetchFinanceCategories(): Promise<FinanceCategoriesResponse> {
-  const res = await fetch("/api/admin/finance-categories")
+  const res = await fetch("/api/management/finance-categories")
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error ?? "Failed to load categories")

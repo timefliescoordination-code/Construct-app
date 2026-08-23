@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
-import { createSignedSitePhotoUrl } from '@/lib/site-photos/storage'
+import { downloadSitePhotoFile } from '@/lib/site-photos/storage'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +23,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
   const { data: photo, error } = await supabase
     .from('project_site_photos')
-    .select('file_path')
+    .select('file_path, file_mime_type')
     .eq('id', photoId)
     .eq('project_id', projectId)
     .maybeSingle()
@@ -36,10 +36,19 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: 'Photo not found.' }, { status: 404 })
   }
 
-  const signed = await createSignedSitePhotoUrl(supabase, photo.file_path)
-  if ('error' in signed) {
-    return NextResponse.json({ error: signed.error }, { status: 400 })
+  const downloaded = await downloadSitePhotoFile(supabase, photo.file_path)
+  if ('error' in downloaded) {
+    return NextResponse.json({ error: downloaded.error }, { status: 400 })
   }
 
-  return NextResponse.json({ data: { url: signed.url } })
+  const contentType = photo.file_mime_type || downloaded.mimeType
+
+  return new NextResponse(downloaded.data, {
+    headers: {
+      'Content-Type': contentType,
+      'Cache-Control': 'private, max-age=3600',
+      'Content-Disposition': 'inline',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
 }

@@ -4,32 +4,37 @@ import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 
 export function buildSitePhotoStoragePath(
   projectId: string,
+  uploadBatchId: string,
   photoId: string,
-  fileName: string,
+  mimeType: string,
 ): string {
-  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-  return `${projectId}/${photoId}/${safeName}`
+  const ext = mimeType === 'image/webp' ? 'webp' : 'jpg'
+  return `${projectId}/${uploadBatchId}/${photoId}.${ext}`
 }
 
 export async function uploadSitePhotoFile(
   supabase: SupabaseClient,
   input: {
     projectId: string
+    uploadBatchId: string
     photoId: string
-    fileName: string
     mimeType: string
-    fileBuffer: ArrayBuffer
+    fileBuffer: Buffer | ArrayBuffer
   },
 ): Promise<{ filePath: string } | { error: string }> {
   const filePath = buildSitePhotoStoragePath(
     input.projectId,
+    input.uploadBatchId,
     input.photoId,
-    input.fileName,
+    input.mimeType,
   )
+
+  const body =
+    input.fileBuffer instanceof Buffer ? input.fileBuffer : Buffer.from(input.fileBuffer)
 
   const { error } = await supabase.storage
     .from(PROJECT_SITE_PHOTOS_BUCKET)
-    .upload(filePath, input.fileBuffer, {
+    .upload(filePath, body, {
       contentType: input.mimeType,
       upsert: false,
     })
@@ -70,4 +75,19 @@ export async function deleteSitePhotoFromStorage(
   }
 
   return { ok: true }
+}
+
+export async function downloadSitePhotoFile(
+  supabase: SupabaseClient,
+  filePath: string,
+): Promise<{ data: Blob; mimeType: string } | { error: string }> {
+  const { data, error } = await supabase.storage
+    .from(PROJECT_SITE_PHOTOS_BUCKET)
+    .download(filePath)
+
+  if (error || !data) {
+    return { error: error ? getSupabaseErrorMessage(error) : 'Failed to download photo.' }
+  }
+
+  return { data, mimeType: data.type || 'image/jpeg' }
 }

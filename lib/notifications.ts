@@ -133,19 +133,16 @@ export async function notifySitePhotosBatch(
     uploadedAt: Date
   },
 ): Promise<void> {
-  const dateLabel = input.uploadedAt.toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-  const countLabel =
-    input.photoCount === 1 ? '1 new photo' : `${input.photoCount} new photos`
+  const message =
+    input.photoCount > 0
+      ? `New site photos are available. (${input.photoCount} photos)`
+      : 'New site photos are available.'
 
   await notifyProjectCustomer(supabase, {
     projectId: input.projectId,
     type: 'site_photos',
     title: 'New site photos',
-    message: `New site photos are available — ${countLabel} on ${dateLabel}.`,
+    message,
     referenceId: input.uploadBatchId,
     linkPath: '/customer?section=construction&tab=photos',
     dedupeKey: `site_photos:${input.uploadBatchId}`,

@@ -2,9 +2,12 @@
   "name": "my-project",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node -e \"const fs=require('fs');if(!fs.existsSync('.next/standalone/server.js')){console.error('Missing prebuilt standalone');process.exit(1)}\"",
     "start": "next start",
     "lint": "eslint ."
   },

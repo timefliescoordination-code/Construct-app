@@ -4,6 +4,7 @@ import { useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import { Image as ImageIcon, Loader2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { uploadSitePhotosAction } from "@/lib/site-photos/actions"
@@ -13,30 +14,40 @@ interface PhotosTabProps {
   projectId?: string
   projectName?: string
   canUpload?: boolean
+  customerMode?: boolean
 }
 
 export function PhotosTab({
   projectId: propProjectId,
   projectName: propProjectName,
   canUpload = false,
+  customerMode = false,
 }: PhotosTabProps = {}) {
   const params = useParams()
   const projectId = propProjectId || (params?.id as string)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [galleryRefreshKey, setGalleryRefreshKey] = useState(0)
 
   const handleUpload = async (fileList: FileList | null) => {
     if (!projectId || !fileList?.length) return
 
+    const files = Array.from(fileList)
     setIsUploading(true)
+    setUploadProgress(0)
+
     try {
       const formData = new FormData()
       formData.set("projectId", projectId)
-      for (const file of Array.from(fileList)) {
+      for (const file of files) {
         formData.append("files", file)
       }
 
+      setUploadProgress(15)
       const result = await uploadSitePhotosAction(formData)
+      setUploadProgress(100)
+
       if (!result.ok) {
         toast.error(result.error)
         return
@@ -46,9 +57,10 @@ export function PhotosTab({
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
-      window.location.reload()
+      setGalleryRefreshKey((key) => key + 1)
     } finally {
       setIsUploading(false)
+      setUploadProgress(0)
     }
   }
 
@@ -70,7 +82,7 @@ export function PhotosTab({
             )}
           </CardTitle>
           {canUpload && (
-            <div>
+            <div className="flex flex-col items-end gap-2">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -92,12 +104,22 @@ export function PhotosTab({
                 )}
                 Upload photos
               </Button>
+              {isUploading && (
+                <div className="w-full min-w-[12rem] space-y-1">
+                  <Progress value={uploadProgress} className="h-2" />
+                  <p className="text-[10px] text-muted-foreground text-right">
+                    Processing and uploading…
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </CardHeader>
         <CardContent>
           <SitePhotosGallery
             projectId={projectId}
+            customerMode={customerMode}
+            refreshKey={galleryRefreshKey}
             emptyMessage={
               canUpload
                 ? "No site photos yet. Upload images to share progress with your customer."

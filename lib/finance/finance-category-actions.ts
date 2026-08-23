@@ -42,7 +42,7 @@ async function requireAdminSession() {
 
 function revalidateFinanceCategories() {
   revalidatePath("/admin/expenses")
-  revalidatePath("/api/admin/finance-categories")
+  revalidatePath("/api/management/finance-categories")
 }
 
 async function categoryInUse(

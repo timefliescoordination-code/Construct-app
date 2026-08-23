@@ -61,6 +61,31 @@ export function canEnterManpowerData(role: UserRole | null): boolean {
   return role === "admin" || role === "pm" || role === "engineer"
 }
 
+/** Internal project staff (not customers) may upload watermarked site photos. */
+export function canUploadSitePhotos(role: UserRole | null): boolean {
+  return role === "admin" || role === "pm" || role === "engineer"
+}
+
+/** Whether the signed-in user may upload site photos for a specific project. */
+export function canUserUploadSitePhotosOnProject(
+  role: UserRole | null,
+  userId: string | undefined,
+  project: Pick<ProjectWithDetails, "pm_id"> & {
+    project_engineers?: ProjectWithDetails["project_engineers"]
+  },
+): boolean {
+  if (!role || !userId) return false
+  if (!canUploadSitePhotos(role)) return false
+  if (role === "admin") return true
+  if (role === "pm") return project.pm_id === userId
+  if (role === "engineer") {
+    return (project.project_engineers ?? []).some(
+      (assignment) => assignment.engineer_id === userId,
+    )
+  }
+  return false
+}
+
 /** Only admin and PM can edit milestones, project settings, or approve expenses. */
 export function canManageProjectData(role: UserRole | null): boolean {
   return role === "admin" || role === "pm"
