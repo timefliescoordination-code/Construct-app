@@ -73,6 +73,11 @@ export function LoginForm() {
     signOut,
     refreshAuth,
   } = useAuth()
+
+  // #region agent log
+  fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'login-form.tsx:render',message:'LoginForm render state',data:{authLoading,isAuthenticated,showSpinner:authLoading&&isAuthenticated},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+  // #endregion
+
   const [selectedRole, setSelectedRole] = useState<UserRole>("pm")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -118,10 +123,15 @@ export function LoginForm() {
         return
       }
 
+      // #region agent log
+      fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'login-form.tsx:handleSubmit:success',message:'login API ok',data:{redirectTo:result.redirectTo,role:result.role},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
+
       toast.success("Signed in successfully!")
-      await refreshAuth()
-      router.push(result.redirectTo ?? getDashboardPath(result.role))
-      router.refresh()
+      const target = result.redirectTo ?? getDashboardPath(result.role)
+      // Full navigation so new session cookies from /api/auth/login are sent on the next request.
+      window.location.assign(target)
+      return
     } catch (error) {
       console.error("Login error:", error)
       const message =
@@ -132,16 +142,7 @@ export function LoginForm() {
     }
   }
 
-  if (authLoading && isAuthenticated) {
-    return (
-      <div className="w-full max-w-md flex flex-col items-center gap-4 py-12">
-        <span className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      </div>
-    )
-  }
-
-  if (isAuthenticated) {
+  if (isAuthenticated && !authLoading) {
     const displayName = profile?.full_name || profile?.email || "your account"
     return (
       <div className="w-full max-w-md space-y-6">

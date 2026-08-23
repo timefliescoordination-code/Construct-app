@@ -75,7 +75,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   })
 
   const refreshAuth = useCallback(async () => {
-    setAuthState((prev) => ({ ...prev, isLoading: true }))
+    // #region agent log
+    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'auth-provider.tsx:refreshAuth:start',message:'refreshAuth called',data:{browserConfigured:isSupabaseConfiguredForBrowser()},timestamp:Date.now(),hypothesisId:'H1-H3'})}).catch(()=>{});
+    // #endregion
+    setAuthState((prev) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'auth-provider.tsx:refreshAuth:setLoading',message:'setting isLoading true',data:{prevIsAuthenticated:prev.isAuthenticated,prevIsLoading:prev.isLoading},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      return { ...prev, isLoading: true }
+    })
 
     if (!isSupabaseConfiguredForBrowser()) {
       const session = await fetchSessionFromApi()
@@ -144,6 +152,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { user },
     } = await supabase.auth.getUser()
 
+    // #region agent log
+    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'auth-provider.tsx:refreshAuth:afterGetUser',message:'getUser completed',data:{hasUser:Boolean(user)},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+
     if (user) {
       await applySession(user)
       return
@@ -168,6 +180,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: false,
       role: null,
     })
+    // #region agent log
+    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'auth-provider.tsx:refreshAuth:done',message:'refreshAuth finished unauthenticated',data:{isLoading:false,isAuthenticated:false},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
   }, [])
 
   useEffect(() => {
@@ -184,6 +199,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const {
         data: { subscription: sub },
       } = supabase.auth.onAuthStateChange(async (event, session) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'auth-provider.tsx:onAuthStateChange',message:'auth state change',data:{event,hasSession:Boolean(session)},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
         if (session?.user) {
           await refreshAuth()
         } else if (event === "SIGNED_OUT") {
