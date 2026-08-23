@@ -2,18 +2,13 @@
 
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import { getPublicAppOrigin } from '@/lib/app-url'
 import { ensureUserProfile } from '@/lib/supabase/ensure-profile'
 import type { UserRole } from '@/lib/types/database'
 
 async function siteOrigin(): Promise<string | undefined> {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim()
-  if (configured) return configured.replace(/\/+$/, '')
-
   const h = await headers()
-  const host = h.get('x-forwarded-host') ?? h.get('host')
-  if (!host) return undefined
-  const proto = h.get('x-forwarded-proto') ?? 'https'
-  return `${proto}://${host}`
+  return getPublicAppOrigin({ headers: h })
 }
 
 export type AuthActionResult =

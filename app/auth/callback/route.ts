@@ -1,10 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { absoluteAppUrl, getPublicAppOrigin } from '@/lib/app-url'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = request.nextUrl
+  const { searchParams } = request.nextUrl
   const code = searchParams.get('code')
   const next = searchParams.get('next') ?? '/'
+  const origin = getPublicAppOrigin(request)
 
   if (code) {
     const supabase = await createClient()
@@ -14,5 +16,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.redirect(`${origin}/auth/error`)
+  return NextResponse.redirect(absoluteAppUrl('/auth/error', request))
 }

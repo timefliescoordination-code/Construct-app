@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { absoluteAppUrl } from '@/lib/app-url'
 import { getSupabaseEnv, isSupabaseConfigured } from '@/lib/supabase/env'
 
 // Public routes that don't require authentication
@@ -8,6 +9,10 @@ const publicRoutes = ['/login', '/signup', '/auth/callback', '/auth/error', '/au
 /** Telegram servers call the webhook without app cookies. Auth is via TELEGRAM_WEBHOOK_SECRET. */
 function isTelegramWebhookRoute(pathname: string) {
   return pathname === '/api/telegram/webhook'
+}
+
+function redirectTo(request: NextRequest, pathname: string) {
+  return NextResponse.redirect(absoluteAppUrl(pathname, request))
 }
 
 export async function updateSession(request: NextRequest) {
@@ -20,9 +25,7 @@ export async function updateSession(request: NextRequest) {
     if (pathname.startsWith('/setup') || isPublicRoute) {
       return NextResponse.next()
     }
-    const url = request.nextUrl.clone()
-    url.pathname = '/setup'
-    return NextResponse.redirect(url)
+    return redirectTo(request, '/setup')
   }
 
   let supabaseResponse = NextResponse.next({
@@ -60,9 +63,7 @@ export async function updateSession(request: NextRequest) {
 
   // If user is not logged in and trying to access protected route
   if (!user && !isPublicRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
+    return redirectTo(request, '/login')
   }
 
   if (user) {
@@ -76,19 +77,19 @@ export async function updateSession(request: NextRequest) {
 
     // If user is logged in and accessing root (/), redirect to their dashboard
     if (pathname === '/') {
-      const url = request.nextUrl.clone()
       if (role === 'admin') {
-        url.pathname = '/admin'
-      } else if (role === 'pm') {
-        url.pathname = '/pm'
-      } else if (role === 'engineer') {
-        url.pathname = '/engineer'
-      } else if (role === 'customer') {
-        url.pathname = '/customer'
-      } else {
-        url.pathname = '/admin'
+        return redirectTo(request, '/admin')
       }
-      return NextResponse.redirect(url)
+      if (role === 'pm') {
+        return redirectTo(request, '/pm')
+      }
+      if (role === 'engineer') {
+        return redirectTo(request, '/engineer')
+      }
+      if (role === 'customer') {
+        return redirectTo(request, '/customer')
+      }
+      return redirectTo(request, '/admin')
     }
 
     // Role-based route guard (site engineers and customers have limited surfaces)
@@ -99,9 +100,7 @@ export async function updateSession(request: NextRequest) {
         pathname.startsWith('/projects/new') ||
         pathname.includes('/edit')
       ) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/engineer'
-        return NextResponse.redirect(url)
+        return redirectTo(request, '/engineer')
       }
     }
 
@@ -114,17 +113,13 @@ export async function updateSession(request: NextRequest) {
         pathname.includes('/edit') ||
         pathname.startsWith('/integrations')
       ) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/customer'
-        return NextResponse.redirect(url)
+        return redirectTo(request, '/customer')
       }
     }
 
     if (role === 'pm') {
       if (pathname.startsWith('/admin')) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/pm'
-        return NextResponse.redirect(url)
+        return redirectTo(request, '/pm')
       }
     }
   }
