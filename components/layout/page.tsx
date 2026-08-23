@@ -44,7 +44,7 @@ export function PageShell({
   return (
     <div className={cn("min-h-screen bg-background", className)}>
       <div className="flex min-h-screen">
-        {!hideAppSidebar && <AppSidebar className="hidden lg:flex" />}
+        {!hideAppSidebar && <AppSidebar className="hidden md:flex" />}
         <div className="flex min-w-0 flex-1 flex-col">{children}</div>
       </div>
     </div>

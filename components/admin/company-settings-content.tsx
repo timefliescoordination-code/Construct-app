@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Building2, ImageIcon, Loader2, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
@@ -23,15 +24,24 @@ import {
   updateCompanySettingsAction,
   uploadCompanyLogoAction,
 } from "@/lib/company/actions"
+import { useAuth } from "@/lib/hooks/use-auth"
 
 const DEFAULT_LOGO = "/images/vra-logo.png"
 
 export function CompanySettingsContent() {
+  const router = useRouter()
+  const { isAdmin, isLoading: authLoading } = useAuth()
   const [settings, setSettings] = useState<CompanySettingsView | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [logoUploading, setLogoUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!authLoading && !isAdmin) {
+      router.push("/login")
+    }
+  }, [authLoading, isAdmin, router])
 
   const [form, setForm] = useState({
     company_name: "",

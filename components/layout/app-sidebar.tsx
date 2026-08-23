@@ -22,7 +22,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
   const pathname = usePathname()
-  const { role } = useAuth()
+  const { role, isAdmin } = useAuth()
   const { branding } = useCompanyBranding()
 
   const dashboardHref =
@@ -46,13 +46,16 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
       ? [{ href: "/projects", label: "Projects", icon: FolderKanban }]
       : []),
     ...(role === "admin"
-      ? [
-          { href: "/admin/expenses", label: "All expenses", icon: Wallet },
-          { href: "/admin/company", label: "Company Details", icon: Building2 },
-          { href: "/admin/users", label: "User Management", icon: Users },
-        ]
+      ? [{ href: "/admin/expenses", label: "All expenses", icon: Wallet }]
       : []),
   ]
+
+  const adminNavItems = isAdmin
+    ? [
+        { href: "/admin/company", label: "Company Details", icon: Building2 },
+        { href: "/admin/users", label: "User Management", icon: Users },
+      ]
+    : []
 
   const canUseTelegram =
     role === "engineer" || role === "pm" || role === "admin"
@@ -130,6 +133,14 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
           Main
         </p>
         {navItems.map(renderNavLink)}
+        {adminNavItems.length > 0 ? (
+          <>
+            <p className="px-3 pb-2 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Administration
+            </p>
+            {adminNavItems.map(renderNavLink)}
+          </>
+        ) : null}
         {integrationItems.length > 0 ? (
           <>
             <p className="px-3 pb-2 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
