@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { COMPANY_SETTINGS_ID } from '@/lib/company/constants'
 
 export type CompanyWatermarkDetails = {
   companyName: string
@@ -9,26 +10,45 @@ export type CompanyWatermarkDetails = {
 export async function getCompanyWatermarkDetails(
   supabase: SupabaseClient,
 ): Promise<{ data: CompanyWatermarkDetails | null; error: string | null }> {
-  const { data: adminProfile, error } = await supabase
-    .from('profiles')
+  const { data: companySettings, error: settingsError } = await supabase
+    .from('company_settings')
     .select('company_name, phone')
-    .eq('role', 'admin')
-    .order('created_at', { ascending: true })
-    .limit(1)
+    .eq('id', COMPANY_SETTINGS_ID)
     .maybeSingle()
 
-  if (error) {
-    return { data: null, error: error.message }
+  if (settingsError) {
+    return { data: null, error: settingsError.message }
   }
 
-  const companyName = adminProfile?.company_name?.trim() ?? ''
-  const companyPhone = adminProfile?.phone?.trim() ?? ''
+  let companyName = companySettings?.company_name?.trim() ?? ''
+  let companyPhone = companySettings?.phone?.trim() ?? ''
+
+  if (!companyName || !companyPhone) {
+    const { data: adminProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('company_name, phone')
+      .eq('role', 'admin')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (profileError) {
+      return { data: null, error: profileError.message }
+    }
+
+    if (!companyName) {
+      companyName = adminProfile?.company_name?.trim() ?? ''
+    }
+    if (!companyPhone) {
+      companyPhone = adminProfile?.phone?.trim() ?? ''
+    }
+  }
 
   if (!companyName || !companyPhone) {
     return {
       data: null,
       error:
-        'Company name and phone are required on the company admin profile before site photos can be uploaded. Update the admin account in User Management.',
+        'Company name and phone are required before site photos can be uploaded. Update Company Details in the admin sidebar.',
     }
   }
 

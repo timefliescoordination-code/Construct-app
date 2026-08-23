@@ -9,9 +9,11 @@ import {
   HelpCircle,
   MessageCircle,
   Wallet,
+  Building2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/use-auth"
+import { useCompanyBranding } from "@/lib/hooks/use-company-branding"
 
 interface AppSidebarProps {
   className?: string
@@ -21,6 +23,7 @@ interface AppSidebarProps {
 export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
   const pathname = usePathname()
   const { role } = useAuth()
+  const { branding } = useCompanyBranding()
 
   const dashboardHref =
     role === "admin"
@@ -45,6 +48,7 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     ...(role === "admin"
       ? [
           { href: "/admin/expenses", label: "All expenses", icon: Wallet },
+          { href: "/admin/company", label: "Company Details", icon: Building2 },
           { href: "/admin/users", label: "User Management", icon: Users },
         ]
       : []),
@@ -66,6 +70,9 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     }
     if (href === "/admin/expenses") {
       return pathname.startsWith("/admin/expenses")
+    }
+    if (href === "/admin/company") {
+      return pathname.startsWith("/admin/company")
     }
     return pathname.startsWith(href)
   }
@@ -105,12 +112,14 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
       <div className="border-b border-sidebar-border px-4 py-5">
         <Link href={dashboardHref} onClick={onNavigate} className="flex items-center gap-3">
           <img
-            src="/images/vra-logo.png"
-            alt="VRA HOMES"
+            src={branding.logo_url ?? "/images/vra-logo.png"}
+            alt={branding.company_name ?? "VRA HOMES"}
             className="h-9 w-9 rounded-xl object-cover shadow-sm"
           />
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-foreground">VRA HOMES</p>
+            <p className="truncate text-sm font-bold text-foreground">
+              {branding.company_name ?? "VRA HOMES"}
+            </p>
             <p className="text-[11px] text-muted-foreground">Build Unique One</p>
           </div>
         </Link>

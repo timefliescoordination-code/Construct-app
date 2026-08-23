@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Bell, Menu, Search, Shield, Users } from "lucide-react"
+import { Bell, Menu, Search, Shield, Users, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -310,6 +310,12 @@ export function DashboardHeader({ notificationCount = 0, hideAppNav = false }: D
               <DropdownMenuSeparator />
               {role === "admin" && (
                 <>
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin/company">
+                      <Building2 className="mr-2 h-4 w-4" />
+                      Company Details
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href="/admin/users">
                       <Users className="mr-2 h-4 w-4" />

@@ -20,6 +20,18 @@ export interface Profile {
   updated_at: string
 }
 
+export interface CompanySettings {
+  id: string
+  company_name: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  website: string | null
+  logo_path: string | null
+  updated_at: string
+  updated_by: string | null
+}
+
 export interface Project {
   id: string
   name: string
