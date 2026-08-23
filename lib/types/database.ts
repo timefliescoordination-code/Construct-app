@@ -89,8 +89,11 @@ export interface ProjectSitePhoto {
   uploaded_by: string | null
   company_name: string | null
   company_phone: string | null
+  milestone_id: string | null
+  stage_label: string | null
   created_at: string
   uploader?: Pick<Profile, 'id' | 'full_name'> | null
+  milestone?: Pick<Milestone, 'id' | 'name'> | null
 }
 
 export interface Milestone {

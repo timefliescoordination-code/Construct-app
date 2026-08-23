@@ -11,7 +11,7 @@ import { uploadSitePhotoFile } from '@/lib/site-photos/storage'
 import { resolveSitePhotoMimeType, validateSitePhotoFile } from '@/lib/site-photos/validate'
 import { SITE_PHOTO_UPLOAD_CONFIG } from '@/lib/site-photos/constants'
 import type { ProjectSitePhoto } from '@/lib/types/database'
-import type { TabActionResult } from '@/lib/projects/tab-actions'
+import { getLatestProjectStageFromExpenses } from '@/lib/site-photos/stage'
 import type { UserRole } from '@/lib/types/database'
 
 function revalidatePhotoPaths(projectId: string) {
@@ -87,6 +87,7 @@ export async function uploadSitePhotosAction(
 
   const uploadBatchId = crypto.randomUUID()
   const uploadedAt = new Date()
+  const latestStage = await getLatestProjectStageFromExpenses(supabase, projectId)
   let count = 0
 
   for (const file of files) {
@@ -125,6 +126,8 @@ export async function uploadSitePhotosAction(
       uploaded_by: user.id,
       company_name: companyDetails.companyName,
       company_phone: companyDetails.companyPhone,
+      milestone_id: latestStage?.milestoneId ?? null,
+      stage_label: latestStage?.stageLabel ?? null,
     })
 
     if (error) {
@@ -145,7 +148,22 @@ export async function uploadSitePhotosAction(
   })
 
   revalidatePhotoPaths(projectId)
-  return { ok: true, data: { uploadBatchId, count } }
+  return {
+    ok: true,
+    data: {
+      uploadBatchId,
+      count,
+      stageLabel: latestStage?.stageLabel ?? null,
+    },
+  }
+}
+
+export async function getSitePhotoStageContext(
+  projectId: string,
+): Promise<{ data: Awaited<ReturnType<typeof getLatestProjectStageFromExpenses>> | null; error: string | null }> {
+  const supabase = await createClient()
+  const stage = await getLatestProjectStageFromExpenses(supabase, projectId)
+  return { data: stage, error: null }
 }
 
 export async function listSitePhotosForProject(
@@ -158,7 +176,8 @@ export async function listSitePhotosForProject(
     .select(
       `
       *,
-      uploader:profiles!uploaded_by(id, full_name)
+      uploader:profiles!uploaded_by(id, full_name),
+      milestone:milestones!milestone_id(id, name)
     `,
     )
     .eq('project_id', projectId)

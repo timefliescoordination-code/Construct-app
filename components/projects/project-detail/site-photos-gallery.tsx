@@ -1,15 +1,22 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
 import { Image as ImageIcon, Loader2 } from "lucide-react"
 import type { ProjectSitePhoto } from "@/lib/types/database"
+import { formatStageLabel } from "@/lib/site-photos/stage"
 
 interface SitePhotosGalleryProps {
   projectId: string
   emptyMessage?: string
   customerMode?: boolean
   refreshKey?: number
+}
+
+function resolvePhotoStageLabel(photo: ProjectSitePhoto): string {
+  if (photo.stage_label?.trim()) return photo.stage_label.trim()
+  if (photo.milestone?.name?.trim()) return formatStageLabel(photo.milestone.name)
+  return "General site photos"
 }
 
 export function SitePhotosGallery({
@@ -42,6 +49,17 @@ export function SitePhotosGallery({
     void loadPhotos()
   }, [loadPhotos, refreshKey])
 
+  const groupedPhotos = useMemo(() => {
+    const groups = new Map<string, ProjectSitePhoto[]>()
+    for (const photo of photos) {
+      const label = resolvePhotoStageLabel(photo)
+      const list = groups.get(label) ?? []
+      list.push(photo)
+      groups.set(label, list)
+    }
+    return [...groups.entries()]
+  }, [photos])
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -60,38 +78,50 @@ export function SitePhotosGallery({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-      {photos.map((photo) => {
-        const imageSrc = `/api/projects/${projectId}/site-photos/${photo.id}/view`
-        const uploaderName = photo.uploader?.full_name?.trim()
-        const caption = photo.caption?.trim()
-
-        return (
-          <div
-            key={photo.id}
-            className="flex flex-col overflow-hidden rounded-lg border border-border"
-          >
-            <div className="relative aspect-square bg-muted">
-              <img
-                src={imageSrc}
-                alt={caption || photo.file_name}
-                className={`h-full w-full object-cover ${customerMode ? "select-none" : ""}`}
-                draggable={!customerMode}
-                onContextMenu={customerMode ? (e) => e.preventDefault() : undefined}
-              />
-            </div>
-            <div className="p-2 space-y-0.5">
-              {caption ? (
-                <p className="text-xs font-medium line-clamp-2">{caption}</p>
-              ) : null}
-              <p className="text-[10px] text-muted-foreground">
-                {format(new Date(photo.created_at), "dd MMM yyyy")}
-                {uploaderName ? ` · ${uploaderName}` : ""}
-              </p>
-            </div>
+    <div className="space-y-8">
+      {groupedPhotos.map(([stageLabel, stagePhotos]) => (
+        <section key={stageLabel} className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground">{stageLabel}</h3>
+            <span className="text-xs text-muted-foreground">
+              {stagePhotos.length} photo{stagePhotos.length === 1 ? "" : "s"}
+            </span>
           </div>
-        )
-      })}
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {stagePhotos.map((photo) => {
+              const imageSrc = `/api/projects/${projectId}/site-photos/${photo.id}/view`
+              const uploaderName = photo.uploader?.full_name?.trim()
+              const caption = photo.caption?.trim()
+
+              return (
+                <div
+                  key={photo.id}
+                  className="flex flex-col overflow-hidden rounded-lg border border-border"
+                >
+                  <div className="relative aspect-square bg-muted">
+                    <img
+                      src={imageSrc}
+                      alt={caption || photo.file_name}
+                      className={`h-full w-full object-cover ${customerMode ? "select-none" : ""}`}
+                      draggable={!customerMode}
+                      onContextMenu={customerMode ? (e) => e.preventDefault() : undefined}
+                    />
+                  </div>
+                  <div className="p-2 space-y-0.5">
+                    {caption ? (
+                      <p className="text-xs font-medium line-clamp-2">{caption}</p>
+                    ) : null}
+                    <p className="text-[10px] text-muted-foreground">
+                      {format(new Date(photo.created_at), "dd MMM yyyy")}
+                      {uploaderName ? ` · ${uploaderName}` : ""}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      ))}
     </div>
   )
 }

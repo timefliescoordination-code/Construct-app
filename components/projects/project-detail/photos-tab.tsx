@@ -1,10 +1,11 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { Badge } from "@/components/ui/badge"
 import { Image as ImageIcon, Loader2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { uploadSitePhotosAction } from "@/lib/site-photos/actions"
@@ -29,6 +30,31 @@ export function PhotosTab({
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [galleryRefreshKey, setGalleryRefreshKey] = useState(0)
+  const [currentStageLabel, setCurrentStageLabel] = useState<string | null>(null)
+  const [stageLoading, setStageLoading] = useState(false)
+
+  const loadStageContext = useCallback(async () => {
+    if (!projectId) return
+    setStageLoading(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/site-photos/stage`, {
+        credentials: "include",
+        cache: "no-store",
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setCurrentStageLabel(json.data?.stageLabel ?? null)
+      }
+    } catch {
+      setCurrentStageLabel(null)
+    } finally {
+      setStageLoading(false)
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    void loadStageContext()
+  }, [loadStageContext, galleryRefreshKey])
 
   const handleUpload = async (fileList: FileList | null) => {
     if (!projectId || !fileList?.length) return
@@ -53,7 +79,10 @@ export function PhotosTab({
         return
       }
 
-      toast.success(`${result.data?.count ?? 0} site photo(s) uploaded`)
+      const stageNote = result.data?.stageLabel
+        ? ` (${result.data.stageLabel})`
+        : ""
+      toast.success(`${result.data?.count ?? 0} site photo(s) uploaded${stageNote}`)
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
@@ -115,7 +144,28 @@ export function PhotosTab({
             </div>
           )}
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {canUpload && (
+            <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+              <p className="text-xs text-muted-foreground">Current construction stage</p>
+              <div className="mt-1 flex items-center gap-2">
+                {stageLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                ) : currentStageLabel ? (
+                  <Badge variant="secondary" className="text-sm font-medium">
+                    {currentStageLabel}
+                  </Badge>
+                ) : (
+                  <span className="text-sm text-muted-foreground">
+                    No stage from expenses yet — add an expense with a milestone first.
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                New uploads are tagged with the latest milestone from project expenses.
+              </p>
+            </div>
+          )}
           <SitePhotosGallery
             projectId={projectId}
             customerMode={customerMode}
