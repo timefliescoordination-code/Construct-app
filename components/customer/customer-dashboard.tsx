@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { Loader2, PenLine, Hammer } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useDefaultProject } from "@/lib/hooks/use-project-data"
@@ -17,9 +18,25 @@ const SECTIONS: { id: CustomerSection; label: string; icon: typeof PenLine }[] =
   { id: "construction", label: "Construction", icon: Hammer },
 ]
 
+function parseSection(value: string | null): CustomerSection {
+  return value === "construction" ? "construction" : "design"
+}
+
 export function CustomerDashboard() {
+  const searchParams = useSearchParams()
+  const sectionParam = searchParams.get("section")
+  const focusParam = searchParams.get("focus")
+  const tabParam = searchParams.get("tab")
+  const designIdParam = searchParams.get("designId")
+
   const { project, isLoading, error } = useDefaultProject()
-  const [section, setSection] = useState<CustomerSection>("design")
+  const [section, setSection] = useState<CustomerSection>(parseSection(sectionParam))
+
+  useEffect(() => {
+    if (sectionParam) {
+      setSection(parseSection(sectionParam))
+    }
+  }, [sectionParam])
 
   if (isLoading) {
     return (
@@ -47,6 +64,15 @@ export function CustomerDashboard() {
       </PageShell>
     )
   }
+
+  const constructionTab =
+    tabParam === "photos"
+      ? "photos"
+      : focusParam === "payments"
+        ? "upcoming"
+        : focusParam === "milestones"
+          ? "milestones"
+          : undefined
 
   return (
     <PageShell>
@@ -90,9 +116,15 @@ export function CustomerDashboard() {
 
           <div className="min-w-0 flex-1">
             {section === "design" ? (
-              <CustomerDesignPanel projectId={project.id} />
+              <CustomerDesignPanel
+                projectId={project.id}
+                initialDesignFileId={designIdParam}
+              />
             ) : (
-              <CustomerConstructionPanel project={project} />
+              <CustomerConstructionPanel
+                project={project}
+                initialTab={constructionTab}
+              />
             )}
           </div>
         </div>

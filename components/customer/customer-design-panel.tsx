@@ -22,9 +22,13 @@ import { profileNameForClientAutofill } from "@/lib/staff-labels"
 
 interface CustomerDesignPanelProps {
   projectId: string
+  initialDesignFileId?: string | null
 }
 
-export function CustomerDesignPanel({ projectId }: CustomerDesignPanelProps) {
+export function CustomerDesignPanel({
+  projectId,
+  initialDesignFileId = null,
+}: CustomerDesignPanelProps) {
   const [files, setFiles] = useState<ProjectDesignFileWithComments[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
@@ -53,10 +57,15 @@ export function CustomerDesignPanel({ projectId }: CustomerDesignPanelProps) {
   const selected = files.find((f) => f.id === selectedFileId) ?? files[0] ?? null
 
   useEffect(() => {
-    if (files.length > 0 && !selectedFileId) {
+    if (files.length === 0) return
+    if (initialDesignFileId && files.some((f) => f.id === initialDesignFileId)) {
+      setSelectedFileId(initialDesignFileId)
+      return
+    }
+    if (!selectedFileId) {
       setSelectedFileId(files[0].id)
     }
-  }, [files, selectedFileId])
+  }, [files, selectedFileId, initialDesignFileId])
 
   const openPreview = async (fileId: string) => {
     try {

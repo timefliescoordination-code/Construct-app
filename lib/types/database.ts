@@ -66,6 +66,18 @@ export interface ProjectDesignFileWithComments extends ProjectDesignFile {
   uploader?: Profile | null
 }
 
+export interface ProjectSitePhoto {
+  id: string
+  project_id: string
+  upload_batch_id: string
+  file_path: string
+  file_name: string
+  file_mime_type: string
+  caption: string | null
+  uploaded_by: string | null
+  created_at: string
+}
+
 export interface Milestone {
   id: string
   project_id: string

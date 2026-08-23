@@ -532,7 +532,13 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           <ReportsTab projectId={project.id} project={project} />
         ) : null
       case "photos":
-        return <PhotosTab projectId={project.id} projectName={project.name} />
+        return (
+          <PhotosTab
+            projectId={project.id}
+            projectName={project.name}
+            canUpload={canManageProjects}
+          />
+        )
       default:
         return null
     }

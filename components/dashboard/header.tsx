@@ -133,6 +133,12 @@ export function DashboardHeader({ notificationCount = 0, hideAppNav = false }: D
       })
       void loadNotifications()
     }
+
+    if (role === "customer" && notification.link_path) {
+      router.push(notification.link_path)
+      return
+    }
+
     if (notification.project_id) {
       router.push(`/projects/${notification.project_id}`)
     }
@@ -264,11 +270,16 @@ export function DashboardHeader({ notificationCount = 0, hideAppNav = false }: D
                     <span className="text-xs text-muted-foreground line-clamp-2">
                       {notification.message}
                     </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatDistanceToNow(new Date(notification.created_at), {
-                        addSuffix: true,
-                      })}
-                    </span>
+                    <div className="flex w-full items-center justify-between gap-2 pt-1">
+                      <span className="text-[10px] text-muted-foreground">
+                        {formatDistanceToNow(new Date(notification.created_at), {
+                          addSuffix: true,
+                        })}
+                      </span>
+                      {(notification.link_path || notification.project_id) && (
+                        <span className="text-[10px] font-medium text-primary">View</span>
+                      )}
+                    </div>
                   </DropdownMenuItem>
                 ))
               )}

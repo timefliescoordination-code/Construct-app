@@ -8,6 +8,7 @@ import {
 } from '@/lib/design/storage'
 import { applyWatermarkToImage } from '@/lib/design/watermark'
 import { isWatermarkableImageMime } from '@/lib/design/validate'
+import { notifyDesignUpdate } from '@/lib/notifications'
 import type {
   ProjectDesignFile,
   ProjectDesignFileWithComments,
@@ -127,6 +128,12 @@ export async function createDesignFileRecord(
     await deleteDesignFileFromStorage(supabase, upload.filePath)
     return { data: null, error: getSupabaseErrorMessage(error) }
   }
+
+  await notifyDesignUpdate(supabase, {
+    projectId: input.projectId,
+    designFileId: designFileId,
+    designName: (data as ProjectDesignFile).title,
+  })
 
   return { data: data as ProjectDesignFile, error: null }
 }

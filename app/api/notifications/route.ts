@@ -13,10 +13,25 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data, error } = await supabase
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  let query = supabase
     .from('notifications')
-    .select('id, title, message, type, project_id, expense_id, read_at, created_at')
+    .select(
+      'id, title, message, type, project_id, expense_id, reference_id, link_path, read_at, created_at',
+    )
     .eq('user_id', user.id)
+
+  // Customers do not see routine expense status notifications.
+  if (profile?.role === 'customer') {
+    query = query.neq('type', 'expense_status')
+  }
+
+  const { data, error } = await query
     .order('created_at', { ascending: false })
     .limit(30)
 

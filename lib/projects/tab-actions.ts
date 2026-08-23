@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import { calculateMilestoneCompletionFromExpenses } from '@/lib/financial-calculations'
 import { expensesByMilestoneId } from '@/lib/project-tab-hydration'
-import { notifyExpenseStatusChange } from '@/lib/notifications'
+import { notifyExpenseStatusChange, notifyMilestoneStarted, notifyPaymentRequest } from '@/lib/notifications'
 import { resolveExpenseStatusForRole } from '@/lib/permissions'
 import type {
   AdditionalWorkStatus,
@@ -537,6 +537,15 @@ export async function createClientPaymentAction(input: {
     return { ok: false, error: getSupabaseErrorMessage(error) }
   }
 
+  if (input.status === 'pending' || input.status === 'overdue') {
+    await notifyPaymentRequest(session.supabase, {
+      projectId: input.projectId,
+      paymentId: data.id,
+      amount: Number(input.amount),
+      label: input.stageName,
+    })
+  }
+
   revalidateProject(input.projectId)
   return { ok: true, data: data as Record<string, unknown> }
 }
@@ -614,6 +623,15 @@ export async function updateClientPaymentAction(input: {
 
   if (error) {
     return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  if (input.status === 'pending' || input.status === 'overdue') {
+    await notifyPaymentRequest(session.supabase, {
+      projectId: input.projectId,
+      paymentId: input.paymentId,
+      amount: Number(input.amount),
+      label: input.stageName,
+    })
   }
 
   revalidateProject(input.projectId)
@@ -895,7 +913,17 @@ export async function updateMilestonesAction(input: {
     return { ok: false, error: 'Only admins and project managers can update milestones.' }
   }
 
+  const { data: existingMilestones } = await session.supabase
+    .from('milestones')
+    .select('id, status')
+    .eq('project_id', input.projectId)
+
+  const statusById = new Map(
+    (existingMilestones ?? []).map((row) => [row.id, row.status as string]),
+  )
+
   for (const milestone of input.milestones) {
+    const previousStatus = statusById.get(milestone.id)
     const { error } = await session.supabase
       .from('milestones')
       .update({
@@ -909,6 +937,22 @@ export async function updateMilestonesAction(input: {
 
     if (error) {
       return { ok: false, error: getSupabaseErrorMessage(error) }
+    }
+
+    if (previousStatus !== 'in-progress' && milestone.status === 'in-progress') {
+      const { data: ms } = await session.supabase
+        .from('milestones')
+        .select('name')
+        .eq('id', milestone.id)
+        .maybeSingle()
+
+      if (ms?.name) {
+        await notifyMilestoneStarted(session.supabase, {
+          projectId: input.projectId,
+          milestoneId: milestone.id,
+          milestoneName: ms.name,
+        })
+      }
     }
   }
 
@@ -953,6 +997,14 @@ export async function createMilestoneAction(input: {
     return { ok: false, error: getSupabaseErrorMessage(error) }
   }
 
+  if (input.status === 'in-progress') {
+    await notifyMilestoneStarted(session.supabase, {
+      projectId: input.projectId,
+      milestoneId: data.id,
+      milestoneName: input.name,
+    })
+  }
+
   revalidateProject(input.projectId)
   return { ok: true, data: data as Record<string, unknown> }
 }
@@ -972,6 +1024,13 @@ export async function updateMilestoneAction(input: {
   if (!canManageProjectData(session.role)) {
     return { ok: false, error: 'Only admins and project managers can update milestones.' }
   }
+
+  const { data: previous } = await session.supabase
+    .from('milestones')
+    .select('status')
+    .eq('id', input.milestoneId)
+    .eq('project_id', input.projectId)
+    .maybeSingle()
 
   const { data: expenses } = await session.supabase
     .from('expenses')
@@ -1006,6 +1065,14 @@ export async function updateMilestoneAction(input: {
 
   if (error) {
     return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  if (previous?.status !== 'in-progress' && input.status === 'in-progress') {
+    await notifyMilestoneStarted(session.supabase, {
+      projectId: input.projectId,
+      milestoneId: input.milestoneId,
+      milestoneName: input.name,
+    })
   }
 
   revalidateProject(input.projectId)

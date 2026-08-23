@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useEffect, useState } from "react"
 import {
   Building2,
   Calendar,
@@ -34,10 +34,8 @@ import {
   useCustomerMilestones,
 } from "@/lib/hooks/use-project-data"
 import { shouldUseLiveFinancials } from "@/lib/projects/lifecycle"
-import {
-  CONSTRUCTION_PREVIEW_SITE_PHOTOS,
-  CONSTRUCTION_PREVIEW_PAYMENTS,
-} from "@/lib/projects/construction-preview"
+import { SitePhotosGallery } from "@/components/projects/project-detail/site-photos-gallery"
+import { CONSTRUCTION_PREVIEW_PAYMENTS } from "@/lib/projects/construction-preview"
 import {
   calculateCompletionPercent,
   type MilestoneData,
@@ -46,9 +44,22 @@ import { getProjectPmLabel, getProjectEngineersLabel } from "@/lib/staff-labels"
 
 interface CustomerConstructionPanelProps {
   project: ProjectWithDetails
+  initialTab?: "milestones" | "upcoming" | "photos"
 }
 
-export function CustomerConstructionPanel({ project }: CustomerConstructionPanelProps) {
+export function CustomerConstructionPanel({
+  project,
+  initialTab,
+}: CustomerConstructionPanelProps) {
+  const [activeTab, setActiveTab] = useState<"milestones" | "upcoming" | "photos">(
+    initialTab ?? "milestones",
+  )
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab)
+    }
+  }, [initialTab])
   const metrics = useProjectMetrics(project)
   const displayMilestones = useCustomerMilestones(project)
   const isPreview = !shouldUseLiveFinancials(project)
@@ -284,7 +295,7 @@ export function CustomerConstructionPanel({ project }: CustomerConstructionPanel
             </div>
           )}
 
-          <Tabs defaultValue="milestones" className="w-full">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="milestones">Milestones</TabsTrigger>
               <TabsTrigger value="upcoming">Payments</TabsTrigger>
@@ -413,31 +424,12 @@ export function CustomerConstructionPanel({ project }: CustomerConstructionPanel
             </TabsContent>
 
             <TabsContent value="photos" className="mt-4">
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                {(isPreview ? CONSTRUCTION_PREVIEW_SITE_PHOTOS : []).map((photo) => (
-                  <div
-                    key={photo.id}
-                    className="flex flex-col overflow-hidden rounded-lg border border-border"
-                  >
-                    <div className="flex aspect-square items-center justify-center bg-muted">
-                      <ImageIcon className="h-10 w-10 text-muted-foreground/40" />
-                    </div>
-                    <div className="p-2">
-                      <p className="text-xs font-medium">{photo.label}</p>
-                      <p className="text-[10px] text-muted-foreground">{photo.caption}</p>
-                      {isPreview && (
-                        <Badge variant="outline" className="mt-1 text-[10px]">
-                          Preview
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {!isPreview && (
-                <p className="mt-4 text-center text-sm text-muted-foreground">
-                  Site photos will appear here as your project progresses.
+              {isPreview ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Site photos will appear here when construction begins.
                 </p>
+              ) : (
+                <SitePhotosGallery projectId={project.id} />
               )}
             </TabsContent>
           </Tabs>

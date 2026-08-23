@@ -1,85 +1,109 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useRef, useState } from "react"
 import { useParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Image as ImageIcon, Loader2 } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import { Image as ImageIcon, Loader2, Upload } from "lucide-react"
+import { toast } from "sonner"
+import { uploadSitePhotosAction } from "@/lib/site-photos/actions"
+import { SitePhotosGallery } from "./site-photos-gallery"
 
 interface PhotosTabProps {
   projectId?: string
   projectName?: string
+  canUpload?: boolean
 }
 
 export function PhotosTab({
   projectId: propProjectId,
   projectName: propProjectName,
+  canUpload = false,
 }: PhotosTabProps = {}) {
   const params = useParams()
   const projectId = propProjectId || (params?.id as string)
-  const [projectName, setProjectName] = useState<string | null>(propProjectName ?? null)
-  const [isLoading, setIsLoading] = useState(!propProjectName)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isUploading, setIsUploading] = useState(false)
 
-  useEffect(() => {
-    if (propProjectName) {
-      setProjectName(propProjectName)
-      setIsLoading(false)
-      return
-    }
+  const handleUpload = async (fileList: FileList | null) => {
+    if (!projectId || !fileList?.length) return
 
-    async function loadProject() {
-      if (!projectId) {
-        setIsLoading(false)
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      formData.set("projectId", projectId)
+      for (const file of Array.from(fileList)) {
+        formData.append("files", file)
+      }
+
+      const result = await uploadSitePhotosAction(formData)
+      if (!result.ok) {
+        toast.error(result.error)
         return
       }
 
-      const supabase = createClient()
-      const { data } = await supabase
-        .from("projects")
-        .select("name")
-        .eq("id", projectId)
-        .single()
-
-      setProjectName(data?.name ?? null)
-      setIsLoading(false)
+      toast.success(`${result.data?.count ?? 0} site photo(s) uploaded`)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+      window.location.reload()
+    } finally {
+      setIsUploading(false)
     }
+  }
 
-    loadProject()
-  }, [projectId, propProjectName])
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    )
+  if (!projectId) {
+    return null
   }
 
   return (
     <div className="space-y-6">
       <Card className="bg-card border-border">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
           <CardTitle className="flex items-center gap-2">
             <ImageIcon className="h-5 w-5" />
             Site Photos
-            {projectName && (
-              <span className="text-sm font-normal text-muted-foreground">— {projectName}</span>
+            {propProjectName && (
+              <span className="text-sm font-normal text-muted-foreground">
+                — {propProjectName}
+              </span>
             )}
           </CardTitle>
+          {canUpload && (
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                className="hidden"
+                onChange={(e) => void handleUpload(e.target.files)}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isUploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {isUploading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="mr-2 h-4 w-4" />
+                )}
+                Upload photos
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <ImageIcon className="h-12 w-12 text-muted-foreground/50 mb-4" />
-            <p className="text-muted-foreground font-medium">No photos yet</p>
-            <p className="text-sm text-muted-foreground mt-2 max-w-md">
-              Site photo uploads are not configured for this project yet. Photos will appear here
-              once storage is connected.
-            </p>
-            <Button variant="outline" className="mt-6" disabled>
-              Upload Photo
-            </Button>
-          </div>
+          <SitePhotosGallery
+            projectId={projectId}
+            emptyMessage={
+              canUpload
+                ? "No site photos yet. Upload images to share progress with your customer."
+                : "Site photos will appear here as the project progresses."
+            }
+          />
         </CardContent>
       </Card>
     </div>
