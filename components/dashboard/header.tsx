@@ -161,12 +161,13 @@ export function DashboardHeader({ notificationCount = 0, hideAppNav = false }: D
       <div className="mx-auto flex h-14 min-h-14 max-w-[1600px] items-center justify-between gap-2 px-4 sm:h-16 md:px-6">
         <div className="flex min-w-0 items-center gap-2 sm:gap-4">
           {!hideAppNav && (
+          <div className="md:hidden">
           <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
             <SheetTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="shrink-0 lg:hidden"
+                className="shrink-0"
                 aria-label="Open menu"
               >
                 <Menu className="h-5 w-5" />
@@ -185,6 +186,7 @@ export function DashboardHeader({ notificationCount = 0, hideAppNav = false }: D
               />
             </SheetContent>
           </Sheet>
+          </div>
           )}
 
           <Link href={getDashboardHome()} className="flex min-w-0 items-center gap-2 lg:hidden">

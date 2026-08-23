@@ -20,6 +20,13 @@ interface AppSidebarProps {
   onNavigate?: () => void
 }
 
+type NavItem = {
+  id: string
+  href: string
+  label: string
+  icon: typeof LayoutDashboard
+}
+
 export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
   const pathname = usePathname()
   const { role, isAdmin } = useAuth()
@@ -36,33 +43,52 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
             ? "/customer"
             : "/projects"
 
-  const navItems = [
+  const canUseTelegram =
+    role === "engineer" || role === "pm" || role === "admin"
+
+  const mainNavItems: NavItem[] = [
     {
+      id: "dashboard",
       href: dashboardHref,
       label: role === "customer" ? "My Project" : "Dashboard",
       icon: LayoutDashboard,
     },
     ...(role !== "customer"
-      ? [{ href: "/projects", label: "Projects", icon: FolderKanban }]
+      ? [{ id: "projects", href: "/projects", label: "Projects", icon: FolderKanban }]
       : []),
     ...(role === "admin"
-      ? [{ href: "/admin/expenses", label: "All expenses", icon: Wallet }]
+      ? [{ id: "expenses", href: "/admin/expenses", label: "All expenses", icon: Wallet }]
       : []),
   ]
 
-  const adminNavItems = isAdmin
+  const adminNavItems: NavItem[] = isAdmin
     ? [
-        { href: "/admin/company", label: "Company Details", icon: Building2 },
-        { href: "/admin/users", label: "User Management", icon: Users },
+        { id: "company", href: "/admin/company", label: "Company Details", icon: Building2 },
+        { id: "users", href: "/admin/users", label: "User Management", icon: Users },
       ]
     : []
 
-  const canUseTelegram =
-    role === "engineer" || role === "pm" || role === "admin"
-
-  const integrationItems = canUseTelegram
-    ? [{ href: "/integrations/telegram", label: "Telegram", icon: MessageCircle }]
+  const integrationItems: NavItem[] = canUseTelegram
+    ? [
+        {
+          id: "telegram",
+          href: "/integrations/telegram",
+          label: "Telegram",
+          icon: MessageCircle,
+        },
+      ]
     : []
+
+  const dedupeNavItems = (items: NavItem[]) => {
+    const seen = new Set<string>()
+    return items.filter((item) => {
+      if (seen.has(item.href)) return false
+      seen.add(item.href)
+      return true
+    })
+  }
+
+  const mainNavItemsDeduped = dedupeNavItems(mainNavItems)
 
   const isActive = (href: string) => {
     if (href === "/projects") {
@@ -80,16 +106,12 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     return pathname.startsWith(href)
   }
 
-  const renderNavLink = (item: {
-    href: string
-    label: string
-    icon: typeof LayoutDashboard
-  }) => {
+  const renderNavLink = (item: NavItem) => {
     const Icon = item.icon
     const active = isActive(item.href)
     return (
       <Link
-        key={item.href}
+        key={item.id}
         href={item.href}
         onClick={onNavigate}
         className={cn(
@@ -108,7 +130,7 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
   return (
     <aside
       className={cn(
-        "flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
+        "flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
         className,
       )}
     >
@@ -128,11 +150,11 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
         </Link>
       </div>
 
-      <nav className="flex-1 space-y-1 p-3">
+      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
         <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           Main
         </p>
-        {navItems.map(renderNavLink)}
+        {mainNavItemsDeduped.map(renderNavLink)}
         {adminNavItems.length > 0 ? (
           <>
             <p className="px-3 pb-2 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -151,7 +173,7 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
         ) : null}
       </nav>
 
-      <div className="border-t border-sidebar-border p-3">
+      <div className="shrink-0 border-t border-sidebar-border p-3">
         <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
           <div className="flex items-start gap-2">
             <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
