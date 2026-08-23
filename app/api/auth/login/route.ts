@@ -64,9 +64,7 @@ export async function POST(request: Request) {
     })
 
     if (error) {
-      const fail = NextResponse.json({ ok: false, error: error.message }, { status: 400 })
-      fail.headers.set('X-Auth-Debug-Login', 'fail')
-      return fail
+      return NextResponse.json({ ok: false, error: error.message }, { status: 400 })
     }
 
     if (!data.user) {
@@ -99,19 +97,6 @@ export async function POST(request: Request) {
     if (pendingCookies.length === 0) {
       applyAuthCookiesFromStore(response, cookieStore.getAll())
     }
-
-    const responseCookies = response.cookies.getAll()
-    response.headers.set('X-Auth-Debug-Login', 'ok')
-    response.headers.set('X-Auth-Debug-Cookie-Count', String(responseCookies.length))
-    response.headers.set(
-      'X-Auth-Debug-Cookie-Names',
-      responseCookies.map((c) => c.name).join(','),
-    )
-    response.headers.set('X-Auth-Debug-Redirect-To', redirectTo)
-
-    // #region agent log
-    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'api/auth/login/route.ts:success',message:'login json success',data:{redirectTo,pendingCookieCount:pendingCookies.length,responseCookieCount:response.cookies.getAll().length,role},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
 
     return response
   } catch (error) {

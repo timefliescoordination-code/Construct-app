@@ -100,10 +100,6 @@ export function LoginForm() {
 
       const responseText = await loginRes.text()
 
-      // #region agent log
-      fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'afacb8'},body:JSON.stringify({sessionId:'afacb8',location:'login-form.tsx:handleSubmit:response',message:'login fetch completed',data:{status:loginRes.status,bodyLength:responseText.length},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
-
       if (!responseText.trim()) {
         toast.error("Sign in failed: empty server response.")
         setIsLoading(false)

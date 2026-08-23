@@ -16,25 +16,8 @@ function isPublicApiRoute(pathname: string) {
   return pathname.startsWith('/api/auth/')
 }
 
-function redirectTo(request: NextRequest, pathname: string, reason?: string) {
-  const response = NextResponse.redirect(absoluteAppUrl(pathname, request))
-  if (reason) {
-    response.headers.set('X-Auth-Debug-Redirect-Reason', reason)
-    response.headers.set('X-Auth-Debug-Redirect-To', pathname)
-  }
-  return response
-}
-
-function attachMiddlewareAuthDebug(
-  response: NextResponse,
-  user: { id: string } | null,
-  authCookieNames: string[],
-) {
-  response.headers.set('X-Auth-Debug-Middleware-User', user ? 'found' : 'none')
-  response.headers.set('X-Auth-Debug-Auth-Cookie-Count', String(authCookieNames.length))
-  if (authCookieNames.length > 0) {
-    response.headers.set('X-Auth-Debug-Auth-Cookie-Names', authCookieNames.join(','))
-  }
+function redirectTo(request: NextRequest, pathname: string) {
+  return NextResponse.redirect(absoluteAppUrl(pathname, request))
 }
 
 export async function updateSession(request: NextRequest) {
@@ -80,20 +63,13 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
-  const authCookieNames = request.cookies
-    .getAll()
-    .map((c) => c.name)
-    .filter((name) => name.startsWith('sb-'))
-
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   // If user is not logged in and trying to access protected route
   if (!user && !isPublicRoute) {
-    const response = redirectTo(request, '/login', 'no-user')
-    attachMiddlewareAuthDebug(response, null, authCookieNames)
-    return response
+    return redirectTo(request, '/login')
   }
 
   if (user) {
@@ -107,9 +83,7 @@ export async function updateSession(request: NextRequest) {
 
     // If user is logged in and accessing root (/), redirect to their dashboard
     if (pathname === '/') {
-      const response = redirectTo(request, dashboardPath(role), 'root-to-dashboard')
-      attachMiddlewareAuthDebug(response, user, authCookieNames)
-      return response
+      return redirectTo(request, dashboardPath(role))
     }
 
     // Role-based route guard (site engineers and customers have limited surfaces)
@@ -120,9 +94,7 @@ export async function updateSession(request: NextRequest) {
         pathname.startsWith('/projects/new') ||
         pathname.includes('/edit')
       ) {
-        const response = redirectTo(request, '/engineer', 'engineer-route-guard')
-        attachMiddlewareAuthDebug(response, user, authCookieNames)
-        return response
+        return redirectTo(request, '/engineer')
       }
     }
 
@@ -135,21 +107,16 @@ export async function updateSession(request: NextRequest) {
         pathname.includes('/edit') ||
         pathname.startsWith('/integrations')
       ) {
-        const response = redirectTo(request, '/customer', 'customer-route-guard')
-        attachMiddlewareAuthDebug(response, user, authCookieNames)
-        return response
+        return redirectTo(request, '/customer')
       }
     }
 
     if (role === 'pm') {
       if (pathname.startsWith('/admin')) {
-        const response = redirectTo(request, '/pm', 'pm-admin-guard')
-        attachMiddlewareAuthDebug(response, user, authCookieNames)
-        return response
+        return redirectTo(request, '/pm')
       }
     }
   }
 
-  attachMiddlewareAuthDebug(supabaseResponse, user ?? null, authCookieNames)
   return supabaseResponse
 }
