@@ -4,7 +4,7 @@ import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { getPublicAppOrigin } from '@/lib/app-url'
 import { ensureUserProfile } from '@/lib/supabase/ensure-profile'
-import type { UserRole } from '@/lib/types/database'
+import { dashboardPath } from '@/lib/auth/dashboard-path'
 
 async function siteOrigin(): Promise<string | undefined> {
   const h = await headers()
@@ -14,21 +14,6 @@ async function siteOrigin(): Promise<string | undefined> {
 export type AuthActionResult =
   | { ok: true; redirectTo: string }
   | { ok: false; error: string }
-
-function dashboardPath(role: UserRole | null): string {
-  switch (role) {
-    case 'admin':
-      return '/admin'
-    case 'pm':
-      return '/pm'
-    case 'engineer':
-      return '/engineer'
-    case 'customer':
-      return '/customer'
-    default:
-      return '/admin'
-  }
-}
 
 export async function signInWithPasswordAction(
   email: string,

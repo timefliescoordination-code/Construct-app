@@ -12,7 +12,6 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import { signInWithPasswordAction } from "@/lib/auth/actions"
 import { toast } from "sonner"
 
 function getDashboardPath(role: UserRole | null): string {
@@ -73,6 +72,7 @@ export function LoginForm() {
     profile,
     signOut,
     refreshAuth,
+    signIn,
   } = useAuth()
   const [selectedRole, setSelectedRole] = useState<UserRole>("pm")
   const [showPassword, setShowPassword] = useState(false)
@@ -101,20 +101,30 @@ export function LoginForm() {
     setIsLoading(true)
 
     try {
-      const result = await signInWithPasswordAction(
-        formData.email,
-        formData.password,
-      )
+      const { error } = await signIn(formData.email, formData.password)
 
-      if (!result.ok) {
-        toast.error(result.error)
+      if (error) {
+        toast.error(error.message)
+        setIsLoading(false)
+        return
+      }
+
+      const ensureRes = await fetch("/api/auth/ensure-profile", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+      })
+      const ensure = await ensureRes.json()
+
+      if (!ensure.ok) {
+        toast.error(ensure.error ?? "Could not load your profile.")
         setIsLoading(false)
         return
       }
 
       toast.success("Signed in successfully!")
       await refreshAuth()
-      router.push(result.redirectTo)
+      router.push(ensure.redirectTo ?? getDashboardPath(ensure.role))
       router.refresh()
     } catch (error) {
       console.error("Login error:", error)

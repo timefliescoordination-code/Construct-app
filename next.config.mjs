@@ -8,13 +8,9 @@ function ensureProductionServerActionsKey() {
   const configured = process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY?.trim()
   if (configured) return
 
-  const seed =
-    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    'vraconstruction.app'
-
+  // Fixed project seed so build-time and runtime always agree (Hostinger env can differ).
   process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = createHash('sha256')
-    .update(`vra-server-actions:${seed}`)
+    .update('vra-server-actions:vraconstruction.app')
     .digest('base64')
 
   console.warn(

@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { signUpAdminAction } from "@/lib/auth/actions"
 import { toast } from "sonner"
 
 export default function AdminSignupPage() {
@@ -39,11 +38,17 @@ export default function AdminSignupPage() {
     setIsLoading(true)
     
     try {
-      const result = await signUpAdminAction(
-        formData.email,
-        formData.password,
-        formData.fullName,
-      )
+      const res = await fetch("/api/auth/signup-admin", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          fullName: formData.fullName,
+        }),
+      })
+      const result = await res.json()
 
       if (!result.ok) {
         toast.error(result.error)
