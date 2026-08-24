@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ProjectPickerDialog } from "@/components/finance/project-picker-dialog"
+import { AddExpenseShortcutTooltip } from "@/components/keyboard/add-expense-shortcut-tooltip"
 
 export type ProjectOption = { id: string; name: string }
 
@@ -31,16 +32,19 @@ export function AddExpenseMenu({
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant={variant === "outline" ? "outline" : "default"}
-            className={className ?? "gap-2"}
-          >
-            <Plus className="h-4 w-4" />
-            Add Expense
-            <ChevronDown className="h-4 w-4 opacity-70" />
-          </Button>
-        </DropdownMenuTrigger>
+      <DropdownMenu>
+        <AddExpenseShortcutTooltip>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant={variant === "outline" ? "outline" : "default"}
+              className={className ?? "gap-2"}
+            >
+              <Plus className="h-4 w-4" />
+              Add Expense
+              <ChevronDown className="h-4 w-4 opacity-70" />
+            </Button>
+          </DropdownMenuTrigger>
+        </AddExpenseShortcutTooltip>
         <DropdownMenuContent align="end" className="w-52">
           <DropdownMenuItem onSelect={() => setPickerOpen(true)}>
             Project expense

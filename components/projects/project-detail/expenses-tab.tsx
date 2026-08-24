@@ -123,6 +123,7 @@ import {
 } from "@/lib/keyboard/mandatory-expense-keyboard"
 import { ProjectAddExpenseDialogForm } from "@/components/projects/project-detail/project-add-expense-dialog-form"
 import { ExpenseBulkEntryDialog } from "@/components/expense/expense-bulk-entry-dialog"
+import { AddExpenseShortcutTooltip } from "@/components/keyboard/add-expense-shortcut-tooltip"
 
 function categoryUsesLabourTeams(
   categoryName: string,
@@ -2362,15 +2363,16 @@ export function ExpensesTab({
               >
                 Bulk entry
               </Button>
-              <Button
-                type="button"
-                className="gap-2"
-                onClick={() => setIsAddDialogOpen(true)}
-                title="Add expense (Ctrl+E)"
-              >
-                <Plus className="h-4 w-4" />
-                Add Expense
-              </Button>
+              <AddExpenseShortcutTooltip>
+                <Button
+                  type="button"
+                  className="gap-2"
+                  onClick={() => setIsAddDialogOpen(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Expense
+                </Button>
+              </AddExpenseShortcutTooltip>
               <Dialog
                 open={isAddDialogOpen}
                 onOpenChange={(open) => {

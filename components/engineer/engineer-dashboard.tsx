@@ -63,6 +63,7 @@ import {
   useMandatoryExpenseKeyboard,
 } from "@/lib/keyboard/mandatory-expense-keyboard"
 import { ExpenseBulkEntryDialog } from "@/components/expense/expense-bulk-entry-dialog"
+import { AddExpenseShortcutTooltip } from "@/components/keyboard/add-expense-shortcut-tooltip"
 import { DashboardHeader } from "@/components/dashboard/header"
 import { MetricCard } from "@/components/layout/metric-card"
 import {
@@ -760,20 +761,24 @@ export function EngineerDashboard() {
                     Bulk entry
                   </Button>
                   <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
-                    <DialogTrigger asChild>
-                      <Button
-                        className="w-full gap-2 sm:w-auto"
-                        disabled={engineerData.showAll}
-                        title={
-                          engineerData.showAll
-                            ? "Select a single project to add an expense"
-                            : "Add expense (Ctrl+E)"
-                        }
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add Expense
-                      </Button>
-                    </DialogTrigger>
+                    <AddExpenseShortcutTooltip
+                      hint={
+                        engineerData.showAll
+                          ? "Select a single project to add an expense"
+                          : "Add expense"
+                      }
+                      showShortcut={!engineerData.showAll}
+                    >
+                      <DialogTrigger asChild>
+                        <Button
+                          className="w-full gap-2 sm:w-auto"
+                          disabled={engineerData.showAll}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Add Expense
+                        </Button>
+                      </DialogTrigger>
+                    </AddExpenseShortcutTooltip>
                   <DialogContent className="flex max-h-[min(92dvh,100dvh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[500px]">
                     <MandatoryExpenseKeyboardProvider
                       enabled={isAddExpenseOpen}
