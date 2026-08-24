@@ -28,6 +28,7 @@ import type {
   ProjectBulkRow,
 } from "@/lib/expense/bulk-entry-types"
 import { categoryUsesLabourTeams } from "@/lib/expense/bulk-entry-project"
+import { toDateInputValue } from "@/lib/expense/bulk-entry-dates"
 import type { SuggestedFieldMap } from "@/lib/expense/suggest-from-description"
 
 const CELL_INPUT =
@@ -259,7 +260,7 @@ function ProjectBulkGrid({
                 <TableCell className="p-1">
                   <Input
                     type="date"
-                    value={row.date}
+                    value={toDateInputValue(row.date)}
                     onChange={(e) => onUpdateRow(row.id, { date: e.target.value })}
                     className={CELL_INPUT}
                     onClick={(e) => e.stopPropagation()}
@@ -571,7 +572,7 @@ function CompanyExpenseBulkGrid({
               <TableCell className="p-1">
                 <Input
                   type="date"
-                  value={row.date}
+                  value={toDateInputValue(row.date)}
                   onChange={(e) => onUpdateRow(row.id, { date: e.target.value })}
                   className={CELL_INPUT}
                   onClick={(e) => e.stopPropagation()}
@@ -680,7 +681,7 @@ function CompanyIncomeBulkGrid({
               <TableCell className="p-1">
                 <Input
                   type="date"
-                  value={row.date}
+                  value={toDateInputValue(row.date)}
                   onChange={(e) => onUpdateRow(row.id, { date: e.target.value })}
                   className={CELL_INPUT}
                   onClick={(e) => e.stopPropagation()}
@@ -788,7 +789,7 @@ function PersonalBulkGrid({
               <TableCell className="p-1">
                 <Input
                   type="date"
-                  value={row.date}
+                  value={toDateInputValue(row.date)}
                   onChange={(e) => onUpdateRow(row.id, { date: e.target.value })}
                   className={CELL_INPUT}
                   onClick={(e) => e.stopPropagation()}

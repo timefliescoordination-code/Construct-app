@@ -7,6 +7,7 @@ import type {
 } from "@/lib/expense/bulk-entry-types"
 import { newRowId } from "@/lib/expense/bulk-entry-types"
 import { emptyProjectBulkRow } from "@/lib/expense/bulk-entry-project"
+import { toDateInputValue } from "@/lib/expense/bulk-entry-dates"
 import {
   applySuggestionsToProjectRows,
   type SuggestContext,
@@ -113,10 +114,12 @@ export function parseProjectBulkCsv(
       milestoneIdByName.get(milestoneRaw.trim().toLowerCase()) ??
       ""
 
+    const date = toDateInputValue(record.date ?? record.expense_date ?? "", today)
+
     return {
-      ...emptyProjectBulkRow(record.date || today),
+      ...emptyProjectBulkRow(date),
       id: newRowId(),
-      date: record.date || today,
+      date,
       category: record.category ?? "",
       subcategory: record.subcategory ?? "",
       labourTeamId: record.labour_team_id ?? record.labour_team ?? "",
@@ -158,10 +161,11 @@ export function parseFinanceExpenseCsv(text: string, today: string): CompanyExpe
     headers.forEach((h, i) => {
       record[h] = cells[i] ?? ""
     })
+    const date = toDateInputValue(record.date ?? record.expense_date ?? "", today)
     return {
-      ...emptyCompanyExpenseRow(record.date || today, record.category ?? ""),
+      ...emptyCompanyExpenseRow(date, record.category ?? ""),
       id: newRowId(),
-      date: record.date || today,
+      date,
       category: record.category ?? "",
       description: record.description ?? "",
       vendor: record.vendor ?? "",
@@ -190,10 +194,11 @@ export function parseFinanceIncomeCsv(text: string, today: string): CompanyIncom
     headers.forEach((h, i) => {
       record[h] = cells[i] ?? ""
     })
+    const date = toDateInputValue(record.date ?? record.expense_date ?? "", today)
     return {
-      ...emptyCompanyIncomeRow(record.date || today, record.category ?? ""),
+      ...emptyCompanyIncomeRow(date, record.category ?? ""),
       id: newRowId(),
-      date: record.date || today,
+      date,
       category: record.category ?? "",
       description: record.description ?? "",
       source: record.source ?? record.source_name ?? "",
@@ -222,10 +227,11 @@ export function parsePersonalExpenseCsv(text: string, today: string): PersonalEx
     headers.forEach((h, i) => {
       record[h] = cells[i] ?? ""
     })
+    const date = toDateInputValue(record.date ?? record.expense_date ?? "", today)
     return {
-      ...emptyPersonalExpenseRow(record.date || today, record.category ?? ""),
+      ...emptyPersonalExpenseRow(date, record.category ?? ""),
       id: newRowId(),
-      date: record.date || today,
+      date,
       category: record.category ?? "",
       description: record.description ?? "",
       amount: record.amount ?? "",
