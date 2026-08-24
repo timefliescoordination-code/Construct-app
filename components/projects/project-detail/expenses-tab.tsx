@@ -559,19 +559,6 @@ export function ExpensesTab({
   useEffect(() => {
     if (!isBulkEntryOpen || !projectId) return
     void reloadExpenseOptions()
-    const supabase = createClient()
-    void supabase
-      .from("milestones")
-      .select("id, name")
-      .eq("project_id", projectId)
-      .order("sort_order")
-      .then(({ data, error }) => {
-        if (error) {
-          console.error("[expenses-tab] refresh milestones for bulk entry:", error)
-          return
-        }
-        setMilestones(data ?? [])
-      })
   }, [isBulkEntryOpen, projectId])
 
   useEffect(() => {

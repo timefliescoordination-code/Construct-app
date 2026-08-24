@@ -80,7 +80,7 @@ import {
 const IMPORT_SERVER_CHUNK_SIZE = 50
 const INITIAL_ROW_COUNT = 5
 const BULK_DIALOG_CLASS =
-  "flex max-h-[min(92dvh,100dvh)] flex-col gap-0 overflow-hidden border-border bg-card p-0 w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-[min(1400px,calc(100vw-2rem))] lg:max-w-[min(1600px,calc(100vw-3rem))] xl:max-w-[min(1800px,calc(100vw-4rem))]"
+  "flex h-[min(92dvh,calc(100dvh-1rem))] max-h-[min(92dvh,calc(100dvh-1rem))] flex-col gap-0 overflow-hidden border-border bg-card p-0 w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-[min(1400px,calc(100vw-2rem))] lg:max-w-[min(1600px,calc(100vw-3rem))] xl:max-w-[min(1800px,calc(100vw-4rem))]"
 
 type Milestone = { id: string; name: string }
 type LabourTeam = { id: string; name: string }

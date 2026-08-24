@@ -263,7 +263,6 @@ function ProjectBulkGrid({
                 </TableCell>
                 <TableCell className="p-1">
                   <Select
-                    key={`${row.id}-category-${row.category}`}
                     value={row.category || undefined}
                     onValueChange={(value) =>
                       onUpdateRow(row.id, {
@@ -292,7 +291,6 @@ function ProjectBulkGrid({
                 <TableCell className="p-1">
                   {usesLabour ? (
                     <Select
-                      key={`${row.id}-team-${row.labourTeamId}`}
                       value={row.labourTeamId || undefined}
                       onValueChange={(value) => onUpdateRow(row.id, { labourTeamId: value })}
                       disabled={!row.category}
@@ -319,7 +317,6 @@ function ProjectBulkGrid({
                     </Select>
                   ) : (
                     <Select
-                      key={`${row.id}-sub-${row.category}-${row.subcategory}`}
                       value={row.subcategory || undefined}
                       onValueChange={(value) => onUpdateRow(row.id, { subcategory: value })}
                       disabled={!row.category}
@@ -346,7 +343,6 @@ function ProjectBulkGrid({
                 </TableCell>
                 <TableCell className="p-1">
                   <Select
-                    key={`${row.id}-ms-${row.milestoneId}`}
                     value={row.milestoneId || undefined}
                     onValueChange={(value) => onUpdateRow(row.id, { milestoneId: value })}
                   >
