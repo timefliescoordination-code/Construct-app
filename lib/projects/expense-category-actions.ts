@@ -38,8 +38,11 @@ async function getSession() {
 }
 
 function canManageExpenseCategories(role: UserRole) {
-  return role === 'admin' || role === 'pm'
+  return role === 'admin'
 }
+
+const CATALOG_LOCKED_MESSAGE =
+  'Categories and subcategories are managed in Settings → Manage expense input. Existing expenses are not changed.'
 
 function revalidateProject(projectId: string) {
   revalidatePath(`/projects/${projectId}`)
@@ -54,7 +57,7 @@ export async function createExpenseCategoryAction(input: {
   const session = await getSession()
   if (!session.ok) return session
   if (!canManageExpenseCategories(session.role)) {
-    return { ok: false, error: 'Only admins and project managers can add categories.' }
+    return { ok: false, error: CATALOG_LOCKED_MESSAGE }
   }
 
   const name = input.name.trim()
@@ -98,7 +101,7 @@ export async function updateExpenseCategoryAction(input: {
   const session = await getSession()
   if (!session.ok) return session
   if (!canManageExpenseCategories(session.role)) {
-    return { ok: false, error: 'Only admins and project managers can edit categories.' }
+    return { ok: false, error: CATALOG_LOCKED_MESSAGE }
   }
 
   const name = input.name.trim()
@@ -123,7 +126,7 @@ export async function deleteExpenseCategoryAction(input: {
   const session = await getSession()
   if (!session.ok) return session
   if (!canManageExpenseCategories(session.role)) {
-    return { ok: false, error: 'Only admins and project managers can delete categories.' }
+    return { ok: false, error: CATALOG_LOCKED_MESSAGE }
   }
 
   const { data: category } = await session.supabase
@@ -169,7 +172,7 @@ export async function createExpenseSubcategoryAction(input: {
   const session = await getSession()
   if (!session.ok) return session
   if (!canManageExpenseCategories(session.role)) {
-    return { ok: false, error: 'Only admins and project managers can add subcategories.' }
+    return { ok: false, error: CATALOG_LOCKED_MESSAGE }
   }
 
   const name = input.name.trim()
@@ -227,7 +230,7 @@ export async function updateExpenseSubcategoryAction(input: {
   const session = await getSession()
   if (!session.ok) return session
   if (!canManageExpenseCategories(session.role)) {
-    return { ok: false, error: 'Only admins and project managers can edit subcategories.' }
+    return { ok: false, error: CATALOG_LOCKED_MESSAGE }
   }
 
   const name = input.name.trim()
@@ -251,7 +254,7 @@ export async function deleteExpenseSubcategoryAction(input: {
   const session = await getSession()
   if (!session.ok) return session
   if (!canManageExpenseCategories(session.role)) {
-    return { ok: false, error: 'Only admins and project managers can delete subcategories.' }
+    return { ok: false, error: CATALOG_LOCKED_MESSAGE }
   }
 
   const { error } = await session.supabase

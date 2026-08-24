@@ -136,8 +136,7 @@ interface ProjectAddExpenseDialogFormProps {
   invoiceFileInputRef: RefObject<HTMLInputElement | null>
   handleInvoiceFileChange: (event: ChangeEvent<HTMLInputElement>) => void
   handleUseSuggestedSplit: () => void
-  openSubcategoryManage: () => void
-  setCategoryManageOpen: (open: boolean) => void
+  openLabourTeamManage?: () => void
   bulkMode?: boolean
 }
 
@@ -161,8 +160,7 @@ export function ProjectAddExpenseDialogForm({
   invoiceFileInputRef,
   handleInvoiceFileChange,
   handleUseSuggestedSplit,
-  openSubcategoryManage,
-  setCategoryManageOpen,
+  openLabourTeamManage,
   bulkMode = false,
 }: ProjectAddExpenseDialogFormProps) {
   const kb = useMandatoryExpenseKeyboard()
@@ -202,18 +200,6 @@ export function ProjectAddExpenseDialogForm({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label>Category *</Label>
-              {canManageProjects && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1 px-2 text-xs"
-                  onClick={() => setCategoryManageOpen(true)}
-                >
-                  <Pencil className="h-3 w-3" />
-                  Edit
-                </Button>
-              )}
             </div>
             <Select
               value={newExpense.category}
@@ -265,13 +251,13 @@ export function ProjectAddExpenseDialogForm({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label>{usesLabourCategory ? "Labour team *" : "Subcategory *"}</Label>
-              {canManageProjects && newExpense.category && (
+              {canManageProjects && usesLabourCategory && openLabourTeamManage && (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="h-7 gap-1 px-2 text-xs"
-                  onClick={openSubcategoryManage}
+                  onClick={openLabourTeamManage}
                 >
                   <Pencil className="h-3 w-3" />
                   Edit

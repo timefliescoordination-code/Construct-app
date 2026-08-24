@@ -15,57 +15,8 @@ export type FinanceCategoryActionResult<T = void> =
 
 function revalidateFinanceCategories() {
   revalidatePath("/admin/expenses")
+  revalidatePath("/admin/settings/expense-input")
   revalidatePath("/api/management/finance-categories")
-}
-
-async function categoryInUse(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  kind: FinanceCategoryKind,
-  name: string,
-): Promise<boolean> {
-  if (kind === "company_expense") {
-    const { count } = await supabase
-      .from("company_expenses")
-      .select("id", { count: "exact", head: true })
-      .eq("category", name)
-    return (count ?? 0) > 0
-  }
-  if (kind === "company_income") {
-    const { count } = await supabase
-      .from("company_income")
-      .select("id", { count: "exact", head: true })
-      .eq("category", name)
-    return (count ?? 0) > 0
-  }
-  const { count } = await supabase
-    .from("personal_expenses")
-    .select("id", { count: "exact", head: true })
-    .eq("category", name)
-  return (count ?? 0) > 0
-}
-
-async function renameCategoryOnEntries(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  kind: FinanceCategoryKind,
-  oldName: string,
-  newName: string,
-) {
-  if (kind === "company_expense") {
-    await supabase
-      .from("company_expenses")
-      .update({ category: newName })
-      .eq("category", oldName)
-  } else if (kind === "company_income") {
-    await supabase
-      .from("company_income")
-      .update({ category: newName })
-      .eq("category", oldName)
-  } else {
-    await supabase
-      .from("personal_expenses")
-      .update({ category: newName })
-      .eq("category", oldName)
-  }
 }
 
 export async function createFinanceCategoryAction(input: {
@@ -131,11 +82,6 @@ export async function updateFinanceCategoryAction(input: {
     return { ok: false, error: "Category not found." }
   }
 
-  const oldName = existing.name as string
-  if (oldName !== name) {
-    await renameCategoryOnEntries(session.supabase, input.kind, oldName, name)
-  }
-
   const { data, error } = await session.supabase
     .from("finance_categories")
     .update({ name })
@@ -169,18 +115,6 @@ export async function deleteFinanceCategoryAction(input: {
 
   if (fetchError || !existing) {
     return { ok: false, error: "Category not found." }
-  }
-
-  const inUse = await categoryInUse(
-    session.supabase,
-    input.kind,
-    existing.name as string,
-  )
-  if (inUse) {
-    return {
-      ok: false,
-      error: "Cannot delete a category that is used on existing entries.",
-    }
   }
 
   const { count } = await session.supabase

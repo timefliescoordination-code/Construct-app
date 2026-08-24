@@ -354,11 +354,7 @@ export function ExpensesTab({
   const excelInputRef = useRef<HTMLInputElement | null>(null)
   const [labourTeams, setLabourTeams] = useState<LabourTeamOption[]>([])
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryView[]>([])
-  const [categoryManageOpen, setCategoryManageOpen] = useState(false)
   const [subcategoryManageOpen, setSubcategoryManageOpen] = useState(false)
-  const [manageMode, setManageMode] = useState<"subcategories" | "labour-teams">(
-    "subcategories",
-  )
   const searchParams = useSearchParams()
   const expenseShortcuts = useExpenseShortcutRegistryOptional()
   const [splitMode, setSplitMode] = useState(false)
@@ -859,12 +855,7 @@ export function ExpensesTab({
     newExpense.labourTeamId,
   ])
 
-  const openSubcategoryManage = () => {
-    if (categoryUsesLabourTeams(newExpense.category, expenseCategories)) {
-      setManageMode("labour-teams")
-    } else {
-      setManageMode("subcategories")
-    }
+  const openLabourTeamManage = () => {
     setSubcategoryManageOpen(true)
   }
 
@@ -2418,8 +2409,7 @@ export function ExpensesTab({
                       invoiceFileInputRef={invoiceFileInputRef}
                       handleInvoiceFileChange={handleInvoiceFileChange}
                       handleUseSuggestedSplit={handleUseSuggestedSplit}
-                      openSubcategoryManage={openSubcategoryManage}
-                      setCategoryManageOpen={setCategoryManageOpen}
+                      openLabourTeamManage={openLabourTeamManage}
                     />
                     <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:px-6">
                       <Button
@@ -2916,27 +2906,16 @@ export function ExpensesTab({
       )}
 
       {projectId && canManageProjects && (
-        <>
-          <ExpenseCategoryManageDialog
-            open={categoryManageOpen}
-            onOpenChange={setCategoryManageOpen}
-            projectId={projectId}
-            mode="categories"
-            categories={expenseCategories}
-            labourTeams={labourTeams}
-            onSaved={() => void reloadExpenseOptions()}
-          />
-          <ExpenseCategoryManageDialog
-            open={subcategoryManageOpen}
-            onOpenChange={setSubcategoryManageOpen}
-            projectId={projectId}
-            mode={manageMode}
-            categories={expenseCategories}
-            selectedCategoryName={newExpense.category}
-            labourTeams={labourTeams}
-            onSaved={() => void reloadExpenseOptions()}
-          />
-        </>
+        <ExpenseCategoryManageDialog
+          open={subcategoryManageOpen}
+          onOpenChange={setSubcategoryManageOpen}
+          projectId={projectId}
+          mode="labour-teams"
+          categories={expenseCategories}
+          selectedCategoryName={newExpense.category}
+          labourTeams={labourTeams}
+          onSaved={() => void reloadExpenseOptions()}
+        />
       )}
 
       <AlertDialog

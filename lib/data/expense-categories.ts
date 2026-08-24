@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import { DEFAULT_EXPENSE_CATEGORIES } from '@/lib/expense-categories/constants'
+import { loadMasterExpenseInputCatalog } from '@/lib/data/expense-input-catalog'
 
 export type ExpenseSubcategoryView = {
   id: string
@@ -81,6 +82,14 @@ export async function getExpenseCategoriesForProject(projectId: string) {
 
   if (!user) {
     return { data: null, error: 'You must be signed in to view expense categories.' }
+  }
+
+  const master = await loadMasterExpenseInputCatalog(supabase)
+  if (master.ok) {
+    return { data: master.data, error: null }
+  }
+  if (!master.missingTable) {
+    return { data: null, error: master.error }
   }
 
   const ensured = await ensureProjectExpenseCategories(supabase, projectId)

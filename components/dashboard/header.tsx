@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Bell, Menu, Search, Shield, Users, Building2 } from "lucide-react"
+import { Bell, Menu, Search, Shield, Users, Building2, Tags } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -304,6 +304,12 @@ export function DashboardHeader({ notificationCount = 0, hideAppNav = false }: D
                     <Link href="/admin/company">
                       <Building2 className="mr-2 h-4 w-4" />
                       Company Details
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin/settings/expense-input">
+                      <Tags className="mr-2 h-4 w-4" />
+                      Manage expense input
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>

@@ -11,10 +11,18 @@ import {
   Wallet,
   Building2,
   ClipboardList,
+  Settings,
+  Tags,
+  ChevronDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { useCompanyBranding } from "@/lib/hooks/use-company-branding"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 
 interface AppSidebarProps {
   className?: string
@@ -75,9 +83,18 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
   ]
 
   const adminNavItems: NavItem[] = isAdmin
+    ? [{ id: "users", href: "/admin/users", label: "User Management", icon: Users }]
+    : []
+
+  const settingsItems: NavItem[] = isAdmin
     ? [
-        { id: "company", href: "/admin/company", label: "Company Details", icon: Building2 },
-        { id: "users", href: "/admin/users", label: "User Management", icon: Users },
+        { id: "company", href: "/admin/company", label: "Company details", icon: Building2 },
+        {
+          id: "expense-input",
+          href: "/admin/settings/expense-input",
+          label: "Manage expense input",
+          icon: Tags,
+        },
       ]
     : []
 
@@ -118,6 +135,9 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     }
     if (href === "/admin/company") {
       return pathname.startsWith("/admin/company")
+    }
+    if (href === "/admin/settings/expense-input") {
+      return pathname.startsWith("/admin/settings/expense-input")
     }
     return pathname.startsWith(href)
   }
@@ -171,11 +191,34 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
           Main
         </p>
         {mainNavItemsDeduped.map(renderNavLink)}
-        {adminNavItems.length > 0 ? (
+        {isAdmin ? (
           <>
             <p className="px-3 pb-2 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Administration
             </p>
+            <Collapsible
+              defaultOpen={
+                pathname.startsWith("/admin/company") ||
+                pathname.startsWith("/admin/settings")
+              }
+            >
+              <CollapsibleTrigger
+                className={cn(
+                  "group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                  pathname.startsWith("/admin/company") ||
+                    pathname.startsWith("/admin/settings")
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                )}
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className="flex-1 text-left">Settings</span>
+                <ChevronDown className="h-4 w-4 shrink-0 opacity-70 transition-transform group-data-[state=open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-1 space-y-1 pl-3">
+                {settingsItems.map(renderNavLink)}
+              </CollapsibleContent>
+            </Collapsible>
             {adminNavItems.map(renderNavLink)}
           </>
         ) : null}
