@@ -972,41 +972,12 @@ export async function createMilestoneAction(input: {
 }): Promise<TabActionResult<Record<string, unknown>>> {
   const session = await getSession()
   if (!session.ok) return session
-  if (!canManageProjectData(session.role)) {
-    return { ok: false, error: 'Only admins and project managers can add milestones.' }
+  void input
+  return {
+    ok: false,
+    error:
+      'Stages are managed in Settings → Milestones. Existing project stages are not changed from here.',
   }
-
-  const { data, error } = await session.supabase
-    .from('milestones')
-    .insert({
-      project_id: input.projectId,
-      name: input.name,
-      expected_cost_percent: input.expected_cost_percent,
-      target_budget: input.target_budget,
-      expected_duration: input.expected_duration,
-      notes: input.notes,
-      status: input.status,
-      actual_completion_percent: 0,
-      actual_expenses: 0,
-      sort_order: input.sort_order,
-    })
-    .select('*')
-    .single()
-
-  if (error) {
-    return { ok: false, error: getSupabaseErrorMessage(error) }
-  }
-
-  if (input.status === 'in-progress') {
-    await notifyMilestoneStarted(session.supabase, {
-      projectId: input.projectId,
-      milestoneId: data.id,
-      milestoneName: input.name,
-    })
-  }
-
-  revalidateProject(input.projectId)
-  return { ok: true, data: data as Record<string, unknown> }
 }
 
 export async function updateMilestoneAction(input: {
@@ -1085,20 +1056,10 @@ export async function deleteMilestoneAction(input: {
 }): Promise<TabActionResult> {
   const session = await getSession()
   if (!session.ok) return session
-  if (!canManageProjectData(session.role)) {
-    return { ok: false, error: 'Only admins and project managers can delete milestones.' }
+  void input
+  return {
+    ok: false,
+    error:
+      'Stages are managed in Settings → Milestones. Existing project stages are not deleted from here.',
   }
-
-  const { error } = await session.supabase
-    .from('milestones')
-    .delete()
-    .eq('id', input.milestoneId)
-    .eq('project_id', input.projectId)
-
-  if (error) {
-    return { ok: false, error: getSupabaseErrorMessage(error) }
-  }
-
-  revalidateProject(input.projectId)
-  return { ok: true, data: undefined }
 }

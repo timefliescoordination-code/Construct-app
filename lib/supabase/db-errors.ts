@@ -19,6 +19,10 @@ export function getSupabaseErrorMessage(error: unknown): string {
       return 'Labour team tables are missing. In Supabase SQL Editor, open supabase/apply-labour-and-expense-modules.sql (or labour-teams-module.sql), paste the full file, click Run, then refresh this page.'
     }
 
+    if (/milestone_templates/i.test(msg)) {
+      return 'Milestone template tables are missing. In Supabase SQL Editor, run supabase/migrations/20260824140000_milestone_templates.sql, then refresh this page.'
+    }
+
     if (/expense_input_categories|expense_input_subcategories/i.test(msg)) {
       return 'Expense input catalog tables are missing. In Supabase SQL Editor, run supabase/migrations/20260824120000_expense_input_catalog.sql, then refresh this page.'
     }

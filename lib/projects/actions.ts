@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import { calculateFormSummary } from '@/lib/financial-calculations'
-import { DEFAULT_MILESTONES } from '@/lib/projects/default-milestones'
+import { fallbackMilestoneTemplates, loadMilestoneTemplates } from '@/lib/data/milestone-templates'
 
 export type CreateProjectInput = {
   name: string
@@ -360,15 +360,21 @@ async function seedProjectMilestones(
     return { ok: true }
   }
 
-  const milestonesData = DEFAULT_MILESTONES.map((m) => ({
+  const catalog = await loadMilestoneTemplates(supabase)
+  if (!catalog.ok && !catalog.missingTable) {
+    return { ok: false, error: catalog.error }
+  }
+  const templates = catalog.ok ? catalog.data : fallbackMilestoneTemplates()
+
+  const milestonesData = templates.map((m, index) => ({
     project_id: projectId,
     name: m.name,
-    expected_cost_percent: m.expected_cost_percent,
-    target_budget: (stageBudget * m.expected_cost_percent) / 100,
+    expected_cost_percent: m.expectedCostPercent,
+    target_budget: (stageBudget * m.expectedCostPercent) / 100,
     actual_expenses: 0,
     actual_completion_percent: 0,
     status: 'pending' as const,
-    sort_order: m.sort_order,
+    sort_order: m.sortOrder ?? index + 1,
   }))
 
   const { error: milestonesError } = await supabase

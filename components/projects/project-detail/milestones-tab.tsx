@@ -25,19 +25,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
 import { 
   CheckCircle2, 
   Clock, 
@@ -47,9 +35,7 @@ import {
   IndianRupee,
   Target,
   Calculator,
-  Plus,
   Pencil,
-  Trash2,
   Save,
   X
 } from "lucide-react"
@@ -69,8 +55,6 @@ import { canViewProjectFinancials } from "@/lib/permissions"
 import type { ProjectWithDetails } from "@/lib/types/database"
 import { milestonesWithCalculatedExpenses } from "@/lib/project-tab-hydration"
 import {
-  createMilestoneAction,
-  deleteMilestoneAction,
   updateMilestoneAction,
   updateMilestonesAction,
 } from "@/lib/projects/tab-actions"
@@ -154,16 +138,6 @@ export function MilestonesTab({
   // Edit mode state
   const [editMode, setEditMode] = useState(false)
   const [editedMilestones, setEditedMilestones] = useState<Milestone[]>([])
-  
-  // Add milestone dialog state
-  const [addDialogOpen, setAddDialogOpen] = useState(false)
-  const [newMilestone, setNewMilestone] = useState({
-    name: "",
-    expected_cost_percent: 0,
-    expected_duration: "",
-    notes: "",
-    status: "pending" as const
-  })
   
   // Edit single milestone dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -352,75 +326,6 @@ export function MilestonesTab({
   const handleCancelEdit = () => {
     setEditedMilestones(milestones)
     setEditMode(false)
-  }
-
-  // Add new milestone
-  const handleAddMilestone = async () => {
-    if (!newMilestone.name.trim()) {
-      toast.error("Please enter a milestone name")
-      return
-    }
-    
-    // Validate percentage doesn't exceed 100%
-    const currentTotal = getTotalAllocated()
-    if (currentTotal + newMilestone.expected_cost_percent > 100) {
-      toast.error(`Cannot add ${formatPercent(newMilestone.expected_cost_percent)}. Only ${formatPercent(100 - currentTotal)} available.`)
-      return
-    }
-    
-    setSaving(true)
-
-    const maxSortOrder = Math.max(...milestones.map((m) => m.sort_order), 0)
-    const result = await createMilestoneAction({
-      projectId,
-      name: newMilestone.name,
-      expected_cost_percent: newMilestone.expected_cost_percent,
-      target_budget: (totalStageBudget * newMilestone.expected_cost_percent) / 100,
-      expected_duration: newMilestone.expected_duration || null,
-      notes: newMilestone.notes || null,
-      status: newMilestone.status,
-      sort_order: maxSortOrder + 1,
-    })
-
-    if (!result.ok) {
-      toast.error(result.error)
-      setSaving(false)
-      return
-    }
-
-    const data = result.data as Milestone
-    setMilestones([...milestones, data])
-    setEditedMilestones([...editedMilestones, data])
-    onProjectChange?.()
-    setNewMilestone({
-      name: "",
-      expected_cost_percent: 0,
-      expected_duration: "",
-      notes: "",
-      status: "pending",
-    })
-    setAddDialogOpen(false)
-    toast.success("Milestone added successfully")
-    setSaving(false)
-  }
-
-  // Delete milestone
-  const handleDeleteMilestone = async (milestoneId: string) => {
-    setSaving(true)
-
-    const result = await deleteMilestoneAction({ projectId, milestoneId })
-
-    if (!result.ok) {
-      toast.error(result.error)
-      setSaving(false)
-      return
-    }
-
-    setMilestones(milestones.filter((m) => m.id !== milestoneId))
-    setEditedMilestones(editedMilestones.filter((m) => m.id !== milestoneId))
-    onProjectChange?.()
-    toast.success("Milestone deleted successfully")
-    setSaving(false)
   }
 
   // Edit single milestone
@@ -715,82 +620,10 @@ export function MilestonesTab({
                   </Button>
                 </>
               ) : (
-                <>
-                  <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add Stage
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Add New Stage</DialogTitle>
-                        <DialogDescription>
-                          Add a new milestone/stage to this project
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="name">Stage Name</Label>
-                          <Input
-                            id="name"
-                            placeholder="e.g., Foundation, Plinth, etc."
-                            value={newMilestone.name}
-                            onChange={(e) => setNewMilestone({ ...newMilestone, name: e.target.value })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="percent">Budget Allocation (%)</Label>
-                          <Input
-                            id="percent"
-                            type="number"
-                            min="0"
-                            max={getRemainingPercent()}
-                            step="0.25"
-                            placeholder="e.g., 15"
-                            value={newMilestone.expected_cost_percent || ""}
-                            onChange={(e) => {
-                              const val = Math.min(parseFloat(e.target.value) || 0, getRemainingPercent())
-                              setNewMilestone({ ...newMilestone, expected_cost_percent: roundToQuarter(val) })
-                            }}
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Available: {formatPercent(getRemainingPercent())} | Target: {formatINR((totalStageBudget * newMilestone.expected_cost_percent) / 100)}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="duration">Expected Duration</Label>
-                          <Input
-                            id="duration"
-                            placeholder="e.g., 4 weeks"
-                            value={newMilestone.expected_duration}
-                            onChange={(e) => setNewMilestone({ ...newMilestone, expected_duration: e.target.value })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="notes">Notes</Label>
-                          <Textarea
-                            id="notes"
-                            placeholder="Any additional notes..."
-                            value={newMilestone.notes}
-                            onChange={(e) => setNewMilestone({ ...newMilestone, notes: e.target.value })}
-                          />
-                        </div>
-                      </div>
-                      <DialogFooter>
-                        <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={handleAddMilestone} disabled={saving}>
-                          {saving ? "Adding..." : "Add Stage"}
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                  <Button size="sm" onClick={() => setEditMode(true)}>
+                <Button size="sm" onClick={() => setEditMode(true)}>
                     <Pencil className="h-4 w-4 mr-1" />
                     Edit Percentages
                   </Button>
-                </>
               )}
             </div>
             )}
@@ -945,30 +778,6 @@ export function MilestonesTab({
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Stage</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete &quot;{milestone.name}&quot;? This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                    onClick={() => handleDeleteMilestone(milestone.id)}
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
                           </div>
                         )}
                       </div>
@@ -1004,8 +813,11 @@ export function MilestonesTab({
                 <Input
                   id="edit-name"
                   value={editingMilestone.name}
-                  onChange={(e) => setEditingMilestone({ ...editingMilestone, name: e.target.value })}
+                  disabled
                 />
+                <p className="text-xs text-muted-foreground">
+                  Stage names are managed in Settings → Milestones.
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">

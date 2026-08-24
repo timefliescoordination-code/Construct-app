@@ -13,6 +13,7 @@ import {
   ClipboardList,
   Settings,
   Tags,
+  Flag,
   ChevronDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -95,6 +96,12 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
           label: "Manage expense input",
           icon: Tags,
         },
+        {
+          id: "milestones",
+          href: "/admin/settings/milestones",
+          label: "Milestones",
+          icon: Flag,
+        },
       ]
     : []
 
@@ -138,6 +145,9 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     }
     if (href === "/admin/settings/expense-input") {
       return pathname.startsWith("/admin/settings/expense-input")
+    }
+    if (href === "/admin/settings/milestones") {
+      return pathname.startsWith("/admin/settings/milestones")
     }
     return pathname.startsWith(href)
   }
