@@ -28,6 +28,7 @@ import type {
   ProjectBulkRow,
 } from "@/lib/expense/bulk-entry-types"
 import { categoryUsesLabourTeams } from "@/lib/expense/bulk-entry-project"
+import type { SuggestedFieldMap } from "@/lib/expense/suggest-from-description"
 
 const CELL_INPUT =
   "h-8 min-w-0 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-primary/40 rounded-sm"
@@ -108,6 +109,7 @@ type ProjectGridProps = {
   labourTeams: LabourTeam[]
   milestones: Milestone[]
   subcategoriesForCategory: Map<string, string[]>
+  suggestedFields?: SuggestedFieldMap
 }
 
 type EngineerGridProps = {
@@ -168,6 +170,13 @@ function rowClass(selected: boolean) {
   )
 }
 
+function suggestedControlClass(active: boolean | undefined) {
+  return cn(
+    CELL_SELECT,
+    active && "bg-amber-100/90 dark:bg-amber-950/50",
+  )
+}
+
 function ProjectBulkGrid({
   rows,
   selectedRowId,
@@ -178,6 +187,7 @@ function ProjectBulkGrid({
   labourTeams,
   milestones,
   subcategoriesForCategory,
+  suggestedFields,
 }: ProjectGridProps) {
   const filledCount = rows.filter(projectRowHasContent).length
   const totalAmount = rows.reduce((sum, row) => sum + parseRowAmount(row.amount), 0)
@@ -213,6 +223,7 @@ function ProjectBulkGrid({
           {rows.map((row, index) => {
             const usesLabour = categoryUsesLabourTeams(row.category, expenseCategories)
             const subcategories = subcategoriesForCategory.get(row.category) ?? []
+            const suggested = suggestedFields?.[row.id]
             return (
               <TableRow
                 key={row.id}
@@ -240,7 +251,11 @@ function ProjectBulkGrid({
                       })
                     }
                   >
-                    <SelectTrigger className={CELL_SELECT} onClick={(e) => e.stopPropagation()}>
+                    <SelectTrigger
+                      className={suggestedControlClass(suggested?.category)}
+                      title={suggested?.category ? "Suggested from description" : undefined}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent className="z-[100]">
@@ -259,7 +274,11 @@ function ProjectBulkGrid({
                       onValueChange={(value) => onUpdateRow(row.id, { labourTeamId: value })}
                       disabled={!row.category}
                     >
-                      <SelectTrigger className={CELL_SELECT} onClick={(e) => e.stopPropagation()}>
+                      <SelectTrigger
+                        className={suggestedControlClass(suggested?.labourTeamId)}
+                        title={suggested?.labourTeamId ? "Suggested from description" : undefined}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <SelectValue placeholder="Select team" />
                       </SelectTrigger>
                       <SelectContent className="z-[100]">
@@ -276,7 +295,11 @@ function ProjectBulkGrid({
                       onValueChange={(value) => onUpdateRow(row.id, { subcategory: value })}
                       disabled={!row.category}
                     >
-                      <SelectTrigger className={CELL_SELECT} onClick={(e) => e.stopPropagation()}>
+                      <SelectTrigger
+                        className={suggestedControlClass(suggested?.subcategory)}
+                        title={suggested?.subcategory ? "Suggested from description" : undefined}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent className="z-[100]">
@@ -294,7 +317,11 @@ function ProjectBulkGrid({
                     value={row.milestoneId || undefined}
                     onValueChange={(value) => onUpdateRow(row.id, { milestoneId: value })}
                   >
-                    <SelectTrigger className={CELL_SELECT} onClick={(e) => e.stopPropagation()}>
+                    <SelectTrigger
+                      className={suggestedControlClass(suggested?.milestoneId)}
+                      title={suggested?.milestoneId ? "Suggested from description" : undefined}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent className="z-[100]">

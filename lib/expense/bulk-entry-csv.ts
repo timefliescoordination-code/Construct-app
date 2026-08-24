@@ -8,6 +8,10 @@ import type {
 import { newRowId } from "@/lib/expense/bulk-entry-types"
 import { emptyProjectBulkRow } from "@/lib/expense/bulk-entry-project"
 import {
+  applySuggestionsToProjectRows,
+  type SuggestContext,
+} from "@/lib/expense/suggest-from-description"
+import {
   emptyCompanyExpenseRow,
   emptyCompanyIncomeRow,
   emptyPersonalExpenseRow,
@@ -122,6 +126,16 @@ export function parseProjectBulkCsv(
       amount: record.amount ?? "",
     }
   })
+}
+
+/** Parse a project bulk CSV, then fill empty category/subcategory/milestone from descriptions. */
+export function parseProjectBulkCsvWithSuggestions(
+  text: string,
+  today: string,
+  milestones: { id: string; name: string }[],
+  suggest: SuggestContext,
+) {
+  return applySuggestionsToProjectRows(parseProjectBulkCsv(text, today, milestones), suggest)
 }
 
 export function exportFinanceExpenseCsv(rows: CompanyExpenseBulkRow[]) {

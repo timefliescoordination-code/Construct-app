@@ -2453,6 +2453,12 @@ export function ExpensesTab({
                   milestones={milestones}
                   subcategoriesForCategory={subcategoriesForCategory}
                   canManageProjects={canManageProjects}
+                  history={expenses.slice(0, 200).map((expense) => ({
+                    category: expense.category,
+                    description: expense.description,
+                    milestoneId: expense.milestone_id,
+                    labourTeamId: expense.labour_team_id ?? null,
+                  }))}
                   onSaved={() => void refreshExpensesWithJoin()}
                 />
               ) : null}

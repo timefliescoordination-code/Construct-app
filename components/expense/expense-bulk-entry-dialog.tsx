@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { format } from "date-fns"
-import { Download, Loader2, Plus, Trash2, Upload } from "lucide-react"
+import { Download, Loader2, Plus, Sparkles, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,7 +32,7 @@ import {
   parseFinanceExpenseCsv,
   parseFinanceIncomeCsv,
   parsePersonalExpenseCsv,
-  parseProjectBulkCsv,
+  parseProjectBulkCsvWithSuggestions,
 } from "@/lib/expense/bulk-entry-csv"
 import {
   newRowId,
@@ -68,6 +68,14 @@ import {
   bulkCreateExpensesAction,
   syncProjectMilestoneMetricsAction,
 } from "@/lib/projects/tab-actions"
+import {
+  applySuggestionsToProjectRows,
+  clearSuggestedFields,
+  mergeSuggestedFieldMaps,
+  type ExpenseHistoryItem,
+  type SuggestedFieldKey,
+  type SuggestedFieldMap,
+} from "@/lib/expense/suggest-from-description"
 
 const IMPORT_SERVER_CHUNK_SIZE = 50
 const INITIAL_ROW_COUNT = 5
@@ -163,6 +171,7 @@ type ProjectBulkProps = BaseProps & {
   milestones: Milestone[]
   subcategoriesForCategory: Map<string, string[]>
   canManageProjects: boolean
+  history?: ExpenseHistoryItem[]
 }
 
 type EngineerBulkProps = BaseProps & {
@@ -211,6 +220,7 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
   const [personalRows, setPersonalRows] = useState<PersonalExpenseBulkRow[]>(() =>
     createInitialPersonalRows(today, financeDefaultCategory, INITIAL_ROW_COUNT),
   )
+  const [suggestedFields, setSuggestedFields] = useState<SuggestedFieldMap>({})
 
   const resetAll = useCallback(() => {
     setSelectedRowId(null)
@@ -225,6 +235,7 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
     setPersonalRows(
       createInitialPersonalRows(today, financeDefaultCategory, INITIAL_ROW_COUNT),
     )
+    setSuggestedFields({})
   }, [financeDefaultCategory, today])
 
   const wasOpenRef = useRef(false)
@@ -295,6 +306,11 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
       const next = rows.filter((r) => r.id !== targetId)
       setRows(next.length ? next : [createEmpty()])
       setSelectedRowId(next[0]?.id ?? null)
+      setSuggestedFields((prev) => {
+        const copy = { ...prev }
+        delete copy[targetId]
+        return copy
+      })
     }
 
     if (variant === "project") {
@@ -326,14 +342,33 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
     const text = await file.text()
     try {
       if (variant === "project") {
-        const imported = parseProjectBulkCsv(text, today, props.milestones)
+        const { rows: imported, suggested } = parseProjectBulkCsvWithSuggestions(
+          text,
+          today,
+          props.milestones,
+          {
+            categories: props.expenseCategories,
+            milestones: props.milestones,
+            labourTeams: props.labourTeams,
+            history: props.history ?? [],
+          },
+        )
         if (!imported.length) {
           toast.error("No rows found in CSV.")
           return
         }
         setProjectRows(imported)
+        setSuggestedFields(suggested)
         setSelectedRowId(imported[0]?.id ?? null)
-        toast.success(`Imported ${imported.length} row(s) from CSV.`)
+        const suggestedCount = Object.values(suggested).reduce(
+          (count, fields) => count + Object.keys(fields).length,
+          0,
+        )
+        toast.success(
+          suggestedCount > 0
+            ? `Imported ${imported.length} row(s). Suggested ${suggestedCount} empty field(s) from descriptions.`
+            : `Imported ${imported.length} row(s) from CSV.`,
+        )
       } else if (variant === "engineer") {
         const imported = parseEngineerBulkCsv(text, props.milestones)
         if (!imported.length) {
@@ -374,6 +409,33 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
     } catch {
       toast.error("Could not parse CSV file.")
     }
+  }
+
+  const handleSuggestFromDescriptions = () => {
+    if (variant !== "project") return
+    if (!projectRows.some((row) => row.description.trim())) {
+      toast.error("Add descriptions first.")
+      return
+    }
+    const { rows, suggested } = applySuggestionsToProjectRows(projectRows, {
+      categories: props.expenseCategories,
+      milestones: props.milestones,
+      labourTeams: props.labourTeams,
+      history: props.history ?? [],
+    })
+    const filledCount = Object.values(suggested).reduce(
+      (count, fields) => count + Object.keys(fields).length,
+      0,
+    )
+    setProjectRows(rows)
+    setSuggestedFields((prev) => mergeSuggestedFieldMaps(prev, suggested))
+    if (filledCount === 0) {
+      toast.message("No empty category, subcategory, or milestone fields to fill.")
+      return
+    }
+    toast.success(
+      `Suggested ${filledCount} field(s) from descriptions. Review highlighted cells before saving.`,
+    )
   }
 
   const handleExport = () => {
@@ -627,6 +689,18 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
             <Upload className="h-4 w-4" />
             Import
           </Button>
+          {variant === "project" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="gap-1.5"
+              onClick={handleSuggestFromDescriptions}
+            >
+              <Sparkles className="h-4 w-4" />
+              Suggest from descriptions
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
@@ -658,16 +732,25 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
               rows={projectRows}
               selectedRowId={selectedRowId}
               onSelectRow={setSelectedRowId}
-              onUpdateRow={(id, patch) =>
+              onUpdateRow={(id, patch) => {
                 setProjectRows((prev) =>
                   prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
                 )
-              }
+                const keys: SuggestedFieldKey[] = []
+                if ("category" in patch) keys.push("category", "subcategory", "labourTeamId")
+                if ("subcategory" in patch) keys.push("subcategory")
+                if ("labourTeamId" in patch) keys.push("labourTeamId")
+                if ("milestoneId" in patch) keys.push("milestoneId")
+                if (keys.length > 0) {
+                  setSuggestedFields((prev) => clearSuggestedFields(prev, id, keys))
+                }
+              }}
               categoryNames={props.categoryNames}
               expenseCategories={props.expenseCategories}
               labourTeams={props.labourTeams}
               milestones={props.milestones}
               subcategoriesForCategory={props.subcategoriesForCategory}
+              suggestedFields={suggestedFields}
             />
           )}
           {variant === "engineer" && (
