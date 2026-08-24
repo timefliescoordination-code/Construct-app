@@ -32,7 +32,6 @@ export function AddExpenseMenu({
   return (
     <>
       <DropdownMenu>
-      <DropdownMenu>
         <AddExpenseShortcutTooltip>
           <DropdownMenuTrigger asChild>
             <Button
