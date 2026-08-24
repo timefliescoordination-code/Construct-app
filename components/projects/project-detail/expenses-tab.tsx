@@ -107,6 +107,7 @@ import {
 } from "@/components/projects/project-detail/expense-bulk-toolbar"
 import { ExpenseCategorySummary } from "@/components/projects/project-detail/expense-category-summary"
 import { ProjectFinancialSummary } from "@/components/projects/project-detail/project-financial-summary"
+import { ExpenseExportButton } from "@/components/finance/expense-export-dialog"
 import {
   findMatchingOpenSplitGroup,
   getSplitPaymentStatus,
@@ -2148,6 +2149,10 @@ export function ExpensesTab({
                 accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                 className="hidden"
                 onChange={(e) => void handleImportFile(e.target.files?.[0] ?? null)}
+              />
+              <ExpenseExportButton
+                defaultProjectId={projectId}
+                lockProject={Boolean(projectId)}
               />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

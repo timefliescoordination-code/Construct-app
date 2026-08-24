@@ -41,6 +41,7 @@ import {
   updatePersonalExpenseAction,
 } from "@/lib/finance/finance-actions"
 import { AddExpenseMenu, type ProjectOption } from "@/components/finance/add-expense-menu"
+import { ExpenseExportButton } from "@/components/finance/expense-export-dialog"
 import { ExpenseBulkEntryDialog } from "@/components/expense/expense-bulk-entry-dialog"
 import { CategorySelectField } from "@/components/finance/category-select-field"
 import { useExpenseShortcutRegistryOptional } from "@/lib/keyboard/expense-shortcut-context"
@@ -767,6 +768,7 @@ export function AllExpensesContent() {
               <SelectItem value="1y">Last year</SelectItem>
             </SelectContent>
           </Select>
+          <ExpenseExportButton />
           <AddExpenseMenu projects={projects} />
         </PageHeader>
 
