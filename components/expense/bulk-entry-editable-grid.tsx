@@ -177,6 +177,19 @@ function suggestedControlClass(active: boolean | undefined) {
   )
 }
 
+function VisibleSelectValue({
+  label,
+  placeholder,
+}: {
+  label?: string
+  placeholder: string
+}) {
+  if (label) {
+    return <span className="min-w-0 truncate">{label}</span>
+  }
+  return <SelectValue placeholder={placeholder} />
+}
+
 function ProjectBulkGrid({
   rows,
   selectedRowId,
@@ -222,7 +235,15 @@ function ProjectBulkGrid({
         <TableBody>
           {rows.map((row, index) => {
             const usesLabour = categoryUsesLabourTeams(row.category, expenseCategories)
-            const subcategories = subcategoriesForCategory.get(row.category) ?? []
+            const catalogSubs = subcategoriesForCategory.get(row.category) ?? []
+            const subcategories =
+              row.subcategory && !catalogSubs.includes(row.subcategory)
+                ? [row.subcategory, ...catalogSubs]
+                : catalogSubs
+            const categoryOptions =
+              row.category && !categoryNames.includes(row.category)
+                ? [row.category, ...categoryNames]
+                : categoryNames
             const suggested = suggestedFields?.[row.id]
             return (
               <TableRow
@@ -242,6 +263,7 @@ function ProjectBulkGrid({
                 </TableCell>
                 <TableCell className="p-1">
                   <Select
+                    key={`${row.id}-category-${row.category}`}
                     value={row.category || undefined}
                     onValueChange={(value) =>
                       onUpdateRow(row.id, {
@@ -256,10 +278,10 @@ function ProjectBulkGrid({
                       title={suggested?.category ? "Suggested from description" : undefined}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <SelectValue placeholder="Select" />
+                      <VisibleSelectValue label={row.category || undefined} placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent className="z-[100]">
-                      {categoryNames.map((cat) => (
+                      {categoryOptions.map((cat) => (
                         <SelectItem key={cat} value={cat}>
                           {cat}
                         </SelectItem>
@@ -270,6 +292,7 @@ function ProjectBulkGrid({
                 <TableCell className="p-1">
                   {usesLabour ? (
                     <Select
+                      key={`${row.id}-team-${row.labourTeamId}`}
                       value={row.labourTeamId || undefined}
                       onValueChange={(value) => onUpdateRow(row.id, { labourTeamId: value })}
                       disabled={!row.category}
@@ -279,7 +302,12 @@ function ProjectBulkGrid({
                         title={suggested?.labourTeamId ? "Suggested from description" : undefined}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <SelectValue placeholder="Select team" />
+                        <VisibleSelectValue
+                          label={
+                            labourTeams.find((team) => team.id === row.labourTeamId)?.name
+                          }
+                          placeholder="Select team"
+                        />
                       </SelectTrigger>
                       <SelectContent className="z-[100]">
                         {labourTeams.map((team) => (
@@ -291,6 +319,7 @@ function ProjectBulkGrid({
                     </Select>
                   ) : (
                     <Select
+                      key={`${row.id}-sub-${row.category}-${row.subcategory}`}
                       value={row.subcategory || undefined}
                       onValueChange={(value) => onUpdateRow(row.id, { subcategory: value })}
                       disabled={!row.category}
@@ -300,7 +329,10 @@ function ProjectBulkGrid({
                         title={suggested?.subcategory ? "Suggested from description" : undefined}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <SelectValue placeholder="Select" />
+                        <VisibleSelectValue
+                          label={row.subcategory || undefined}
+                          placeholder="Select"
+                        />
                       </SelectTrigger>
                       <SelectContent className="z-[100]">
                         {subcategories.map((sub) => (
@@ -314,6 +346,7 @@ function ProjectBulkGrid({
                 </TableCell>
                 <TableCell className="p-1">
                   <Select
+                    key={`${row.id}-ms-${row.milestoneId}`}
                     value={row.milestoneId || undefined}
                     onValueChange={(value) => onUpdateRow(row.id, { milestoneId: value })}
                   >
@@ -322,7 +355,10 @@ function ProjectBulkGrid({
                       title={suggested?.milestoneId ? "Suggested from description" : undefined}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <SelectValue placeholder="Select" />
+                      <VisibleSelectValue
+                        label={milestones.find((m) => m.id === row.milestoneId)?.name}
+                        placeholder="Select"
+                      />
                     </SelectTrigger>
                     <SelectContent className="z-[100]">
                       {milestones.map((m) => (
