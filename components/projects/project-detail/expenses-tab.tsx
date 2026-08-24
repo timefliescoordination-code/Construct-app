@@ -210,7 +210,20 @@ interface Expense {
   milestones?: { name: string } | null
 }
 
-function mapExpenseRow(row: Record<string, unknown>): Expense {
+function nestedRecordName(raw: unknown): string | null {
+  if (!raw) return null
+  if (Array.isArray(raw)) return nestedRecordName(raw[0])
+  if (typeof raw === "object" && raw !== null && "name" in raw) {
+    const name = (raw as { name?: unknown }).name
+    return typeof name === "string" && name.trim() ? name : null
+  }
+  return null
+}
+
+function mapExpenseRow(
+  row: Record<string, unknown>,
+  milestoneNames?: Map<string, string>,
+): Expense {
   const groupRaw = row.expense_split_groups
   const group =
     groupRaw && typeof groupRaw === "object" && !Array.isArray(groupRaw)
@@ -221,6 +234,11 @@ function mapExpenseRow(row: Record<string, unknown>): Expense {
         })
       : null
 
+  const milestoneId = (row.milestone_id as string | null) ?? null
+  const milestoneName =
+    nestedRecordName(row.milestones) ??
+    (milestoneId ? milestoneNames?.get(milestoneId) ?? null : null)
+
   return {
     id: row.id as string,
     expense_date: row.expense_date as string,
@@ -230,14 +248,14 @@ function mapExpenseRow(row: Record<string, unknown>): Expense {
     amount: Number(row.amount),
     bill_number: (row.bill_number as string | null) ?? null,
     status: row.status as string,
-    milestone_id: (row.milestone_id as string | null) ?? null,
+    milestone_id: milestoneId,
     labour_team_id: (row.labour_team_id as string | null) ?? null,
     split_group_id: (row.split_group_id as string | null) ?? null,
     split_number: (row.split_number as number | null) ?? null,
     split_total_amount: group ? Number(group.total_amount) : null,
     split_group_subcategory_name: group?.subcategory_name ?? null,
     split_group_labour_team_id: group?.labour_team_id ?? null,
-    milestones: row.milestones as { name: string } | null,
+    milestones: milestoneName ? { name: milestoneName } : null,
   }
 }
 
@@ -331,7 +349,7 @@ export function ExpensesTab({
     project ? mapExpensesFromProject(project) : [],
   )
   const [milestones, setMilestones] = useState<Milestone[]>(() =>
-    project ? project.milestones.map((m) => ({ id: m.id, name: m.name })) : [],
+    project ? (project.milestones ?? []).map((m) => ({ id: m.id, name: m.name })) : [],
   )
   const [isLoading, setIsLoading] = useState(!project)
   const [filterCategory, setFilterCategory] = useState<string>("all")
@@ -463,7 +481,7 @@ export function ExpensesTab({
 
   useEffect(() => {
     if (project) {
-      setMilestones(project.milestones.map((m) => ({ id: m.id, name: m.name })))
+      setMilestones((project.milestones ?? []).map((m) => ({ id: m.id, name: m.name })))
       setIsLoading(false)
       if (projectId) {
         void refreshExpensesWithJoin()
@@ -496,7 +514,7 @@ export function ExpensesTab({
           toast.error("Failed to load expenses")
         } else {
           const mapped = (expensesData ?? []).map((row) =>
-            mapExpenseRow(row as Record<string, unknown>),
+            mapExpenseRow(row as Record<string, unknown>, milestoneNameByIdMap),
           )
           setExpenses(mapped)
           const invoiceIds = await fetchExpenseIdsWithInvoices(projectId)
@@ -525,12 +543,16 @@ export function ExpensesTab({
   const reloadExpenseOptions = async () => {
     if (!projectId) return
     try {
-      const [teamsRes, categoriesRes] = await Promise.all([
+      const [teamsRes, categoriesRes, projectRes] = await Promise.all([
         fetch(`/api/projects/${projectId}/labour-teams`, {
           credentials: "include",
           cache: "no-store",
         }),
         fetch(`/api/projects/${projectId}/expense-categories`, {
+          credentials: "include",
+          cache: "no-store",
+        }),
+        fetch(`/api/projects/${projectId}`, {
           credentials: "include",
           cache: "no-store",
         }),
@@ -546,6 +568,15 @@ export function ExpensesTab({
       }
       if (categoriesRes.ok && categoriesJson.data?.categories) {
         setExpenseCategories(categoriesJson.data.categories)
+      }
+      const projectJson = (await projectRes.json().catch(() => ({}))) as {
+        data?: { milestones?: { id: string; name: string; sort_order?: number }[] }
+      }
+      if (projectRes.ok && Array.isArray(projectJson.data?.milestones)) {
+        const list = [...projectJson.data.milestones].sort(
+          (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
+        )
+        setMilestones(list.map((m) => ({ id: m.id, name: m.name })))
       }
     } catch {
       // Non-blocking until migrations are applied
@@ -589,6 +620,11 @@ export function ExpensesTab({
   const categoryNames = useMemo(
     () => expenseCategories.map((c) => c.name),
     [expenseCategories],
+  )
+
+  const milestoneNameByIdMap = useMemo(
+    () => new Map(milestones.map((m) => [m.id, m.name])),
+    [milestones],
   )
 
   const subcategoriesForCategory = useMemo(() => {
@@ -814,7 +850,9 @@ export function ExpensesTab({
     }
 
     setExpenses(
-      (data ?? []).map((row) => mapExpenseRow(row as Record<string, unknown>)),
+      (data ?? []).map((row) =>
+        mapExpenseRow(row as Record<string, unknown>, milestoneNameByIdMap),
+      ),
     )
     return true
   }

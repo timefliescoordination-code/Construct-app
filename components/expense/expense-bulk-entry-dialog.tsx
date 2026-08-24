@@ -56,7 +56,10 @@ import {
 import {
   carryForwardProjectRow,
   emptyProjectBulkRow,
+  inheritEmptyProjectFields,
   mapProjectBulkRowToCreate,
+  previousProjectRowWithValues,
+  projectRowHasCarryValues,
   validateProjectBulkRow,
 } from "@/lib/expense/bulk-entry-project"
 import {
@@ -249,8 +252,11 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
   const addRow = () => {
     if (variant === "project") {
       setProjectRows((prev) => {
-        const source = prev.find((r) => r.id === selectedRowId) ?? prev[prev.length - 1]
-        const next = { ...carryForwardProjectRow(source), id: newRowId() }
+        const selected = prev.find((r) => r.id === selectedRowId)
+        const source = projectRowHasCarryValues(selected)
+          ? selected
+          : [...prev].reverse().find(projectRowHasCarryValues) ?? prev[prev.length - 1]
+        const next = { ...carryForwardProjectRow(source!), id: newRowId() }
         setSelectedRowId(next.id)
         return [...prev, next]
       })
@@ -734,7 +740,12 @@ export function ExpenseBulkEntryDialog(props: ExpenseBulkEntryDialogProps) {
               onSelectRow={setSelectedRowId}
               onUpdateRow={(id, patch) => {
                 setProjectRows((prev) =>
-                  prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+                  prev.map((row, index) => {
+                    if (row.id !== id) return row
+                    const merged = { ...row, ...patch }
+                    const previous = previousProjectRowWithValues(prev, index)
+                    return inheritEmptyProjectFields(merged, previous, patch)
+                  }),
                 )
                 const keys: SuggestedFieldKey[] = []
                 if ("category" in patch) keys.push("category", "subcategory", "labourTeamId")

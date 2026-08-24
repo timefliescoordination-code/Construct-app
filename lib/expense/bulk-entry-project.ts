@@ -40,6 +40,43 @@ export function carryForwardProjectRow(prev: ProjectBulkRow): ProjectBulkRow {
   }
 }
 
+export function projectRowHasCarryValues(row: ProjectBulkRow | undefined) {
+  if (!row) return false
+  return Boolean(
+    row.category ||
+      row.subcategory ||
+      row.labourTeamId ||
+      row.milestoneId ||
+      row.description.trim(),
+  )
+}
+
+export function previousProjectRowWithValues(rows: ProjectBulkRow[], index: number) {
+  for (let i = index - 1; i >= 0; i--) {
+    if (projectRowHasCarryValues(rows[i])) return rows[i]
+  }
+  return undefined
+}
+
+export function inheritEmptyProjectFields(
+  row: ProjectBulkRow,
+  previous: ProjectBulkRow | undefined,
+  locked?: Partial<ProjectBulkRow>,
+): ProjectBulkRow {
+  if (!previous) return row
+  return {
+    ...row,
+    date: "date" in (locked ?? {}) ? row.date : row.date || previous.date,
+    category: "category" in (locked ?? {}) ? row.category : row.category || previous.category,
+    subcategory:
+      "subcategory" in (locked ?? {}) ? row.subcategory : row.subcategory || previous.subcategory,
+    labourTeamId:
+      "labourTeamId" in (locked ?? {}) ? row.labourTeamId : row.labourTeamId || previous.labourTeamId,
+    milestoneId:
+      "milestoneId" in (locked ?? {}) ? row.milestoneId : row.milestoneId || previous.milestoneId,
+  }
+}
+
 export function validateProjectBulkRow(
   row: ProjectBulkRow,
   expenseCategories: ExpenseCategoryView[],

@@ -245,6 +245,10 @@ function ProjectBulkGrid({
                 ? [row.category, ...categoryNames]
                 : categoryNames
             const suggested = suggestedFields?.[row.id]
+            const milestoneOptions =
+              row.milestoneId && !milestones.some((m) => m.id === row.milestoneId)
+                ? [{ id: row.milestoneId, name: "Selected stage" }, ...milestones]
+                : milestones
             return (
               <TableRow
                 key={row.id}
@@ -357,7 +361,7 @@ function ProjectBulkGrid({
                       />
                     </SelectTrigger>
                     <SelectContent className="z-[100]">
-                      {milestones.map((m) => (
+                      {milestoneOptions.map((m) => (
                         <SelectItem key={m.id} value={m.id}>
                           {m.name}
                         </SelectItem>

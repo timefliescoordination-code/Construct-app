@@ -1,5 +1,9 @@
 import type { ExpenseCategoryView } from "../data/expense-categories.ts"
-import { categoryUsesLabourTeams } from "./bulk-entry-project.ts"
+import {
+  categoryUsesLabourTeams,
+  inheritEmptyProjectFields,
+  previousProjectRowWithValues,
+} from "./bulk-entry-project.ts"
 import type { ProjectBulkRow } from "./bulk-entry-types.ts"
 import { parseExpenseSubcategory } from "./export/parse.ts"
 
@@ -298,6 +302,11 @@ export function applyProjectRowSuggestions(
     filled.push("category")
   }
 
+  if (!next.milestoneId.trim() && suggestion.milestoneId) {
+    next.milestoneId = suggestion.milestoneId
+    filled.push("milestoneId")
+  }
+
   if (!next.category.trim()) return { row: next, filled }
 
   const usesLabour = categoryUsesLabourTeams(next.category, categories)
@@ -315,11 +324,6 @@ export function applyProjectRowSuggestions(
       next.subcategory = suggestion.subcategory
       filled.push("subcategory")
     }
-  }
-
-  if (!next.milestoneId.trim() && suggestion.milestoneId) {
-    next.milestoneId = suggestion.milestoneId
-    filled.push("milestoneId")
   }
 
   return { row: next, filled }
@@ -345,7 +349,18 @@ export function applySuggestionsToProjectRows(
     }
     return updated
   })
-  return { rows: nextRows, suggested }
+
+  const withInherited = nextRows.map((row, index) => {
+    if (!row.description.trim()) return row
+    const previous = previousProjectRowWithValues(nextRows, index)
+    const inherited = inheritEmptyProjectFields(row, previous)
+    if (inherited.milestoneId && !row.milestoneId) {
+      suggested[inherited.id] = { ...suggested[inherited.id], milestoneId: true }
+    }
+    return inherited
+  })
+
+  return { rows: withInherited, suggested }
 }
 
 export function mergeSuggestedFieldMaps(

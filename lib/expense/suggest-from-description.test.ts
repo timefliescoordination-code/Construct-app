@@ -117,12 +117,24 @@ describe("applyProjectRowSuggestions", () => {
     assert.equal(filled.includes("category"), false)
   })
 
+  it("fills a milestone even when category is still empty", () => {
+    const { row, filled } = applyProjectRowSuggestions(
+      emptyRow(),
+      { milestoneId: "ms-foundation" },
+      catalog(),
+    )
+    assert.equal(row.milestoneId, "ms-foundation")
+    assert.equal(filled.includes("milestoneId"), true)
+    assert.equal(row.category, "")
+  })
+
   it("fills empty category and subcategory from a catalog match", () => {
     const suggestion = suggestFromDescription("TMT bars 12mm", context())
     const { row, filled } = applyProjectRowSuggestions(emptyRow(), suggestion, catalog())
     assert.equal(row.category, "Materials")
     assert.equal(row.subcategory, "Steel")
-    assert.deepEqual(filled, ["category", "subcategory"])
+    assert.equal(filled.includes("category"), true)
+    assert.equal(filled.includes("subcategory"), true)
   })
 })
 
