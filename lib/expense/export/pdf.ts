@@ -3,7 +3,6 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { ExpenseExportSummary } from './types.ts'
 import type { ExportExpenseRow } from './types.ts'
-import { EXPORT_COLUMN_HEADERS, sumExportAmounts } from './columns.ts'
 import { formatINR } from '../../currency.ts'
 
 export type PdfExportInput = {
@@ -15,46 +14,45 @@ export type PdfExportInput = {
 }
 
 const PDF_COLUMNS = [
-  { header: 'S.No.', dataKey: 'serialNumber' },
-  { header: 'Date', dataKey: 'expenseDate' },
-  { header: 'Type', dataKey: 'expenseType' },
-  { header: 'Project', dataKey: 'projectName' },
-  { header: 'Category', dataKey: 'category' },
-  { header: 'Subcategory', dataKey: 'subcategory' },
+  { header: 'Date (DD-MM-YYYY)', dataKey: 'expenseDate' },
   { header: 'Description', dataKey: 'description' },
-  { header: 'Vendor', dataKey: 'vendorPayee' },
-  { header: 'Status', dataKey: 'paymentStatus' },
   { header: 'Amount', dataKey: 'amount' },
-  { header: 'Total', dataKey: 'totalAmount' },
-  { header: 'Created By', dataKey: 'createdBy' },
-  { header: 'Invoice', dataKey: 'invoiceFileName' },
 ] as const
+
+function formatPdfDate(value: string): string {
+  const isoDate = value.slice(0, 10)
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate)
+  if (!match) return value
+  const [, year, month, day] = match
+  return `${day}-${month}-${year}`
+}
 
 export function buildExpensePdfBuffer(input: PdfExportInput): Buffer {
   const exportedAt = input.exportedAt ?? new Date()
-  const totalAmount = sumExportAmounts(input.rows)
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
+  const totalAmount = input.rows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0)
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
 
   doc.setFontSize(16)
   doc.text('Expense Export Report', 40, 36)
   doc.setFontSize(10)
   doc.text(input.companyName, 40, 54)
-  doc.text(input.filtersLabel, 40, 68, { maxWidth: 760 })
+  doc.text(input.filtersLabel, 40, 68, { maxWidth: 515 })
   doc.text(
-    `Exported: ${format(exportedAt, 'dd MMM yyyy HH:mm')} · Records: ${input.rows.length} · Total: ${formatINR(totalAmount)}`,
+    `Exported: ${format(exportedAt, 'dd MMM yyyy HH:mm')} · Records: ${input.rows.length}`,
     40,
     84,
-    { maxWidth: 760 },
+    { maxWidth: 515 },
   )
 
   const body = input.rows.map((row) =>
     PDF_COLUMNS.map((col) => {
-      const value = row[col.dataKey as keyof ExportExpenseRow]
-      if (col.dataKey === 'amount' || col.dataKey === 'totalAmount') {
-        return formatINR(Number(value ?? 0))
+      if (col.dataKey === 'expenseDate') {
+        return formatPdfDate(row.expenseDate)
       }
-      if (value == null) return ''
-      return String(value)
+      if (col.dataKey === 'amount') {
+        return formatINR(Number(row.amount ?? 0))
+      }
+      return row.description ?? ''
     }),
   )
 
@@ -62,9 +60,17 @@ export function buildExpensePdfBuffer(input: PdfExportInput): Buffer {
     startY: 96,
     head: [PDF_COLUMNS.map((col) => col.header)],
     body,
-    styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak' },
+    foot: [['', 'Total Amount', formatINR(totalAmount)]],
+    showFoot: 'lastPage',
+    styles: { fontSize: 9, cellPadding: 4, overflow: 'linebreak' },
     headStyles: { fillColor: [30, 64, 120], textColor: 255 },
-    margin: { left: 24, right: 24 },
+    footStyles: { fillColor: [243, 244, 246], textColor: 20, fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 110 },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 110, halign: 'right' },
+    },
+    margin: { left: 40, right: 40 },
     showHead: 'everyPage',
     didDrawPage: (data) => {
       const pageCount = doc.getNumberOfPages()
@@ -77,50 +83,10 @@ export function buildExpensePdfBuffer(input: PdfExportInput): Buffer {
     },
   })
 
-  let summaryY =
-    ((doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 120) + 24
-
-  doc.setFontSize(12)
-  doc.text('Summary by Project', 40, summaryY)
-  summaryY += 14
-
-  autoTable(doc, {
-    startY: summaryY,
-    head: [['Project', 'Records', 'Total (INR)']],
-    body: input.summary.byProject.map((row) => [
-      row.projectName,
-      String(row.count),
-      formatINR(row.total),
-    ]),
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [55, 65, 81] },
-    margin: { left: 40, right: 40 },
-  })
-
-  summaryY =
-    ((doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? summaryY) + 20
-
-  doc.setFontSize(12)
-  doc.text('Summary by Category', 40, summaryY)
-  summaryY += 14
-
-  autoTable(doc, {
-    startY: summaryY,
-    head: [['Category', 'Records', 'Total (INR)']],
-    body: input.summary.byCategory.map((row) => [
-      row.category,
-      String(row.count),
-      formatINR(row.total),
-    ]),
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [55, 65, 81] },
-    margin: { left: 40, right: 40 },
-  })
-
   const arrayBuffer = doc.output('arraybuffer')
   return Buffer.from(arrayBuffer)
 }
 
 export function getFullPdfColumnHeaders(): readonly string[] {
-  return EXPORT_COLUMN_HEADERS
+  return PDF_COLUMNS.map((col) => col.header)
 }

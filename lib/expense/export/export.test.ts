@@ -152,7 +152,7 @@ describe('buildExpenseExcelBuffer', () => {
 })
 
 describe('buildExpensePdfBuffer', () => {
-  it('creates non-empty pdf buffer with summary sections', () => {
+  it('creates a non-empty pdf with date, description, amount, and total', () => {
     const rows = [sampleRow()]
     const buffer = buildExpensePdfBuffer({
       rows,
