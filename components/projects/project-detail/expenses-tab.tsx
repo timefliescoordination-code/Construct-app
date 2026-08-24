@@ -543,7 +543,7 @@ export function ExpensesTab({
   const reloadExpenseOptions = async () => {
     if (!projectId) return
     try {
-      const [teamsRes, categoriesRes, projectRes] = await Promise.all([
+      const [teamsRes, categoriesRes, milestonesRes] = await Promise.all([
         fetch(`/api/projects/${projectId}/labour-teams`, {
           credentials: "include",
           cache: "no-store",
@@ -552,7 +552,7 @@ export function ExpensesTab({
           credentials: "include",
           cache: "no-store",
         }),
-        fetch(`/api/projects/${projectId}`, {
+        fetch(`/api/projects/${projectId}/milestones`, {
           credentials: "include",
           cache: "no-store",
         }),
@@ -569,14 +569,12 @@ export function ExpensesTab({
       if (categoriesRes.ok && categoriesJson.data?.categories) {
         setExpenseCategories(categoriesJson.data.categories)
       }
-      const projectJson = (await projectRes.json().catch(() => ({}))) as {
-        data?: { milestones?: { id: string; name: string; sort_order?: number }[] }
+      const milestonesJson = (await milestonesRes.json().catch(() => ({}))) as {
+        data?: { milestones?: { id: string; name: string }[] }
+        error?: string
       }
-      if (projectRes.ok && Array.isArray(projectJson.data?.milestones)) {
-        const list = [...projectJson.data.milestones].sort(
-          (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0),
-        )
-        setMilestones(list.map((m) => ({ id: m.id, name: m.name })))
+      if (milestonesRes.ok && Array.isArray(milestonesJson.data?.milestones)) {
+        setMilestones(milestonesJson.data.milestones)
       }
     } catch {
       // Non-blocking until migrations are applied
@@ -2402,7 +2400,9 @@ export function ExpensesTab({
                 type="button"
                 variant="outline"
                 className="gap-2"
-                onClick={() => setIsBulkEntryOpen(true)}
+                onClick={() => {
+                  void reloadExpenseOptions().then(() => setIsBulkEntryOpen(true))
+                }}
               >
                 Bulk entry
               </Button>

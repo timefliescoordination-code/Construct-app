@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireAdminSession } from '@/lib/auth/require-admin'
 import { loadMilestoneTemplates } from '@/lib/data/milestone-templates'
+import { syncConstructionProjectMilestonesFromTemplates } from '@/lib/data/project-milestones-catalog'
 import type { MilestoneTemplateView } from '@/lib/data/milestone-templates'
 import {
   MILESTONE_TEMPLATES_MIGRATIONS_HINT,
@@ -74,6 +75,7 @@ export async function createMilestoneTemplateAction(input: {
   }
 
   revalidateTemplates()
+  await syncConstructionProjectMilestonesFromTemplates(session.supabase)
   return { ok: true, data: { id: data.id } }
 }
 
@@ -103,6 +105,7 @@ export async function updateMilestoneTemplateAction(input: {
   }
 
   revalidateTemplates()
+  await syncConstructionProjectMilestonesFromTemplates(session.supabase)
   return { ok: true, data: undefined }
 }
 
@@ -122,5 +125,6 @@ export async function deleteMilestoneTemplateAction(input: {
   }
 
   revalidateTemplates()
+  await syncConstructionProjectMilestonesFromTemplates(session.supabase)
   return { ok: true, data: undefined }
 }
