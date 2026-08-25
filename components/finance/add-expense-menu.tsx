@@ -31,7 +31,7 @@ export function AddExpenseMenu({
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu modal={false}>
         <AddExpenseShortcutTooltip>
           <DropdownMenuTrigger asChild>
             <Button
@@ -45,7 +45,11 @@ export function AddExpenseMenu({
           </DropdownMenuTrigger>
         </AddExpenseShortcutTooltip>
         <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuItem onSelect={() => setPickerOpen(true)}>
+          <DropdownMenuItem
+            onSelect={() => {
+              window.setTimeout(() => setPickerOpen(true), 0)
+            }}
+          >
             Project expense
           </DropdownMenuItem>
           <DropdownMenuItem

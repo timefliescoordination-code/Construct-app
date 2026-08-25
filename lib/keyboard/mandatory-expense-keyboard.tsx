@@ -14,7 +14,6 @@ import {
   type RefObject,
 } from "react"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import {
   activeMandatoryFields,
   filterOptionsByPrefix,
@@ -372,24 +371,13 @@ export function MandatoryExpenseSubmitButton({
     }
   }
 
-  const faded =
-    kb?.fadeSubmitUntilReady && !kb.submitStepReached && !disabled
-
   return (
     <Button
       type="button"
       ref={setRef}
-      className={cn(
-        className,
-        faded && "pointer-events-none opacity-35 transition-opacity",
-        kb?.fadeSubmitUntilReady &&
-          kb.submitStepReached &&
-          "opacity-100 transition-opacity",
-      )}
+      className={className}
       disabled={disabled}
       onClick={onClick}
-      tabIndex={faded ? -1 : undefined}
-      aria-hidden={faded ? true : undefined}
       onKeyDown={(e) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault()
