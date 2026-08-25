@@ -27,6 +27,18 @@ import {
 import { getProjectPmLabel } from "@/lib/staff-labels"
 import { deriveProjectIdleStatus, type ProjectIdleStatus } from "@/lib/project-idle"
 import type { Profile, ProjectStatus } from "@/lib/types/database"
+import {
+  buildDailyCash,
+  buildMonthlyCashSeries,
+  countSiteDelays,
+  latestPaymentDate,
+  mergeDailyCash,
+  mergeMonthlyCashSeries,
+  sumCompletedStageTarget,
+  sumProfitAtRisk,
+  type DailyCashPoint,
+  type MonthlyCashPoint,
+} from "@/lib/dashboard-profit-view"
 
 export interface AdminProjectSummary {
   id: string
@@ -48,12 +60,16 @@ export interface AdminProjectSummary {
   received_percent: number
   budget_usage_percent: number
   completed_stage_profit_loss: number
+  completed_stage_target: number
   health: ProjectHealthStatus
   pm_label: string
   expected_margin_percent: number
   has_stage_loss: boolean
   spent_timeline_lines: string[]
   idle: ProjectIdleStatus
+  last_payment_date: string | null
+  monthly_cash_series: MonthlyCashPoint[]
+  cash_by_date: DailyCashPoint[]
   /** Legacy — kept for internal aggregates; not shown as primary KPI */
   realized_profit: number
   forecast_profit: number
@@ -75,6 +91,13 @@ export interface AdminCompanyMetrics {
   portfolioReceivedPercent: number
   totalBalanceToCollect: number
   totalCompletedStageProfitLoss: number
+  totalCompletedStageTarget: number
+  totalStageBudget: number
+  profitAtRisk: number
+  lastClientPaymentDate: string | null
+  siteDelayProjects: number
+  monthlyCashSeries: MonthlyCashPoint[]
+  cashByDate: DailyCashPoint[]
   overbudgetProjects: number
   cashRiskProjects: number
   stageLossProjects: number
@@ -270,6 +293,7 @@ export function buildAdminDashboardData(input: {
         ? Math.round((totalExpenses / totalStageBudget) * 1000) / 10
         : 0
     const completedStageProfitLoss = sumCompletedStageProfitLoss(milestones)
+    const completedStageTarget = sumCompletedStageTarget(milestones)
     const health = deriveProjectHealth({
       totalContractValue,
       totalReceived,
@@ -314,6 +338,17 @@ export function buildAdminDashboardData(input: {
       ),
     })
 
+    const paymentDates = paymentDatesByProject.get(project.id) ?? []
+    const lastPaymentDate =
+      paymentDates.length > 0
+        ? [...paymentDates].sort().at(-1)?.slice(0, 10) ?? null
+        : null
+
+    const projectExpenses = approvedExpenses.filter((row) => row.project_id === project.id)
+    const projectPayments = input.clientPayments.filter(
+      (row) => row.project_id === project.id && row.status === "received",
+    )
+
     return {
       id: project.id,
       name: project.name,
@@ -333,12 +368,16 @@ export function buildAdminDashboardData(input: {
       received_percent: receivedPercent,
       budget_usage_percent: budgetUsagePercent,
       completed_stage_profit_loss: completedStageProfitLoss,
+      completed_stage_target: completedStageTarget,
       health,
       pm_label: getProjectPmLabel(project),
       expected_margin_percent: marginPercent,
       has_stage_loss: hasCompletedStageLoss(milestones),
       spent_timeline_lines,
       idle,
+      last_payment_date: lastPaymentDate,
+      monthly_cash_series: buildMonthlyCashSeries(projectExpenses, projectPayments),
+      cash_by_date: buildDailyCash(projectExpenses, projectPayments),
       realized_profit: realizedProfit,
       forecast_profit: forecastProfit,
       forecast_margin_percent: forecastMarginPercent,
@@ -387,6 +426,14 @@ export function aggregateAdminCompanyMetrics(
     (sum, project) => sum + project.completed_stage_profit_loss,
     0,
   )
+  const totalCompletedStageTarget = projects.reduce(
+    (sum, project) => sum + (project.completed_stage_target ?? 0),
+    0,
+  )
+  const totalStageBudget = projects.reduce(
+    (sum, project) => sum + project.total_stage_budget,
+    0,
+  )
   const realizedProfit = projects.reduce((sum, project) => sum + project.realized_profit, 0)
   const forecastProfit = projects.reduce((sum, project) => sum + project.forecast_profit, 0)
   const forecastMarginPercent = calculateForecastMarginPercent(forecastProfit, totalContractValue)
@@ -417,6 +464,13 @@ export function aggregateAdminCompanyMetrics(
     portfolioReceivedPercent,
     totalBalanceToCollect,
     totalCompletedStageProfitLoss,
+    totalCompletedStageTarget,
+    totalStageBudget,
+    profitAtRisk: sumProfitAtRisk(projects),
+    lastClientPaymentDate: latestPaymentDate(projects),
+    siteDelayProjects: countSiteDelays(projects),
+    monthlyCashSeries: mergeMonthlyCashSeries(projects),
+    cashByDate: mergeDailyCash(projects),
     overbudgetProjects: projects.filter((project) => project.remaining_stage_budget < 0).length,
     cashRiskProjects: projects.filter((project) => project.health === "cash_risk").length,
     stageLossProjects: projects.filter((project) => project.health === "stage_loss").length,

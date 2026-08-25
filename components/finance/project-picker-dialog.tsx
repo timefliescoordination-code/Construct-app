@@ -16,12 +16,17 @@ interface ProjectPickerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   projects: ProjectOption[]
+  /** Defaults to project expense add flow. */
+  hrefForProject?: (projectId: string) => string
+  title?: string
 }
 
 export function ProjectPickerDialog({
   open,
   onOpenChange,
   projects,
+  hrefForProject,
+  title = "Select project",
 }: ProjectPickerDialogProps) {
   const router = useRouter()
   const [query, setQuery] = useState("")
@@ -35,14 +40,14 @@ export function ProjectPickerDialog({
   const selectProject = (id: string) => {
     onOpenChange(false)
     setQuery("")
-    router.push(`/projects/${id}?tab=expenses&add=1`)
+    router.push(hrefForProject?.(id) ?? `/projects/${id}?tab=expenses&add=1`)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Select project</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <Input
           placeholder="Search projects…"
