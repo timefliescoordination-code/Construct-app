@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
   title: "Manage labours | VRA HOMES",
-  description: "Add or edit labour types for every project",
+  description: "Add or edit labour teams and the roles linked under each team",
 }
 
 export default function LabourSettingsPage() {

@@ -4,6 +4,7 @@ import { weekDayDates } from '@/lib/manpower/dates'
 import { listLabourTypesForProject } from '@/lib/data/labour-types'
 import type {
   LabourEntry,
+  LabourTeam,
   LabourType,
   ManpowerWeek,
   ManpowerWeekRate,
@@ -24,6 +25,7 @@ export type ManpowerWeekView = {
   startDate: string
   milestoneId: string
   milestoneName: string
+  showInExpense: boolean
   rates: Record<string, number>
   columnTotals: Record<string, number>
   weekTotal: number
@@ -32,6 +34,7 @@ export type ManpowerWeekView = {
 }
 
 export type ManpowerPayload = {
+  labourTeams: Pick<LabourTeam, 'id' | 'name' | 'sort_order'>[]
   labourTypes: LabourType[]
   milestones: Pick<Milestone, 'id' | 'name'>[]
   weeks: ManpowerWeekView[]
@@ -92,6 +95,7 @@ function buildWeekView(
     startDate: week.start_date,
     milestoneId: week.milestone_id,
     milestoneName,
+    showInExpense: Boolean(week.show_in_expense),
     rates: rateByType,
     columnTotals,
     weekTotal,
@@ -115,6 +119,15 @@ export async function getManpowerForProject(projectId: string) {
   if (!typesResult.ok) {
     return { data: null, error: typesResult.error }
   }
+
+  const { data: teamRows, error: teamsError } = await supabase
+    .from('labour_teams')
+    .select('id, name, sort_order')
+    .eq('project_id', projectId)
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true })
+
+  if (teamsError) return { data: null, error: getSupabaseErrorMessage(teamsError) }
 
   const [
     { data: milestones, error: milestonesError },
@@ -186,6 +199,7 @@ export async function getManpowerForProject(projectId: string) {
   )
 
   const payload: ManpowerPayload = {
+    labourTeams: ((teamRows ?? []) as Pick<LabourTeam, 'id' | 'name' | 'sort_order'>[]),
     labourTypes: typedTypes,
     milestones: milestones ?? [],
     weeks: weekViews,

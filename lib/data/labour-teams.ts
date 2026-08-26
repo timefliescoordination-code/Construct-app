@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
-import { DEFAULT_LABOUR_TEAMS } from '@/lib/labour-teams/constants'
+import { ensureProjectLabourCatalog } from '@/lib/data/labour-types'
 import type { Expense, LabourTeam } from '@/lib/types/database'
 
 export type LabourTeamExpenseSummary = {
@@ -20,29 +20,8 @@ async function ensureProjectLabourTeams(
   supabase: Awaited<ReturnType<typeof createClient>>,
   projectId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { data: existing, error: existingError } = await supabase
-    .from('labour_teams')
-    .select('id')
-    .eq('project_id', projectId)
-    .limit(1)
-
-  if (existingError) {
-    return { ok: false, error: getSupabaseErrorMessage(existingError) }
-  }
-
-  if (existing?.length) return { ok: true }
-
-  const rows = DEFAULT_LABOUR_TEAMS.map((name, index) => ({
-    project_id: projectId,
-    name,
-    sort_order: index + 1,
-  }))
-
-  const { error } = await supabase.from('labour_teams').insert(rows)
-  if (error) {
-    return { ok: false, error: getSupabaseErrorMessage(error) }
-  }
-
+  const ensured = await ensureProjectLabourCatalog(supabase, projectId)
+  if (!ensured.ok) return ensured
   return { ok: true }
 }
 

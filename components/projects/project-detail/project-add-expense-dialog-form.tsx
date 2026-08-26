@@ -7,6 +7,7 @@ import type {
   RefObject,
   SetStateAction,
 } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -136,7 +137,7 @@ interface ProjectAddExpenseDialogFormProps {
   invoiceFileInputRef: RefObject<HTMLInputElement | null>
   handleInvoiceFileChange: (event: ChangeEvent<HTMLInputElement>) => void
   handleUseSuggestedSplit: () => void
-  openLabourTeamManage?: () => void
+  labourSettingsHref?: string
   bulkMode?: boolean
 }
 
@@ -160,7 +161,7 @@ export function ProjectAddExpenseDialogForm({
   invoiceFileInputRef,
   handleInvoiceFileChange,
   handleUseSuggestedSplit,
-  openLabourTeamManage,
+  labourSettingsHref,
   bulkMode = false,
 }: ProjectAddExpenseDialogFormProps) {
   const kb = useMandatoryExpenseKeyboard()
@@ -251,16 +252,18 @@ export function ProjectAddExpenseDialogForm({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label>{usesLabourCategory ? "Labour team *" : "Subcategory *"}</Label>
-              {canManageProjects && usesLabourCategory && openLabourTeamManage && (
+              {canManageProjects && usesLabourCategory && labourSettingsHref && (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="h-7 gap-1 px-2 text-xs"
-                  onClick={openLabourTeamManage}
+                  asChild
                 >
-                  <Pencil className="h-3 w-3" />
-                  Edit
+                  <Link href={labourSettingsHref}>
+                    <Pencil className="h-3 w-3" />
+                    Edit
+                  </Link>
                 </Button>
               )}
             </div>

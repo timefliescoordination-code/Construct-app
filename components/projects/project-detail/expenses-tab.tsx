@@ -97,7 +97,6 @@ import {
   type OpenSplitGroupSummary,
 } from "@/lib/projects/expense-split-actions"
 import type { ExpenseCategoryView } from "@/lib/data/expense-categories"
-import { ExpenseCategoryManageDialog } from "@/components/projects/project-detail/expense-category-manage-dialog"
 import { ExpenseSplitGroupDialog } from "@/components/projects/project-detail/expense-split-group-dialog"
 import { PendingSplitSuggestion } from "@/components/projects/project-detail/pending-split-suggestion"
 import {
@@ -343,7 +342,7 @@ export function ExpensesTab({
 }: ExpensesTabProps) {
   const params = useParams()
   const projectId = propProjectId || project?.id || (params?.id as string)
-  const { canEnterData, canManageProjects } = useAuth()
+  const { canEnterData, canManageProjects, isAdmin } = useAuth()
   
   const [expenses, setExpenses] = useState<Expense[]>(() =>
     project ? mapExpensesFromProject(project) : [],
@@ -373,7 +372,6 @@ export function ExpensesTab({
   const excelInputRef = useRef<HTMLInputElement | null>(null)
   const [labourTeams, setLabourTeams] = useState<LabourTeamOption[]>([])
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryView[]>([])
-  const [subcategoryManageOpen, setSubcategoryManageOpen] = useState(false)
   const searchParams = useSearchParams()
   const expenseShortcuts = useExpenseShortcutRegistryOptional()
   const [splitMode, setSplitMode] = useState(false)
@@ -896,10 +894,6 @@ export function ExpensesTab({
     newExpense.subcategory,
     newExpense.labourTeamId,
   ])
-
-  const openLabourTeamManage = () => {
-    setSubcategoryManageOpen(true)
-  }
 
   const resetNewExpenseForm = () => {
     setNewExpense({
@@ -2453,7 +2447,9 @@ export function ExpensesTab({
                       invoiceFileInputRef={invoiceFileInputRef}
                       handleInvoiceFileChange={handleInvoiceFileChange}
                       handleUseSuggestedSplit={handleUseSuggestedSplit}
-                      openLabourTeamManage={openLabourTeamManage}
+                      labourSettingsHref={
+                        isAdmin ? "/admin/settings/labours" : undefined
+                      }
                     />
                     <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:px-6">
                       <Button
@@ -2952,19 +2948,6 @@ export function ExpensesTab({
           groupId={splitGroupEditId}
           canApprove={Boolean(canManageProjects)}
           onSaved={() => void refreshExpenses()}
-        />
-      )}
-
-      {projectId && canManageProjects && (
-        <ExpenseCategoryManageDialog
-          open={subcategoryManageOpen}
-          onOpenChange={setSubcategoryManageOpen}
-          projectId={projectId}
-          mode="labour-teams"
-          categories={expenseCategories}
-          selectedCategoryName={newExpense.category}
-          labourTeams={labourTeams}
-          onSaved={() => void reloadExpenseOptions()}
         />
       )}
 

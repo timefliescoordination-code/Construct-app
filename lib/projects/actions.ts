@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import { calculateFormSummary } from '@/lib/financial-calculations'
 import { fallbackMilestoneTemplates, loadMilestoneTemplates } from '@/lib/data/milestone-templates'
+import { ensureProjectLabourCatalog } from '@/lib/data/labour-types'
 
 export type CreateProjectInput = {
   name: string
@@ -208,6 +209,11 @@ export async function createProjectAction(
       if (engineersError) {
         console.error('[createProjectAction] engineers:', engineersError)
       }
+    }
+
+    const labourCatalog = await ensureProjectLabourCatalog(supabase, project.id)
+    if (!labourCatalog.ok) {
+      console.error('[createProjectAction] labour catalog:', labourCatalog.error)
     }
 
     revalidatePath('/projects')

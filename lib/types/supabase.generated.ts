@@ -452,6 +452,7 @@ export type Database = {
           expense_date: string
           id: string
           labour_team_id: string | null
+          manpower_week_id: string | null
           milestone_id: string | null
           project_id: string
           split_group_id: string | null
@@ -472,6 +473,7 @@ export type Database = {
           expense_date?: string
           id?: string
           labour_team_id?: string | null
+          manpower_week_id?: string | null
           milestone_id?: string | null
           project_id: string
           split_group_id?: string | null
@@ -492,6 +494,7 @@ export type Database = {
           expense_date?: string
           id?: string
           labour_team_id?: string | null
+          manpower_week_id?: string | null
           milestone_id?: string | null
           project_id?: string
           split_group_id?: string | null
@@ -521,6 +524,13 @@ export type Database = {
             columns: ["labour_team_id"]
             isOneToOne: false
             referencedRelation: "labour_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_manpower_week_id_fkey"
+            columns: ["manpower_week_id"]
+            isOneToOne: false
+            referencedRelation: "manpower_weeks"
             referencedColumns: ["id"]
           },
           {
@@ -700,7 +710,7 @@ export type Database = {
           created_at: string
           id: string
           name: string
-          project_id: string
+          project_id: string | null
           sort_order: number
           updated_at: string
         }
@@ -708,7 +718,7 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
-          project_id: string
+          project_id?: string | null
           sort_order?: number
           updated_at?: string
         }
@@ -735,6 +745,7 @@ export type Database = {
           created_at: string
           default_wage: number
           id: string
+          labour_team_id: string | null
           name: string
           project_id: string | null
           short_label: string | null
@@ -744,6 +755,7 @@ export type Database = {
           created_at?: string
           default_wage?: number
           id?: string
+          labour_team_id?: string | null
           name: string
           project_id?: string | null
           short_label?: string | null
@@ -753,12 +765,20 @@ export type Database = {
           created_at?: string
           default_wage?: number
           id?: string
+          labour_team_id?: string | null
           name?: string
           project_id?: string | null
           short_label?: string | null
           sort_order?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "labour_types_labour_team_id_fkey"
+            columns: ["labour_team_id"]
+            isOneToOne: false
+            referencedRelation: "labour_teams"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "labour_types_project_id_fkey"
             columns: ["project_id"]
@@ -810,6 +830,7 @@ export type Database = {
           id: string
           milestone_id: string
           project_id: string
+          show_in_expense: boolean
           start_date: string
           updated_at: string
           week_number: number
@@ -819,6 +840,7 @@ export type Database = {
           id?: string
           milestone_id: string
           project_id: string
+          show_in_expense?: boolean
           start_date: string
           updated_at?: string
           week_number: number
@@ -828,6 +850,7 @@ export type Database = {
           id?: string
           milestone_id?: string
           project_id?: string
+          show_in_expense?: boolean
           start_date?: string
           updated_at?: string
           week_number?: number

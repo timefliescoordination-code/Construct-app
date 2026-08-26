@@ -1,17 +1,18 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog"
 import {
   Select,
@@ -40,7 +41,6 @@ import {
   Settings2,
   Loader2,
   Trash2,
-  Pencil,
   Calendar,
 } from "lucide-react"
 import { format } from "date-fns"
@@ -61,23 +61,17 @@ import {
 } from "@/components/ui/popover"
 import type { ManpowerPayload, ManpowerWeekView } from "@/lib/data/manpower"
 import type { LabourTeamExpenseSummary } from "@/lib/data/labour-teams"
-import type { LabourType } from "@/lib/types/database"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { LabourTeamExpenseStrip } from "@/components/projects/project-detail/labour-team-expense-strip"
 import {
-  createLabourTypeAction,
   createManpowerWeekAction,
-  deleteLabourTypeAction,
   deleteManpowerWeekAction,
-  updateLabourTypeAction,
+  setManpowerWeekShowInExpenseAction,
   updateManpowerWeekRateAction,
   upsertManpowerCellAction,
 } from "@/lib/projects/manpower-actions"
-import {
-  createLabourTeamAction,
-  deleteLabourTeamAction,
-  updateLabourTeamAction,
-} from "@/lib/projects/labour-team-actions"
+
+const UNASSIGNED_TEAM_ID = "__unassigned__"
 
 type ProjectStageOption = { id: string; name: string }
 
@@ -101,7 +95,7 @@ export function ManpowerTab({
   projectMilestones = [],
   readOnly = false,
 }: ManpowerTabProps) {
-  const { canManageProjects } = useAuth()
+  const { isAdmin } = useAuth()
   const [data, setData] = useState<ManpowerPayload | null>(null)
   const [teamSummaries, setTeamSummaries] = useState<LabourTeamExpenseSummary[]>([])
   const [totalApprovedLabour, setTotalApprovedLabour] = useState(0)
@@ -113,16 +107,7 @@ export function ManpowerTab({
   const [addWeekOpen, setAddWeekOpen] = useState(false)
   const [selectedMilestoneId, setSelectedMilestoneId] = useState("")
   const [selectedWeekDate, setSelectedWeekDate] = useState<Date | undefined>()
-
-  const [typesOpen, setTypesOpen] = useState(false)
-  const [teamsOpen, setTeamsOpen] = useState(false)
-  const [typeForm, setTypeForm] = useState({
-    id: "",
-    name: "",
-    shortLabel: "",
-    defaultWage: "",
-  })
-  const [teamForm, setTeamForm] = useState({ id: "", name: "" })
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -170,7 +155,34 @@ export function ManpowerTab({
     void loadData()
   }, [loadData])
 
-  const labourTypes = data?.labourTypes ?? []
+  const allLabourTypes = data?.labourTypes ?? []
+  const labourTeams = data?.labourTeams ?? []
+  const teamOptions = useMemo(() => {
+    const withRoles = labourTeams.filter((team) =>
+      allLabourTypes.some((type) => type.labour_team_id === team.id),
+    )
+    const hasUnassigned = allLabourTypes.some((type) => !type.labour_team_id)
+    return { teams: withRoles, hasUnassigned }
+  }, [labourTeams, allLabourTypes])
+
+  useEffect(() => {
+    if (selectedTeamId) {
+      const exists =
+        selectedTeamId === UNASSIGNED_TEAM_ID
+          ? teamOptions.hasUnassigned
+          : teamOptions.teams.some((team) => team.id === selectedTeamId)
+      if (exists) return
+    }
+    setSelectedTeamId(
+      teamOptions.teams[0]?.id ?? (teamOptions.hasUnassigned ? UNASSIGNED_TEAM_ID : null),
+    )
+  }, [selectedTeamId, teamOptions])
+
+  const labourTypes = allLabourTypes.filter((type) =>
+    selectedTeamId === UNASSIGNED_TEAM_ID
+      ? !type.labour_team_id
+      : type.labour_team_id === selectedTeamId,
+  )
   const weeks = data?.weeks ?? []
   const stageOptions = useMemo(() => {
     const byId = new Map<string, ProjectStageOption>()
@@ -294,123 +306,23 @@ export function ManpowerTab({
     await loadData()
   }
 
-  const openCreateType = () => {
-    setTypeForm({ id: "", name: "", shortLabel: "", defaultWage: "" })
-    setTypesOpen(true)
-  }
-
-  const openEditType = (type: LabourType) => {
-    setTypeForm({
-      id: type.id,
-      name: type.name,
-      shortLabel: type.short_label || "",
-      defaultWage: String(type.default_wage),
+  const handleShowInExpense = async (weekId: string, showInExpense: boolean) => {
+    setSaving(true)
+    const result = await setManpowerWeekShowInExpenseAction({
+      projectId,
+      weekId,
+      showInExpense,
     })
-    setTypesOpen(true)
-  }
-
-  const handleSaveType = async () => {
-    if (!typeForm.name.trim()) {
-      toast.error("Labour type name is required.")
-      return
-    }
-    const defaultWage = parseFloat(typeForm.defaultWage)
-    if (Number.isNaN(defaultWage) || defaultWage < 0) {
-      toast.error("Enter a valid default wage.")
-      return
-    }
-
-    setSaving(true)
-    const result = typeForm.id
-      ? await updateLabourTypeAction({
-          projectId,
-          labourTypeId: typeForm.id,
-          name: typeForm.name,
-          shortLabel: typeForm.shortLabel,
-          defaultWage,
-        })
-      : await createLabourTypeAction({
-          projectId,
-          name: typeForm.name,
-          shortLabel: typeForm.shortLabel,
-          defaultWage,
-        })
     setSaving(false)
-
     if (!result.ok) {
       toast.error(result.error)
       return
     }
-
     toast.success(
-      typeForm.id
-        ? "Labour type updated on every project."
-        : "Labour type added on every project.",
+      showInExpense
+        ? "This week will post to Labour expenses."
+        : "This week is hidden from expenses.",
     )
-    setTypesOpen(false)
-    await loadData()
-  }
-
-  const openCreateTeam = () => {
-    setTeamForm({ id: "", name: "" })
-    setTeamsOpen(true)
-  }
-
-  const openEditTeam = (team: LabourTeamExpenseSummary) => {
-    setTeamForm({ id: team.teamId, name: team.teamName })
-    setTeamsOpen(true)
-  }
-
-  const handleSaveTeam = async () => {
-    if (!teamForm.name.trim()) {
-      toast.error("Team name is required.")
-      return
-    }
-
-    setSaving(true)
-    const result = teamForm.id
-      ? await updateLabourTeamAction({
-          projectId,
-          labourTeamId: teamForm.id,
-          name: teamForm.name,
-        })
-      : await createLabourTeamAction({
-          projectId,
-          name: teamForm.name,
-        })
-    setSaving(false)
-
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-
-    toast.success(teamForm.id ? "Labour team updated." : "Labour team added.")
-    setTeamsOpen(false)
-    await loadData()
-  }
-
-  const handleDeleteTeam = async (labourTeamId: string) => {
-    setSaving(true)
-    const result = await deleteLabourTeamAction({ projectId, labourTeamId })
-    setSaving(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("Labour team deleted.")
-    await loadData()
-  }
-
-  const handleDeleteType = async (labourTypeId: string) => {
-    setSaving(true)
-    const result = await deleteLabourTypeAction({ projectId, labourTypeId })
-    setSaving(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("Labour type removed from every project.")
     await loadData()
   }
 
@@ -442,7 +354,8 @@ export function ManpowerTab({
         <div>
           <h2 className="text-lg font-semibold text-foreground">Manpower</h2>
           <p className="text-sm text-muted-foreground">
-            Weekly workforce by stage, with editable rates and daily counts
+            Weekly workforce by team. Turn on Show in expense to post the week into Labour
+            expenses.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -451,23 +364,19 @@ export function ManpowerTab({
               View only
             </Badge>
           )}
-          {!readOnly && (
-            <>
-              {canManageProjects && (
-                <Button variant="outline" size="sm" onClick={openCreateTeam}>
-                  <Settings2 className="mr-1 h-4 w-4" />
-                  Manage Teams
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={openCreateType}>
+          {isAdmin && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/admin/settings/labours">
                 <Settings2 className="mr-1 h-4 w-4" />
-                Manage Types
-              </Button>
-              <Button size="sm" onClick={openAddWeekDialog}>
-                <Plus className="mr-1 h-4 w-4" />
-                Add Week
-              </Button>
-            </>
+                Manage labours
+              </Link>
+            </Button>
+          )}
+          {!readOnly && (
+            <Button size="sm" onClick={openAddWeekDialog}>
+              <Plus className="mr-1 h-4 w-4" />
+              Add Week
+            </Button>
           )}
         </div>
       </div>
@@ -502,9 +411,55 @@ export function ManpowerTab({
         </div>
       </div>
 
+      {(teamOptions.teams.length > 0 || teamOptions.hasUnassigned) && (
+        <div className="flex flex-wrap gap-1.5">
+          {teamOptions.teams.map((team) => {
+            const selected = selectedTeamId === team.id
+            return (
+              <button
+                key={team.id}
+                type="button"
+                onClick={() => setSelectedTeamId(team.id)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                  selected
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {team.name}
+              </button>
+            )
+          })}
+          {teamOptions.hasUnassigned && (
+            <button
+              type="button"
+              onClick={() => setSelectedTeamId(UNASSIGNED_TEAM_ID)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                selectedTeamId === UNASSIGNED_TEAM_ID
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-muted-foreground hover:bg-muted",
+              )}
+            >
+              Other
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="space-y-3">
         {weeks.map((week) => {
           const isExpanded = expandedWeekId === week.id
+          const teamDayTotal = (workers: Record<string, number | null>) =>
+            labourTypes.reduce((sum, type) => {
+              const count = workers[type.id] || 0
+              return sum + count * (week.rates[type.id] ?? Number(type.default_wage))
+            }, 0)
+          const teamWeekTotal = week.days.reduce(
+            (sum, row) => sum + teamDayTotal(row.workers),
+            0,
+          )
           return (
             <div
               key={week.id}
@@ -533,7 +488,28 @@ export function ManpowerTab({
                     </p>
                   </div>
                 </button>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                  {!readOnly && (
+                    <div
+                      className="hidden items-center gap-2 sm:flex"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <Switch
+                        id={`show-expense-${week.id}`}
+                        checked={week.showInExpense}
+                        disabled={saving}
+                        onCheckedChange={(checked) =>
+                          void handleShowInExpense(week.id, checked)
+                        }
+                      />
+                      <Label
+                        htmlFor={`show-expense-${week.id}`}
+                        className="cursor-pointer text-[11px] font-medium text-muted-foreground"
+                      >
+                        Show in expense
+                      </Label>
+                    </div>
+                  )}
                   <div className="text-right">
                     <p className="font-bold text-primary">
                       {formatINR(week.weekTotal)}
@@ -686,13 +662,13 @@ export function ManpowerTab({
                               <td className="px-2 py-1.5 text-right">
                                 <span
                                   className={`text-xs font-semibold ${
-                                    row.dayTotal > 0
+                                    teamDayTotal(row.workers) > 0
                                       ? "text-primary"
                                       : "text-muted-foreground/40"
                                   }`}
                                 >
-                                  {row.dayTotal > 0
-                                    ? formatINR(row.dayTotal)
+                                  {teamDayTotal(row.workers) > 0
+                                    ? formatINR(teamDayTotal(row.workers))
                                     : "-"}
                                 </span>
                               </td>
@@ -711,15 +687,34 @@ export function ManpowerTab({
                             </td>
                           ))}
                           <td className="px-2 py-2 text-right text-xs font-bold text-primary">
-                            {formatINR(week.weekTotal)}
+                            {formatINR(teamWeekTotal)}
                           </td>
                         </tr>
                       </tfoot>
                     </table>
                   </div>
                   {!readOnly && (
-                    <div className="border-t border-border bg-muted/20 px-3 py-2 text-center text-[10px] text-muted-foreground">
-                      Edit rates in the header row. Tap a cell to enter worker count.
+                    <div className="flex flex-col gap-2 border-t border-border bg-muted/20 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center justify-center gap-2 sm:hidden">
+                        <Switch
+                          id={`show-expense-mobile-${week.id}`}
+                          checked={week.showInExpense}
+                          disabled={saving}
+                          onCheckedChange={(checked) =>
+                            void handleShowInExpense(week.id, checked)
+                          }
+                        />
+                        <Label
+                          htmlFor={`show-expense-mobile-${week.id}`}
+                          className="text-[11px] font-medium text-muted-foreground"
+                        >
+                          Show in expense
+                        </Label>
+                      </div>
+                      <p className="text-center text-[10px] text-muted-foreground sm:text-left">
+                        Edit rates in the header row. Tap a cell to enter worker count.
+                        Show in expense posts this week into Labour expenses.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -847,248 +842,6 @@ export function ManpowerTab({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={typesOpen} onOpenChange={setTypesOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {typeForm.id ? "Edit labour type" : "Manage labour types"}
-            </DialogTitle>
-            <DialogDescription>
-              Labour types are company-wide. Changes here apply on every project.
-            </DialogDescription>
-          </DialogHeader>
-
-          {typeForm.id && !readOnly && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-fit px-0"
-              onClick={() =>
-                setTypeForm({ id: "", name: "", shortLabel: "", defaultWage: "" })
-              }
-            >
-              Back to list
-            </Button>
-          )}
-
-          {!typeForm.id && (
-            <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border p-2">
-              {labourTypes.map((type) => (
-                <div
-                  key={type.id}
-                  className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-2"
-                >
-                  <div>
-                    <p className="font-medium text-sm">{type.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {type.short_label} · {formatINR(Number(type.default_wage))}/day
-                    </p>
-                  </div>
-                  {!readOnly && (
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => openEditType(type)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete {type.name}?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This removes the labour type from every project. Only
-                              types with no manpower entries can be deleted.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => void handleDeleteType(type.id)}
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!readOnly && (
-            <div className="grid gap-3 py-2">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input
-                  value={typeForm.name}
-                  onChange={(e) =>
-                    setTypeForm((prev) => ({ ...prev, name: e.target.value }))
-                  }
-                  placeholder="e.g. Mason"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Short label</Label>
-                  <Input
-                    value={typeForm.shortLabel}
-                    onChange={(e) =>
-                      setTypeForm((prev) => ({
-                        ...prev,
-                        shortLabel: e.target.value,
-                      }))
-                    }
-                    placeholder="Mason"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Default wage (₹/day)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={typeForm.defaultWage}
-                    onChange={(e) =>
-                      setTypeForm((prev) => ({
-                        ...prev,
-                        defaultWage: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTypesOpen(false)}>
-              Close
-            </Button>
-            {!readOnly && (
-              <Button onClick={() => void handleSaveType()} disabled={saving}>
-                {saving
-                  ? "Saving..."
-                  : typeForm.id
-                    ? "Save Type"
-                    : "Add Type"}
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={teamsOpen} onOpenChange={setTeamsOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {teamForm.id ? "Edit Labour Team" : "Manage Labour Teams"}
-            </DialogTitle>
-          </DialogHeader>
-
-          {teamForm.id && canManageProjects && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-fit px-0"
-              onClick={() => setTeamForm({ id: "", name: "" })}
-            >
-              Back to list
-            </Button>
-          )}
-
-          {!teamForm.id && (
-            <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border p-2">
-              {teamSummaries.map((team) => (
-                <div
-                  key={team.teamId}
-                  className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-2"
-                >
-                  <div>
-                    <p className="font-medium text-sm">{team.teamName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Approved {formatINR(team.approvedTotal)}
-                      {team.pendingTotal > 0 &&
-                        ` · ${formatINR(team.pendingTotal)} pending`}
-                    </p>
-                  </div>
-                  {canManageProjects && (
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => openEditTeam(team)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete {team.teamName}?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Teams linked to labour expenses cannot be deleted.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => void handleDeleteTeam(team.teamId)}
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {canManageProjects && (
-            <div className="space-y-2 py-2">
-              <Label>Team name</Label>
-              <Input
-                value={teamForm.name}
-                onChange={(e) =>
-                  setTeamForm((prev) => ({ ...prev, name: e.target.value }))
-                }
-                placeholder="e.g. Civil Team"
-              />
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTeamsOpen(false)}>
-              Close
-            </Button>
-            {canManageProjects && (
-              <Button onClick={() => void handleSaveTeam()} disabled={saving}>
-                {saving ? "Saving..." : teamForm.id ? "Save Team" : "Add Team"}
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

@@ -142,6 +142,7 @@ export interface ExpenseSplitGroup {
   bill_number: string | null
   milestone_id: string | null
   labour_team_id: string | null
+  manpower_week_id?: string | null
   subcategory_name: string | null
   created_at: string
   updated_at: string
@@ -149,7 +150,7 @@ export interface ExpenseSplitGroup {
 
 export interface LabourTeam {
   id: string
-  project_id: string
+  project_id: string | null
   name: string
   sort_order: number
   created_at: string
@@ -328,6 +329,7 @@ export interface AdditionalWork {
 export interface LabourType {
   id: string
   project_id: string | null
+  labour_team_id: string | null
   name: string
   short_label: string | null
   default_wage: number
@@ -341,6 +343,7 @@ export interface ManpowerWeek {
   milestone_id: string
   week_number: number
   start_date: string
+  show_in_expense: boolean
   created_at: string
   updated_at: string
 }

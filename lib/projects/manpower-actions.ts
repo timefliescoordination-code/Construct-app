@@ -3,12 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
+import { listLabourTypesForProject } from '@/lib/data/labour-types'
 import {
-  createCompanyLabourType,
-  deleteCompanyLabourType,
-  listLabourTypesForProject,
-  updateCompanyLabourType,
-} from '@/lib/data/labour-types'
+  deletePendingManpowerWeekExpenses,
+  syncManpowerWeekToExpenses,
+} from '@/lib/data/manpower-expense-sync'
 import {
   nextWeekStartDate,
   weekDayDates,
@@ -55,6 +54,7 @@ function canEditManpower(role: UserRole) {
 function revalidateProject(projectId: string) {
   revalidatePath(`/projects/${projectId}`)
   revalidatePath(`/api/projects/${projectId}/manpower`)
+  revalidatePath(`/api/projects/${projectId}/labour-teams`)
 }
 
 export async function createManpowerWeekAction(input: {
@@ -203,6 +203,13 @@ export async function updateManpowerWeekRateAction(input: {
     }
   }
 
+  const synced = await syncManpowerWeekToExpenses(session.supabase, {
+    projectId: input.projectId,
+    weekId: input.weekId,
+    userId: session.userId,
+  })
+  if (!synced.ok) return synced
+
   revalidateProject(input.projectId)
   return { ok: true, data: undefined }
 }
@@ -259,6 +266,13 @@ export async function upsertManpowerCellAction(input: {
       return { ok: false, error: getSupabaseErrorMessage(error) }
     }
 
+    const synced = await syncManpowerWeekToExpenses(session.supabase, {
+      projectId: input.projectId,
+      weekId: input.weekId,
+      userId: session.userId,
+    })
+    if (!synced.ok) return synced
+
     revalidateProject(input.projectId)
     return { ok: true, data: undefined }
   }
@@ -291,77 +305,55 @@ export async function upsertManpowerCellAction(input: {
     return { ok: false, error: getSupabaseErrorMessage(error) }
   }
 
+  const synced = await syncManpowerWeekToExpenses(session.supabase, {
+    projectId: input.projectId,
+    weekId: input.weekId,
+    userId: session.userId,
+  })
+  if (!synced.ok) return synced
+
   revalidateProject(input.projectId)
   return { ok: true, data: undefined }
 }
 
-export async function createLabourTypeAction(input: {
+export async function setManpowerWeekShowInExpenseAction(input: {
   projectId: string
-  name: string
-  shortLabel: string
-  defaultWage: number
-}): Promise<ManpowerActionResult<{ id: string }>> {
-  const session = await getSession()
-  if (!session.ok) return session
-  if (!canEditManpower(session.role)) {
-    return { ok: false, error: 'You do not have permission to add labour types.' }
-  }
-
-  const result = await createCompanyLabourType(session.supabase, {
-    name: input.name,
-    shortLabel: input.shortLabel,
-    defaultWage: input.defaultWage,
-  })
-  if (!result.ok) return result
-
-  revalidateProject(input.projectId)
-  revalidatePath('/admin/settings/labours')
-  revalidatePath('/api/labour-types')
-  return result
-}
-
-export async function updateLabourTypeAction(input: {
-  projectId: string
-  labourTypeId: string
-  name: string
-  shortLabel: string
-  defaultWage: number
+  weekId: string
+  showInExpense: boolean
 }): Promise<ManpowerActionResult> {
   const session = await getSession()
   if (!session.ok) return session
   if (!canEditManpower(session.role)) {
-    return { ok: false, error: 'You do not have permission to edit labour types.' }
+    return { ok: false, error: 'You do not have permission to update this week.' }
   }
 
-  const result = await updateCompanyLabourType(session.supabase, {
-    labourTypeId: input.labourTypeId,
-    name: input.name,
-    shortLabel: input.shortLabel,
-    defaultWage: input.defaultWage,
+  const { data: week, error: weekError } = await session.supabase
+    .from('manpower_weeks')
+    .select('id')
+    .eq('id', input.weekId)
+    .eq('project_id', input.projectId)
+    .maybeSingle()
+
+  if (weekError) return { ok: false, error: getSupabaseErrorMessage(weekError) }
+  if (!week) return { ok: false, error: 'Week not found.' }
+
+  const { error } = await session.supabase
+    .from('manpower_weeks')
+    .update({ show_in_expense: input.showInExpense })
+    .eq('id', input.weekId)
+    .eq('project_id', input.projectId)
+
+  if (error) return { ok: false, error: getSupabaseErrorMessage(error) }
+
+  const synced = await syncManpowerWeekToExpenses(session.supabase, {
+    projectId: input.projectId,
+    weekId: input.weekId,
+    userId: session.userId,
   })
-  if (!result.ok) return result
+  if (!synced.ok) return synced
 
   revalidateProject(input.projectId)
-  revalidatePath('/admin/settings/labours')
-  return result
-}
-
-export async function deleteLabourTypeAction(input: {
-  projectId: string
-  labourTypeId: string
-}): Promise<ManpowerActionResult> {
-  const session = await getSession()
-  if (!session.ok) return session
-  if (!canEditManpower(session.role)) {
-    return { ok: false, error: 'You do not have permission to delete labour types.' }
-  }
-
-  const result = await deleteCompanyLabourType(session.supabase, input.labourTypeId)
-  if (!result.ok) return result
-
-  revalidateProject(input.projectId)
-  revalidatePath('/admin/settings/labours')
-  return result
+  return { ok: true, data: undefined }
 }
 
 export async function deleteManpowerWeekAction(input: {
@@ -392,6 +384,12 @@ export async function deleteManpowerWeekAction(input: {
     .eq('project_id', input.projectId)
     .eq('milestone_id', week.milestone_id)
     .in('entry_date', dayDates)
+
+  const cleared = await deletePendingManpowerWeekExpenses(session.supabase, {
+    projectId: input.projectId,
+    weekId: input.weekId,
+  })
+  if (!cleared.ok) return cleared
 
   const { error } = await session.supabase
     .from('manpower_weeks')
