@@ -165,7 +165,13 @@ async function addWeekRatesForProjectTypes(
 
   if (!rates.length) return { ok: true, data: undefined }
 
-  const { error: ratesError } = await supabase.from('manpower_week_rates').insert(rates)
+  const uniqueRates = Array.from(
+    new Map(rates.map((row) => [`${row.week_id}:${row.labour_type_id}`, row])).values(),
+  )
+
+  const { error: ratesError } = await supabase
+    .from('manpower_week_rates')
+    .upsert(uniqueRates, { onConflict: 'week_id,labour_type_id' })
   if (ratesError) return { ok: false, error: getSupabaseErrorMessage(ratesError) }
   return { ok: true, data: undefined }
 }

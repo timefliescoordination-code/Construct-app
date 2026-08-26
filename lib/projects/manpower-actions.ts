@@ -98,6 +98,13 @@ export async function createManpowerWeekAction(input: {
     }
   }
 
+  // Resolve types before inserting the week. Listing after insert also
+  // backfills rates for the new week, which then collides with the insert below.
+  const typesResult = await listLabourTypesForProject(session.supabase, input.projectId)
+  if (!typesResult.ok) {
+    return { ok: false, error: typesResult.error }
+  }
+
   const { data: week, error: insertError } = await session.supabase
     .from('manpower_weeks')
     .insert({
@@ -110,6 +117,15 @@ export async function createManpowerWeekAction(input: {
     .single()
 
   if (insertError || !week) {
+    const duplicate =
+      insertError?.code === '23505' ||
+      /duplicate key|unique constraint/i.test(insertError?.message ?? '')
+    if (duplicate) {
+      return {
+        ok: false,
+        error: 'A week starting on this date already exists. Pick another week on the calendar.',
+      }
+    }
     return {
       ok: false,
       error: insertError
@@ -118,14 +134,11 @@ export async function createManpowerWeekAction(input: {
     }
   }
 
-  const typesResult = await listLabourTypesForProject(session.supabase, input.projectId)
-  if (!typesResult.ok) {
-    return { ok: false, error: typesResult.error }
-  }
+  const labourTypes = Array.from(
+    new Map((typesResult.data ?? []).map((type) => [type.id, type])).values(),
+  )
 
-  const labourTypes = typesResult.data
-
-  if (labourTypes?.length) {
+  if (labourTypes.length) {
     const rateRows = labourTypes.map((type) => ({
       week_id: week.id,
       labour_type_id: type.id,
@@ -133,7 +146,7 @@ export async function createManpowerWeekAction(input: {
     }))
     const { error: ratesError } = await session.supabase
       .from('manpower_week_rates')
-      .insert(rateRows)
+      .upsert(rateRows, { onConflict: 'week_id,labour_type_id' })
     if (ratesError) {
       return { ok: false, error: getSupabaseErrorMessage(ratesError) }
     }

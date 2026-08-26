@@ -46,6 +46,13 @@ export function getSupabaseErrorMessage(error: unknown): string {
     return 'Database tables are missing. Run supabase/schema.sql in Supabase SQL Editor (copy the file contents, not the filename), then refresh this page.'
   }
 
+  if (
+    err.code === '23505' &&
+    /manpower_week_rates_week_id_labour_type_id/i.test(`${err.message ?? ''} ${err.details ?? ''}`)
+  ) {
+    return 'This manpower week is already set up. Refresh the page and pick another date if it already appears on the sheet.'
+  }
+
   if (err.message) return err.message
   if (err.details) return err.details
   if (err.hint) return err.hint
