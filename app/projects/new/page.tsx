@@ -3,6 +3,9 @@ import { CreateProjectForm } from "@/components/projects/create-project-form"
 import { DashboardHeader } from "@/components/dashboard/header"
 import { PageMain, PageShell } from "@/components/layout/page"
 
+/** Avoid stale static HTML + mismatched JS/CSS after Hostinger redeploys. */
+export const dynamic = "force-dynamic"
+
 export const metadata: Metadata = {
   title: "Create Project | VRA HOMES",
   description: "Create a new construction project",

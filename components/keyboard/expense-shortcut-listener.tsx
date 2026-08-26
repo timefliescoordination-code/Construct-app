@@ -35,7 +35,11 @@ export function ExpenseShortcutListener() {
     if (role === "customer") return
 
     let cancelled = false
-    void fetch("/api/projects", { credentials: "include" })
+    const url = "/api/projects?summary=true"
+    // #region agent log
+    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b15f8a'},body:JSON.stringify({sessionId:'b15f8a',runId:'post-fix',hypothesisId:'C',location:'components/keyboard/expense-shortcut-listener.tsx:effect',message:'shortcut projects prefetch',data:{url,pathname},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    void fetch(url, { credentials: "include" })
       .then((res) => res.json())
       .then((json) => {
         if (cancelled) return

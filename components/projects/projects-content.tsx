@@ -30,6 +30,28 @@ export function ProjectsContent() {
     includeArchived: true,
   })
 
+  useEffect(() => {
+    const imgs = Array.from(document.images).slice(0, 8).map((img) => ({
+      src: img.currentSrc || img.src,
+      naturalWidth: img.naturalWidth,
+      clientWidth: img.clientWidth,
+    }))
+    const cssHrefs = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).map((el) => (el as HTMLLinkElement).href.split("/").pop())
+    // #region agent log
+    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b15f8a'},body:JSON.stringify({sessionId:'b15f8a',runId:'post-fix',hypothesisId:'A',location:'components/projects/projects-content.tsx:mount',message:'projects page snapshot',data:{href:window.location.href,authLoading,isLoading,error:error instanceof Error?error.message:error?String(error):null,projectCount:dbProjects.length,stylesheetCount:document.styleSheets.length,cssHrefs,imgs},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, [authLoading, isLoading, error, dbProjects.length])
+
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b15f8a'},body:JSON.stringify({sessionId:'b15f8a',runId:'post-fix',hypothesisId:'D',location:'components/projects/projects-content.tsx:onError',message:'window error on projects',data:{message:event.message,filename:event.filename,href:window.location.href},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+    }
+    window.addEventListener("error", onError)
+    return () => window.removeEventListener("error", onError)
+  }, [])
+
   // Transform database projects to the format expected by ProjectTable
   const projects: Project[] = useMemo(() => {
     return dbProjects.map(p => ({
