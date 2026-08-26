@@ -4,6 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
 import {
+  createCompanyLabourType,
+  deleteCompanyLabourType,
+  listLabourTypesForProject,
+  updateCompanyLabourType,
+} from '@/lib/data/labour-types'
+import {
   nextWeekStartDate,
   weekDayDates,
   weekStartIsoFromPickerDate,
@@ -112,14 +118,12 @@ export async function createManpowerWeekAction(input: {
     }
   }
 
-  const { data: labourTypes, error: typesError } = await session.supabase
-    .from('labour_types')
-    .select('id, default_wage')
-    .eq('project_id', input.projectId)
-
-  if (typesError) {
-    return { ok: false, error: getSupabaseErrorMessage(typesError) }
+  const typesResult = await listLabourTypesForProject(session.supabase, input.projectId)
+  if (!typesResult.ok) {
+    return { ok: false, error: typesResult.error }
   }
+
+  const labourTypes = typesResult.data
 
   if (labourTypes?.length) {
     const rateRows = labourTypes.map((type) => ({
@@ -303,50 +307,17 @@ export async function createLabourTypeAction(input: {
     return { ok: false, error: 'You do not have permission to add labour types.' }
   }
 
-  const { data: lastType } = await session.supabase
-    .from('labour_types')
-    .select('sort_order')
-    .eq('project_id', input.projectId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const { data, error } = await session.supabase
-    .from('labour_types')
-    .insert({
-      project_id: input.projectId,
-      name: input.name.trim(),
-      short_label: input.shortLabel.trim() || input.name.trim().slice(0, 6),
-      default_wage: input.defaultWage,
-      sort_order: Number(lastType?.sort_order ?? 0) + 1,
-    })
-    .select('id')
-    .single()
-
-  if (error || !data) {
-    return {
-      ok: false,
-      error: error ? getSupabaseErrorMessage(error) : 'Failed to create labour type.',
-    }
-  }
-
-  const { data: weeks } = await session.supabase
-    .from('manpower_weeks')
-    .select('id')
-    .eq('project_id', input.projectId)
-
-  if (weeks?.length) {
-    await session.supabase.from('manpower_week_rates').insert(
-      weeks.map((week) => ({
-        week_id: week.id,
-        labour_type_id: data.id,
-        daily_rate: input.defaultWage,
-      })),
-    )
-  }
+  const result = await createCompanyLabourType(session.supabase, {
+    name: input.name,
+    shortLabel: input.shortLabel,
+    defaultWage: input.defaultWage,
+  })
+  if (!result.ok) return result
 
   revalidateProject(input.projectId)
-  return { ok: true, data: { id: data.id } }
+  revalidatePath('/admin/settings/labours')
+  revalidatePath('/api/labour-types')
+  return result
 }
 
 export async function updateLabourTypeAction(input: {
@@ -362,22 +333,17 @@ export async function updateLabourTypeAction(input: {
     return { ok: false, error: 'You do not have permission to edit labour types.' }
   }
 
-  const { error } = await session.supabase
-    .from('labour_types')
-    .update({
-      name: input.name.trim(),
-      short_label: input.shortLabel.trim(),
-      default_wage: input.defaultWage,
-    })
-    .eq('id', input.labourTypeId)
-    .eq('project_id', input.projectId)
-
-  if (error) {
-    return { ok: false, error: getSupabaseErrorMessage(error) }
-  }
+  const result = await updateCompanyLabourType(session.supabase, {
+    labourTypeId: input.labourTypeId,
+    name: input.name,
+    shortLabel: input.shortLabel,
+    defaultWage: input.defaultWage,
+  })
+  if (!result.ok) return result
 
   revalidateProject(input.projectId)
-  return { ok: true, data: undefined }
+  revalidatePath('/admin/settings/labours')
+  return result
 }
 
 export async function deleteLabourTypeAction(input: {
@@ -390,35 +356,12 @@ export async function deleteLabourTypeAction(input: {
     return { ok: false, error: 'You do not have permission to delete labour types.' }
   }
 
-  const { count, error: countError } = await session.supabase
-    .from('labour_entries')
-    .select('id', { count: 'exact', head: true })
-    .eq('project_id', input.projectId)
-    .eq('labour_type_id', input.labourTypeId)
-
-  if (countError) {
-    return { ok: false, error: getSupabaseErrorMessage(countError) }
-  }
-
-  if ((count ?? 0) > 0) {
-    return {
-      ok: false,
-      error: 'Cannot delete a labour type that already has manpower entries.',
-    }
-  }
-
-  const { error } = await session.supabase
-    .from('labour_types')
-    .delete()
-    .eq('id', input.labourTypeId)
-    .eq('project_id', input.projectId)
-
-  if (error) {
-    return { ok: false, error: getSupabaseErrorMessage(error) }
-  }
+  const result = await deleteCompanyLabourType(session.supabase, input.labourTypeId)
+  if (!result.ok) return result
 
   revalidateProject(input.projectId)
-  return { ok: true, data: undefined }
+  revalidatePath('/admin/settings/labours')
+  return result
 }
 
 export async function deleteManpowerWeekAction(input: {

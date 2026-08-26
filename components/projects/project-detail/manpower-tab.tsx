@@ -11,6 +11,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog"
 import {
   Select,
@@ -341,7 +342,11 @@ export function ManpowerTab({
       return
     }
 
-    toast.success(typeForm.id ? "Labour type updated." : "Labour type added.")
+    toast.success(
+      typeForm.id
+        ? "Labour type updated on every project."
+        : "Labour type added on every project.",
+    )
     setTypesOpen(false)
     await loadData()
   }
@@ -405,7 +410,7 @@ export function ManpowerTab({
       toast.error(result.error)
       return
     }
-    toast.success("Labour type deleted.")
+    toast.success("Labour type removed from every project.")
     await loadData()
   }
 
@@ -846,8 +851,11 @@ export function ManpowerTab({
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {typeForm.id ? "Edit Labour Type" : "Manage Labour Types"}
+              {typeForm.id ? "Edit labour type" : "Manage labour types"}
             </DialogTitle>
+            <DialogDescription>
+              Labour types are company-wide. Changes here apply on every project.
+            </DialogDescription>
           </DialogHeader>
 
           {typeForm.id && !readOnly && (
@@ -900,7 +908,8 @@ export function ManpowerTab({
                           <AlertDialogHeader>
                             <AlertDialogTitle>Delete {type.name}?</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Only types with no entries can be deleted.
+                              This removes the labour type from every project. Only
+                              types with no manpower entries can be deleted.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>

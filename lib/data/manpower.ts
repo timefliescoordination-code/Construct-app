@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getSupabaseErrorMessage } from '@/lib/supabase/db-errors'
-import { DEFAULT_LABOUR_TYPES } from '@/lib/manpower/constants'
 import { weekDayDates } from '@/lib/manpower/dates'
+import { listLabourTypesForProject } from '@/lib/data/labour-types'
 import type {
   LabourEntry,
   LabourType,
@@ -39,38 +39,6 @@ export type ManpowerPayload = {
     manpower: number
     payment: number
   }
-}
-
-async function ensureProjectLabourTypes(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  projectId: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { data: existing, error: existingError } = await supabase
-    .from('labour_types')
-    .select('id')
-    .eq('project_id', projectId)
-    .limit(1)
-
-  if (existingError) {
-    return { ok: false, error: getSupabaseErrorMessage(existingError) }
-  }
-
-  if (existing?.length) return { ok: true }
-
-  const rows = DEFAULT_LABOUR_TYPES.map((type, index) => ({
-    project_id: projectId,
-    name: type.name,
-    short_label: type.shortLabel,
-    default_wage: type.defaultWage,
-    sort_order: index + 1,
-  }))
-
-  const { error } = await supabase.from('labour_types').insert(rows)
-  if (error) {
-    return { ok: false, error: getSupabaseErrorMessage(error) }
-  }
-
-  return { ok: true }
 }
 
 function buildWeekView(
@@ -143,21 +111,15 @@ export async function getManpowerForProject(projectId: string) {
     return { data: null, error: 'You must be signed in to view manpower.' }
   }
 
-  const ensured = await ensureProjectLabourTypes(supabase, projectId)
-  if (!ensured.ok) {
-    return { data: null, error: ensured.error }
+  const typesResult = await listLabourTypesForProject(supabase, projectId)
+  if (!typesResult.ok) {
+    return { data: null, error: typesResult.error }
   }
 
   const [
-    { data: labourTypes, error: typesError },
     { data: milestones, error: milestonesError },
     { data: weeks, error: weeksError },
   ] = await Promise.all([
-    supabase
-      .from('labour_types')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('sort_order', { ascending: true }),
     supabase
       .from('milestones')
       .select('id, name')
@@ -170,7 +132,8 @@ export async function getManpowerForProject(projectId: string) {
       .order('week_number', { ascending: false }),
   ])
 
-  if (typesError) return { data: null, error: getSupabaseErrorMessage(typesError) }
+  const labourTypes = typesResult.data
+
   if (milestonesError) {
     return { data: null, error: getSupabaseErrorMessage(milestonesError) }
   }

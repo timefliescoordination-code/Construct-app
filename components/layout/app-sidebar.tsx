@@ -15,6 +15,7 @@ import {
   Tags,
   Flag,
   ChevronDown,
+  HardHat,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/use-auth"
@@ -102,6 +103,12 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
           href: "/admin/settings/milestones",
           label: "Milestones",
           icon: Flag,
+        },
+        {
+          id: "labours",
+          href: "/admin/settings/labours",
+          label: "Manage labours",
+          icon: HardHat,
         },
       ]
     : []
