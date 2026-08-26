@@ -69,6 +69,7 @@ import {
 import { cn } from "@/lib/utils"
 import { archiveProjectAction } from "@/lib/projects/actions"
 import { toast } from "sonner"
+import { ProjectDetailLoading } from "@/components/projects/project-detail-loading"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -145,7 +146,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
     return projectIdleFromProject({
       start_date: project.start_date,
       status: project.status,
-      expenses: project.expenses.map((exp) => ({
+      expenses: (project.expenses ?? []).map((exp) => ({
         expense_date: exp.expense_date,
       })),
     })
@@ -169,6 +170,11 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   const calculatedData = useMemo(() => {
     if (!project) return null
     
+    const expenses = project.expenses ?? []
+    const clientPayments = project.client_payments ?? []
+    const vendorPayments = project.vendor_payments ?? []
+    const projectMilestones = project.milestones ?? []
+
     // Additional works approved
     const additionalWorksApproved = getApprovedAdditionalWorksTotal(
       project.additional_works,
@@ -176,21 +182,21 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
     )
     
     // Total approved expenses
-    const totalExpenses = project.expenses
+    const totalExpenses = expenses
       .filter(exp => exp.status === "approved")
       .reduce((sum, exp) => sum + Number(exp.amount), 0)
     
     // Client payments received
-    const totalClientPaymentsReceived = project.client_payments
+    const totalClientPaymentsReceived = clientPayments
       .filter(cp => cp.status === "received")
       .reduce((sum, cp) => sum + Number(cp.amount), 0)
 
     // Vendor payments pending - using the actual pending_amount
-    const totalVendorPaymentsPending = project.vendor_payments
+    const totalVendorPaymentsPending = vendorPayments
       .reduce((sum, vp) => sum + Number(vp.pending_amount), 0)
 
     // Transform milestones for OverviewTab
-    const milestones = project.milestones.map(ms => ({
+    const milestones = projectMilestones.map(ms => ({
       id: ms.id,
       name: ms.name,
       expectedCostPercent: Number(ms.expected_cost_percent),
@@ -201,7 +207,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
     }))
 
     const recentActivity = [
-      ...project.expenses
+      ...expenses
         .filter((exp) => exp.status === "approved")
         .map((exp) => ({
           id: `expense-${exp.id}`,
@@ -211,7 +217,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           amount: Number(exp.amount),
           date: exp.expense_date,
         })),
-      ...project.client_payments
+      ...clientPayments
         .filter((cp) => cp.status === "received")
         .map((cp) => ({
           id: `payment-${cp.id}`,
@@ -226,7 +232,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       .slice(0, 8)
 
     // Create attention items from the data
-    const unpaidVendorBills = project.vendor_payments
+    const unpaidVendorBills = vendorPayments
       .filter(vp => vp.status === 'overdue' || (vp.status === 'pending' && vp.due_date))
       .map(vp => {
         const dueDate = vp.due_date ? new Date(vp.due_date) : new Date()
@@ -241,7 +247,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       })
       .filter(vp => vp.amount > 0)
 
-    const delayedClientPayments = project.client_payments
+    const delayedClientPayments = clientPayments
       .filter(cp => cp.status === 'overdue' || (cp.status === 'pending' && cp.due_date))
       .map(cp => {
         const dueDate = cp.due_date ? new Date(cp.due_date) : new Date()
@@ -256,7 +262,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       })
       .filter(cp => cp.overdueDays > 0)
 
-    const expenseApprovals = [...project.expenses]
+    const expenseApprovals = [...expenses]
       .filter(shouldShowExpenseInOverview)
       .sort((a, b) => {
         if (a.status === "pending" && b.status !== "pending") return -1
@@ -284,11 +290,11 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
 
     const pendingApprovals = expenseApprovals.filter((exp) => exp.status === 'pending')
 
-    const expenseDates = project.expenses
+    const expenseDates = expenses
       .filter((exp) => exp.status === "approved")
       .map((exp) => exp.expense_date)
 
-    const paymentReceivedDates = project.client_payments
+    const paymentReceivedDates = clientPayments
       .filter((cp) => cp.status === "received")
       .map((cp) => cp.received_date || cp.due_date || cp.created_at)
       .filter(Boolean) as string[]
@@ -395,19 +401,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
   }
 
   if (isLoading) {
-    return (
-      <main
-        className={cn(
-          PAGE_MAIN_CLASS,
-          "flex min-h-[400px] items-center justify-center",
-        )}
-      >
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading project data...</p>
-        </div>
-      </main>
-    )
+    return <ProjectDetailLoading />
   }
 
   if (!project || !calculatedData) {
@@ -437,6 +431,14 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
                 {errorMessage}
               </CardDescription>
             </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              <Button type="button" onClick={() => refreshProject()}>
+                Try again
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/projects">Back to Projects</Link>
+              </Button>
+            </CardContent>
             {setupError && (
               <CardContent className="text-sm text-muted-foreground space-y-2">
                 <p>
@@ -518,7 +520,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
           <ManpowerTab
             projectId={project.id}
             projectStartDate={project.start_date}
-            projectMilestones={project.milestones.map((m) => ({
+            projectMilestones={(project.milestones ?? []).map((m) => ({
               id: m.id,
               name: m.name,
             }))}

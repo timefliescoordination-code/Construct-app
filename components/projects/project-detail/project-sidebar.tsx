@@ -20,6 +20,8 @@ import {
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/hooks/use-auth"
+import { BrandLogo } from "@/components/layout/brand-logo"
+import { useCompanyBranding } from "@/lib/hooks/use-company-branding"
 
 export interface ProjectSidebarTab {
   id: string
@@ -58,6 +60,7 @@ export function ProjectSidebar({
   onNavigate,
 }: ProjectSidebarProps) {
   const { role } = useAuth()
+  const { branding } = useCompanyBranding()
   const dashboardHref =
     role === "admin"
       ? "/admin"
@@ -77,7 +80,7 @@ export function ProjectSidebar({
   return (
     <aside
       className={cn(
-        "flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
+        "flex h-full w-64 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
         className,
       )}
     >
@@ -85,12 +88,12 @@ export function ProjectSidebar({
         <Link
           href={dashboardHref}
           onClick={onNavigate}
-          className="flex items-center gap-3 rounded-lg transition-opacity hover:opacity-90"
+          className="flex min-w-0 items-center gap-3 rounded-lg transition-opacity hover:opacity-90"
         >
-          <img
-            src="/images/vra-logo.png"
-            alt="VRA HOMES"
-            className="h-9 w-9 rounded-xl object-cover shadow-sm"
+          <BrandLogo
+            src={branding.logo_url}
+            alt={branding.company_name ?? "VRA HOMES"}
+            size={36}
           />
           <div className="min-w-0">
             <p className="truncate text-sm font-bold text-foreground">VRA HOMES</p>

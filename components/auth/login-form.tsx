@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { cn } from "@/lib/utils"
 import { dashboardPath } from "@/lib/auth/dashboard-path"
 import { toast } from "sonner"
+import { BrandLogo } from "@/components/layout/brand-logo"
 
 interface RoleOption {
   id: UserRole
@@ -139,11 +140,7 @@ export function LoginForm() {
     return (
       <div className="w-full max-w-md space-y-6">
         <div className="flex flex-col items-center space-y-3 text-center">
-          <img
-            src="/images/vra-logo.png"
-            alt="VRA HOMES"
-            className="h-16 w-16 rounded-xl object-cover"
-          />
+          <BrandLogo size={64} className="rounded-xl" />
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">VRA HOMES</h1>
             <p className="text-sm text-muted-foreground">Build Unique One</p>
@@ -189,11 +186,7 @@ export function LoginForm() {
     <div className="w-full max-w-md space-y-6">
       {/* Logo & Title */}
       <div className="flex flex-col items-center space-y-3 text-center">
-        <img 
-          src="/images/vra-logo.png" 
-          alt="VRA HOMES" 
-          className="h-16 w-16 rounded-xl object-cover"
-        />
+        <BrandLogo size={64} className="rounded-xl" />
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             VRA HOMES

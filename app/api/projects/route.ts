@@ -14,8 +14,9 @@ export async function GET(request: Request) {
 
   const includeArchived =
     new URL(request.url).searchParams.get('includeArchived') === 'true'
+  const summaryOnly = new URL(request.url).searchParams.get('summary') === 'true'
 
-  const { data, error } = await listProjectsForApi({ includeArchived })
+  const { data, error } = await listProjectsForApi({ includeArchived, summaryOnly })
 
   if (error) {
     return NextResponse.json({ error }, { status: 400 })

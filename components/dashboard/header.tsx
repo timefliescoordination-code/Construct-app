@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/sheet"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { BrandLogo } from "@/components/layout/brand-logo"
+import { useCompanyBranding } from "@/lib/hooks/use-company-branding"
 
 const roleLabels: Record<string, string> = {
   admin: "Admin",
@@ -55,6 +57,7 @@ interface DashboardHeaderProps {
 export function DashboardHeader({ notificationCount = 0, hideAppNav = false }: DashboardHeaderProps) {
   const router = useRouter()
   const { profile, isLoading, signOut, role, isAuthenticated } = useAuth()
+  const { branding } = useCompanyBranding()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
 
@@ -178,10 +181,11 @@ export function DashboardHeader({ notificationCount = 0, hideAppNav = false }: D
           )}
 
           <Link href={getDashboardHome()} className="flex min-w-0 items-center gap-2 lg:hidden">
-            <img
-              src="/images/vra-logo.png"
-              alt="VRA HOMES"
-              className="h-8 w-8 rounded-lg object-cover"
+            <BrandLogo
+              src={branding.logo_url}
+              alt={branding.company_name ?? "VRA HOMES"}
+              size={32}
+              className="rounded-lg"
             />
             <span className="truncate font-semibold text-sm">VRA HOMES</span>
           </Link>

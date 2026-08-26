@@ -24,11 +24,35 @@ export const PROJECT_LIST_SELECT = `
   )
 `
 
+/** Lighter payload for the Projects table — avoids loading full expense/payment rows. */
+export const PROJECT_LIST_SELECT_SUMMARY = `
+  id, name, client_name, site_address, status, contract_value, additional_works_value,
+  expected_margin_percent, start_date, expected_completion_date, created_at, pm_id,
+  lifecycle_phase,
+  milestones(id, name, expected_cost_percent, actual_completion_percent, target_budget, actual_expenses, status, sort_order),
+  expenses(amount, status, expense_date, milestone_id),
+  client_payments(amount, status),
+  pm:profiles!pm_id(id, email, full_name, role),
+  project_engineers(
+    engineer_id,
+    engineer:profiles!engineer_id(id, email, full_name, role)
+  )
+`
+
 export const PROJECT_LIST_SELECT_BASIC = `
   *,
   milestones(*),
   expenses(*),
   client_payments(*)
+`
+
+export const PROJECT_LIST_SELECT_SUMMARY_BASIC = `
+  id, name, client_name, site_address, status, contract_value, additional_works_value,
+  expected_margin_percent, start_date, expected_completion_date, created_at, pm_id,
+  lifecycle_phase,
+  milestones(id, name, expected_cost_percent, actual_completion_percent, target_budget, actual_expenses, status, sort_order),
+  expenses(amount, status, expense_date, milestone_id),
+  client_payments(amount, status)
 `
 
 /** Site engineers cannot read client_payments / vendor_payments via RLS — omit those embeds. */
@@ -39,6 +63,18 @@ export const PROJECT_LIST_SELECT_ENGINEER = `
   project_engineers(
     engineer_id,
     engineer:profiles!engineer_id(id, email, full_name, role, phone, company_name, created_at, updated_at)
+  )
+`
+
+export const PROJECT_LIST_SELECT_ENGINEER_SUMMARY = `
+  id, name, client_name, site_address, status, contract_value, additional_works_value,
+  expected_margin_percent, start_date, expected_completion_date, created_at, pm_id,
+  lifecycle_phase,
+  milestones(id, name, expected_cost_percent, actual_completion_percent, target_budget, actual_expenses, status, sort_order),
+  expenses(amount, status, expense_date, milestone_id),
+  project_engineers(
+    engineer_id,
+    engineer:profiles!engineer_id(id, email, full_name, role)
   )
 `
 
@@ -113,12 +149,22 @@ function shouldRetryWithBasicSelect(error: { code?: string; message?: string }):
   )
 }
 
-function getProjectListSelect(role: string | undefined) {
-  return role === 'engineer' ? PROJECT_LIST_SELECT_ENGINEER : PROJECT_LIST_SELECT
+function getProjectListSelect(role: string | undefined, summaryOnly = false) {
+  if (summaryOnly) {
+    return role === "engineer"
+      ? PROJECT_LIST_SELECT_ENGINEER_SUMMARY
+      : PROJECT_LIST_SELECT_SUMMARY
+  }
+  return role === "engineer" ? PROJECT_LIST_SELECT_ENGINEER : PROJECT_LIST_SELECT
 }
 
-function getProjectListSelectBasic(role: string | undefined) {
-  return role === 'engineer' ? PROJECT_LIST_SELECT_ENGINEER_BASIC : PROJECT_LIST_SELECT_BASIC
+function getProjectListSelectBasic(role: string | undefined, summaryOnly = false) {
+  if (summaryOnly) {
+    return role === "engineer"
+      ? PROJECT_LIST_SELECT_ENGINEER_SUMMARY
+      : PROJECT_LIST_SELECT_SUMMARY_BASIC
+  }
+  return role === "engineer" ? PROJECT_LIST_SELECT_ENGINEER_BASIC : PROJECT_LIST_SELECT_BASIC
 }
 
 function getProjectDetailSelect(role: string | undefined) {
@@ -142,9 +188,13 @@ function applyRoleProjectVisibility(
   return project
 }
 
-export async function listProjectsForApi(options?: { includeArchived?: boolean }) {
+export async function listProjectsForApi(options?: {
+  includeArchived?: boolean
+  summaryOnly?: boolean
+}) {
   const supabase = await createClient()
   const includeArchived = options?.includeArchived ?? false
+  const summaryOnly = options?.summaryOnly ?? false
 
   const access = await getProjectAccessScope(supabase)
 
@@ -156,8 +206,8 @@ export async function listProjectsForApi(options?: { includeArchived?: boolean }
     return { data: null, error: 'You must be signed in to view projects.' }
   }
 
-  const listSelect = getProjectListSelect(access?.role)
-  const listSelectBasic = getProjectListSelectBasic(access?.role)
+  const listSelect = getProjectListSelect(access?.role, summaryOnly)
+  const listSelectBasic = getProjectListSelectBasic(access?.role, summaryOnly)
 
   let query = supabase
     .from('projects')
@@ -190,12 +240,13 @@ export async function listProjectsForApi(options?: { includeArchived?: boolean }
   }
 
   const rows = data ?? []
-  const todayIso = new Date().toISOString().slice(0, 10)
-  const labourByProject = await getLabourWorkersCountByProjectForDate(
-    supabase,
-    rows.map((project) => project.id as string),
-    todayIso,
-  )
+  const labourByProject = summaryOnly
+    ? new Map<string, number>()
+    : await getLabourWorkersCountByProjectForDate(
+        supabase,
+        rows.map((project) => project.id as string),
+        new Date().toISOString().slice(0, 10),
+      )
 
   const enriched = rows.map((project) => {
     const row = project as ProjectWithDetails

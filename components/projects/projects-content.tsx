@@ -6,13 +6,14 @@ import { ProjectTable, Project } from "./project-table"
 import { isDbProjectStatus } from "@/lib/project-status"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Plus, Search, Download, Loader2 } from "lucide-react"
+import { Plus, Search, Download } from "lucide-react"
 import Link from "next/link"
 import { useProjects } from "@/lib/hooks/use-project-data"
 import { isDatabaseSetupError } from "@/lib/supabase/db-errors"
 import { AlertCircle } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageHeader } from "@/components/layout/page"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { canViewProjectFinancials } from "@/lib/permissions"
 
@@ -121,11 +122,19 @@ export function ProjectsContent() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading projects...</p>
+      <div className="flex flex-col gap-8">
+        <PageHeader
+          title="Projects"
+          description="Manage and track all your construction projects"
+        />
+        <div className="space-y-3">
+          <Skeleton className="h-10 w-full max-w-md" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
         </div>
+        <p className="text-sm text-muted-foreground">Loading projects…</p>
       </div>
     )
   }
@@ -157,6 +166,11 @@ export function ProjectsContent() {
               {error.message}
             </CardDescription>
           </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button type="button" onClick={() => void mutate()}>
+              Try again
+            </Button>
+          </CardContent>
           {needsSetup && (
             <CardContent className="text-sm text-muted-foreground space-y-2">
               <p>1. Open <code className="rounded bg-muted px-1">supabase/schema.sql</code> in Cursor</p>

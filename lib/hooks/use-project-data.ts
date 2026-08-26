@@ -25,7 +25,20 @@ import { shouldUseLiveFinancials } from "@/lib/projects/lifecycle"
 import { CONSTRUCTION_PREVIEW_MILESTONES } from "@/lib/projects/construction-preview"
 
 async function fetchFromApi<T>(path: string): Promise<T> {
-  const res = await fetch(path, { credentials: "include" })
+  let res: Response
+  try {
+    res = await fetch(path, {
+      credentials: "include",
+      signal: AbortSignal.timeout(20_000),
+    })
+  } catch (error) {
+    const name =
+      error instanceof DOMException || error instanceof Error ? error.name : ""
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new Error("This is taking too long. Refresh and try again.")
+    }
+    throw error
+  }
   const json = await res.json().catch(() => ({}))
 
   if (!res.ok) {
@@ -39,9 +52,13 @@ async function fetchFromApi<T>(path: string): Promise<T> {
   return json.data as T
 }
 
-async function fetchProjects(includeArchived = false) {
-  const query = includeArchived ? "?includeArchived=true" : ""
-  return fetchFromApi<ProjectWithDetails[]>(`/api/projects${query}`)
+async function fetchProjects(includeArchived = false, summaryOnly = false) {
+  const params = new URLSearchParams()
+  if (includeArchived) params.set("includeArchived", "true")
+  if (summaryOnly) params.set("summary", "true")
+  const query = params.toString() ? `?${params.toString()}` : ""
+  const data = await fetchFromApi<ProjectWithDetails[] | null>(`/api/projects${query}`)
+  return Array.isArray(data) ? data : []
 }
 
 async function fetchProject(projectId: string) {
@@ -49,26 +66,12 @@ async function fetchProject(projectId: string) {
 }
 
 async function fetchDefaultProject() {
-  const res = await fetch("/api/projects/default", { credentials: "include" })
-  const json = await res.json().catch(() => ({}))
-
-  if (!res.ok) {
-    const message =
-      typeof json.error === "string"
-        ? json.error
-        : `Request failed (${res.status})`
-    throw new Error(message)
-  }
-
-  if (json.error && typeof json.error === "string") {
-    throw new Error(json.error)
-  }
-
-  const data = json.data as ProjectWithDetails | null
-  if (!data) {
-    throw new Error(NO_ASSIGNED_PROJECT_MESSAGE)
-  }
-  return data
+  return fetchFromApi<ProjectWithDetails | null>("/api/projects/default").then((data) => {
+    if (!data) {
+      throw new Error(NO_ASSIGNED_PROJECT_MESSAGE)
+    }
+    return data
+  })
 }
 
 async function fetchLabourTypes() {
@@ -78,15 +81,17 @@ async function fetchLabourTypes() {
 const swrDefaults = {
   revalidateOnFocus: false,
   dedupingInterval: 30_000,
+  errorRetryCount: 0,
+  shouldRetryOnError: false,
 }
 
 // Hook: Get all projects (includeArchived for Projects list page only)
 export function useProjects(options?: { includeArchived?: boolean }) {
   const includeArchived = options?.includeArchived ?? false
-  const swrKey = includeArchived ? 'projects-all' : 'projects'
+  const swrKey = includeArchived ? "projects-all-summary" : "projects-summary"
   const { data, error, isLoading, mutate } = useSWR(
     swrKey,
-    () => fetchProjects(includeArchived),
+    () => fetchProjects(includeArchived, true),
     swrDefaults,
   )
   
@@ -258,19 +263,24 @@ export function useProjectMetrics(project: ProjectWithDetails | null) {
     }
   }
   
-  const totalExpenses = project.expenses
+  const expenses = project.expenses ?? []
+  const clientPayments = project.client_payments ?? []
+  const vendorPayments = project.vendor_payments ?? []
+  const milestonesList = project.milestones ?? []
+
+  const totalExpenses = expenses
     .filter(e => e.status === 'approved')
     .reduce((sum, e) => sum + Number(e.amount), 0)
   
-  const totalClientPaymentsReceived = project.client_payments
+  const totalClientPaymentsReceived = clientPayments
     .filter(p => p.status === 'received')
     .reduce((sum, p) => sum + Number(p.amount), 0)
   
-  const totalClientPaymentsPending = project.client_payments
+  const totalClientPaymentsPending = clientPayments
     .filter(p => p.status === 'pending' || p.status === 'overdue')
     .reduce((sum, p) => sum + Number(p.amount), 0)
   
-  const totalVendorPaymentsDue = project.vendor_payments
+  const totalVendorPaymentsDue = vendorPayments
     .reduce((sum, vp) => sum + Number(vp.pending_amount), 0)
   
   const additionalWorksApproved = getApprovedAdditionalWorksTotal(
@@ -290,7 +300,7 @@ export function useProjectMetrics(project: ProjectWithDetails | null) {
     totalExpenses,
   })
   
-  const milestonesForCalc: MilestoneData[] = project.milestones.map(ms => ({
+  const milestonesForCalc: MilestoneData[] = milestonesList.map(ms => ({
     name: ms.name,
     expectedCostPercent: Number(ms.expected_cost_percent),
     actualCompletionPercent: ms.actual_completion_percent,

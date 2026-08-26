@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { useCompanyBranding } from "@/lib/hooks/use-company-branding"
+import { BrandLogo } from "@/components/layout/brand-logo"
 import {
   Collapsible,
   CollapsibleContent,
@@ -176,16 +177,16 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
   return (
     <aside
       className={cn(
-        "flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
+        "flex w-64 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
         className,
       )}
     >
       <div className="border-b border-sidebar-border px-4 py-5">
-        <Link href={dashboardHref} onClick={onNavigate} className="flex items-center gap-3">
-          <img
-            src={branding.logo_url ?? "/images/vra-logo.png"}
+        <Link href={dashboardHref} onClick={onNavigate} className="flex min-w-0 items-center gap-3">
+          <BrandLogo
+            src={branding.logo_url}
             alt={branding.company_name ?? "VRA HOMES"}
-            className="h-9 w-9 rounded-xl object-cover shadow-sm"
+            size={36}
           />
           <div className="min-w-0">
             <p className="truncate text-sm font-bold text-foreground">
