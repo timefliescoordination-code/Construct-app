@@ -5,8 +5,7 @@ import { requireAdminSession } from '@/lib/auth/require-admin'
 import {
   createCompanyLabourType,
   deleteCompanyLabourType,
-  ensureCompanyLabourCatalog,
-  listGlobalLabourTypes,
+  ensureGlobalLabourTypesSeeded,
   updateCompanyLabourType,
 } from '@/lib/data/labour-types'
 import type { LabourType } from '@/lib/types/database'
@@ -27,12 +26,9 @@ export async function getCompanyLabourTypesAction(): Promise<
   const session = await requireAdminSession()
   if (!session.ok) return session
 
-  const ensured = await ensureCompanyLabourCatalog(session.supabase)
-  if (!ensured.ok) return ensured
-
-  const listed = await listGlobalLabourTypes(session.supabase)
-  if (!listed.ok) return listed
-  return { ok: true, data: listed.data }
+  const seeded = await ensureGlobalLabourTypesSeeded(session.supabase)
+  if (!seeded.ok) return seeded
+  return { ok: true, data: seeded.data }
 }
 
 export async function createCompanyLabourTypeAction(input: {

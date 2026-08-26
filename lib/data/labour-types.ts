@@ -17,84 +17,6 @@ function nameKey(name: string) {
   return name.trim().toLowerCase()
 }
 
-async function addWeekRatesForType(
-  supabase: SupabaseServerClient,
-  projectId: string,
-  labourTypeId: string,
-  dailyRate: number,
-) {
-  const { data: weeks, error } = await supabase
-    .from('manpower_weeks')
-    .select('id')
-    .eq('project_id', projectId)
-
-  if (error) return { error: getSupabaseErrorMessage(error) }
-  if (!weeks?.length) return { error: null }
-
-  const { error: ratesError } = await supabase.from('manpower_week_rates').upsert(
-    weeks.map((week) => ({
-      week_id: week.id,
-      labour_type_id: labourTypeId,
-      daily_rate: dailyRate,
-    })),
-    { onConflict: 'week_id,labour_type_id' },
-  )
-
-  return { error: ratesError ? getSupabaseErrorMessage(ratesError) : null }
-}
-
-async function copyTypeToProject(
-  supabase: SupabaseServerClient,
-  projectId: string,
-  type: Pick<LabourType, 'name' | 'short_label' | 'default_wage' | 'sort_order'>,
-): Promise<LabourTypeCatalogResult<{ id: string }>> {
-  const { data: existing } = await supabase
-    .from('labour_types')
-    .select('id')
-    .eq('project_id', projectId)
-    .ilike('name', type.name.trim())
-    .maybeSingle()
-
-  if (existing?.id) {
-    const rates = await addWeekRatesForType(
-      supabase,
-      projectId,
-      existing.id,
-      Number(type.default_wage),
-    )
-    if (rates.error) return { ok: false, error: rates.error }
-    return { ok: true, data: { id: existing.id } }
-  }
-
-  const { data, error } = await supabase
-    .from('labour_types')
-    .insert({
-      project_id: projectId,
-      name: type.name.trim(),
-      short_label: type.short_label,
-      default_wage: Number(type.default_wage),
-      sort_order: type.sort_order,
-    })
-    .select('id')
-    .single()
-
-  if (error || !data) {
-    return {
-      ok: false,
-      error: error ? getSupabaseErrorMessage(error) : 'Failed to copy labour type to a project.',
-    }
-  }
-
-  const rates = await addWeekRatesForType(
-    supabase,
-    projectId,
-    data.id,
-    Number(type.default_wage),
-  )
-  if (rates.error) return { ok: false, error: rates.error }
-  return { ok: true, data: { id: data.id } }
-}
-
 async function listProjectIds(supabase: SupabaseServerClient) {
   const { data, error } = await supabase.from('projects').select('id')
   if (error) return { ids: [] as string[], error: getSupabaseErrorMessage(error) }
@@ -115,107 +37,108 @@ export async function listGlobalLabourTypes(
   return { ok: true, data: asLabourTypes(data) }
 }
 
-/** Seed globals and copy any missing catalog types onto every project. */
-export async function ensureCompanyLabourCatalog(
+/** Seed the company list if it is empty. Does not touch projects. */
+export async function ensureGlobalLabourTypesSeeded(
   supabase: SupabaseServerClient,
 ): Promise<LabourTypeCatalogResult<LabourType[]>> {
   const existing = await listGlobalLabourTypes(supabase)
   if (!existing.ok) return existing
+  if (existing.data.length > 0) return existing
 
-  let globals = existing.data
+  const { error: seedError } = await supabase.from('labour_types').insert(
+    DEFAULT_LABOUR_TYPES.map((type, index) => ({
+      project_id: null,
+      name: type.name,
+      short_label: type.shortLabel,
+      default_wage: type.defaultWage,
+      sort_order: index + 1,
+    })),
+  )
+  if (seedError) return { ok: false, error: getSupabaseErrorMessage(seedError) }
+  return listGlobalLabourTypes(supabase)
+}
 
-  const { data: allRows, error: allError } = await supabase
-    .from('labour_types')
-    .select('name, short_label, default_wage, sort_order, project_id')
-
-  if (allError) return { ok: false, error: getSupabaseErrorMessage(allError) }
-
-  const globalNames = new Set(globals.map((row) => nameKey(row.name)))
-  const toPromote: Array<{
-    name: string
-    short_label: string | null
-    default_wage: number
-    sort_order: number
-  }> = []
-
-  for (const row of allRows ?? []) {
-    const key = nameKey(row.name)
-    if (!key || globalNames.has(key)) continue
-    globalNames.add(key)
-    toPromote.push({
-      name: row.name.trim(),
-      short_label: row.short_label,
-      default_wage: Number(row.default_wage),
-      sort_order: Number(row.sort_order ?? 0),
-    })
-  }
-
-  if (globals.length === 0 && toPromote.length === 0) {
-    const { error: seedError } = await supabase.from('labour_types').insert(
-      DEFAULT_LABOUR_TYPES.map((type, index) => ({
-        project_id: null,
-        name: type.name,
-        short_label: type.shortLabel,
-        default_wage: type.defaultWage,
-        sort_order: index + 1,
-      })),
-    )
-    if (seedError) return { ok: false, error: getSupabaseErrorMessage(seedError) }
-  } else if (toPromote.length > 0) {
-    const lastOrder = globals.reduce(
-      (max, row) => Math.max(max, Number(row.sort_order ?? 0)),
-      0,
-    )
-    const { error: promoteError } = await supabase.from('labour_types').insert(
-      toPromote.map((type, index) => ({
-        project_id: null,
-        name: type.name,
-        short_label: type.short_label,
-        default_wage: type.default_wage,
-        sort_order: type.sort_order || lastOrder + index + 1,
-      })),
-    )
-    if (promoteError) return { ok: false, error: getSupabaseErrorMessage(promoteError) }
-  }
-
-  const refreshed = await listGlobalLabourTypes(supabase)
-  if (!refreshed.ok) return refreshed
-  globals = refreshed.data
+async function copyMissingTypesToProjects(
+  supabase: SupabaseServerClient,
+  types: Array<Pick<LabourType, 'name' | 'short_label' | 'default_wage' | 'sort_order'>>,
+): Promise<LabourTypeCatalogResult> {
+  if (!types.length) return { ok: true, data: undefined }
 
   const projects = await listProjectIds(supabase)
   if (projects.error) return { ok: false, error: projects.error }
+  if (!projects.ids.length) return { ok: true, data: undefined }
 
-  for (const projectId of projects.ids) {
-    const copied = await ensureProjectHasCatalogTypes(supabase, projectId, globals)
-    if (!copied.ok) return copied
+  const { data: existingRows, error: existingError } = await supabase
+    .from('labour_types')
+    .select('project_id, name')
+    .in('project_id', projects.ids)
+
+  if (existingError) return { ok: false, error: getSupabaseErrorMessage(existingError) }
+
+  const existingKeys = new Set(
+    (existingRows ?? []).map((row) => `${row.project_id}:${nameKey(String(row.name))}`),
+  )
+
+  const inserts = projects.ids.flatMap((projectId) =>
+    types
+      .filter((type) => !existingKeys.has(`${projectId}:${nameKey(type.name)}`))
+      .map((type) => ({
+        project_id: projectId,
+        name: type.name.trim(),
+        short_label: type.short_label,
+        default_wage: Number(type.default_wage),
+        sort_order: Number(type.sort_order ?? 0),
+      })),
+  )
+
+  if (inserts.length) {
+    const { error: insertError } = await supabase.from('labour_types').insert(inserts)
+    if (insertError) return { ok: false, error: getSupabaseErrorMessage(insertError) }
   }
 
-  return { ok: true, data: globals }
-}
+  const typeNames = types.map((type) => type.name.trim())
+  const { data: projectTypes, error: typesError } = await supabase
+    .from('labour_types')
+    .select('id, project_id, name, default_wage')
+    .in('project_id', projects.ids)
 
-export async function ensureProjectHasCatalogTypes(
-  supabase: SupabaseServerClient,
-  projectId: string,
-  catalog?: LabourType[],
-): Promise<LabourTypeCatalogResult> {
-  let globals = catalog
-  if (!globals) {
-    const listed = await listGlobalLabourTypes(supabase)
-    if (!listed.ok) return listed
-    globals = listed.data
+  if (typesError) return { ok: false, error: getSupabaseErrorMessage(typesError) }
+
+  const wanted = new Set(typeNames.map(nameKey))
+  const typeByProjectName = new Map<string, { id: string; defaultWage: number }>()
+  for (const row of projectTypes ?? []) {
+    if (!wanted.has(nameKey(String(row.name)))) continue
+    typeByProjectName.set(`${row.project_id}:${nameKey(String(row.name))}`, {
+      id: row.id as string,
+      defaultWage: Number(row.default_wage),
+    })
   }
 
-  if (!globals.length) {
-    const ensured = await ensureCompanyLabourCatalog(supabase)
-    if (!ensured.ok) return ensured
-    globals = ensured.data
-  }
+  const { data: weeks, error: weeksError } = await supabase
+    .from('manpower_weeks')
+    .select('id, project_id')
+    .in('project_id', projects.ids)
 
-  for (const type of globals) {
-    const copied = await copyTypeToProject(supabase, projectId, type)
-    if (!copied.ok) return copied
-  }
+  if (weeksError) return { ok: false, error: getSupabaseErrorMessage(weeksError) }
+  if (!weeks?.length) return { ok: true, data: undefined }
 
+  const rates = weeks.flatMap((week) =>
+    types
+      .map((type) => typeByProjectName.get(`${week.project_id}:${nameKey(type.name)}`))
+      .filter((row): row is { id: string; defaultWage: number } => Boolean(row))
+      .map((row) => ({
+        week_id: week.id,
+        labour_type_id: row.id,
+        daily_rate: row.defaultWage,
+      })),
+  )
+
+  if (!rates.length) return { ok: true, data: undefined }
+
+  const { error: ratesError } = await supabase
+    .from('manpower_week_rates')
+    .upsert(rates, { onConflict: 'week_id,labour_type_id' })
+  if (ratesError) return { ok: false, error: getSupabaseErrorMessage(ratesError) }
   return { ok: true, data: undefined }
 }
 
@@ -223,9 +146,6 @@ export async function listLabourTypesForProject(
   supabase: SupabaseServerClient,
   projectId: string,
 ): Promise<LabourTypeCatalogResult<LabourType[]>> {
-  const ensured = await ensureProjectHasCatalogTypes(supabase, projectId)
-  if (!ensured.ok) return ensured
-
   const { data, error } = await supabase
     .from('labour_types')
     .select('*')
@@ -234,7 +154,24 @@ export async function listLabourTypesForProject(
     .order('name', { ascending: true })
 
   if (error) return { ok: false, error: getSupabaseErrorMessage(error) }
-  return { ok: true, data: asLabourTypes(data) }
+  if (data?.length) return { ok: true, data: asLabourTypes(data) }
+
+  const catalog = await ensureGlobalLabourTypesSeeded(supabase)
+  if (!catalog.ok) return catalog
+  if (!catalog.data.length) return { ok: true, data: [] }
+
+  const copied = await copyMissingTypesToProjects(supabase, catalog.data)
+  if (!copied.ok) return copied
+
+  const { data: copiedRows, error: copiedError } = await supabase
+    .from('labour_types')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true })
+
+  if (copiedError) return { ok: false, error: getSupabaseErrorMessage(copiedError) }
+  return { ok: true, data: asLabourTypes(copiedRows) }
 }
 
 export async function createCompanyLabourType(
@@ -250,7 +187,7 @@ export async function createCompanyLabourType(
     return { ok: false, error: 'Enter a valid default wage.' }
   }
 
-  const catalog = await ensureCompanyLabourCatalog(supabase)
+  const catalog = await ensureGlobalLabourTypesSeeded(supabase)
   if (!catalog.ok) return catalog
 
   if (catalog.data.some((row) => nameKey(row.name) === nameKey(name))) {
@@ -261,6 +198,7 @@ export async function createCompanyLabourType(
     (max, row) => Math.max(max, Number(row.sort_order ?? 0)),
     0,
   )
+  const sortOrder = lastOrder + 1
 
   const { data, error } = await supabase
     .from('labour_types')
@@ -269,7 +207,7 @@ export async function createCompanyLabourType(
       name,
       short_label: shortLabel,
       default_wage: defaultWage,
-      sort_order: lastOrder + 1,
+      sort_order: sortOrder,
     })
     .select('id')
     .single()
@@ -281,18 +219,15 @@ export async function createCompanyLabourType(
     }
   }
 
-  const projects = await listProjectIds(supabase)
-  if (projects.error) return { ok: false, error: projects.error }
-
-  for (const projectId of projects.ids) {
-    const copied = await copyTypeToProject(supabase, projectId, {
+  const copied = await copyMissingTypesToProjects(supabase, [
+    {
       name,
       short_label: shortLabel,
       default_wage: defaultWage,
-      sort_order: lastOrder + 1,
-    })
-    if (!copied.ok) return copied
-  }
+      sort_order: sortOrder,
+    },
+  ])
+  if (!copied.ok) return copied
 
   return { ok: true, data: { id: data.id } }
 }
@@ -324,7 +259,6 @@ export async function updateCompanyLabourType(
   if (currentError) return { ok: false, error: getSupabaseErrorMessage(currentError) }
   if (!current) return { ok: false, error: 'Labour type not found.' }
 
-  const oldName = current.name as string
   const { error } = await supabase
     .from('labour_types')
     .update({
@@ -332,23 +266,9 @@ export async function updateCompanyLabourType(
       short_label: shortLabel,
       default_wage: defaultWage,
     })
-    .ilike('name', oldName)
+    .ilike('name', current.name as string)
 
   if (error) return { ok: false, error: getSupabaseErrorMessage(error) }
-
-  const projects = await listProjectIds(supabase)
-  if (projects.error) return { ok: false, error: projects.error }
-
-  for (const projectId of projects.ids) {
-    const copied = await copyTypeToProject(supabase, projectId, {
-      name,
-      short_label: shortLabel,
-      default_wage: defaultWage,
-      sort_order: Number(current.sort_order ?? 0),
-    })
-    if (!copied.ok) return copied
-  }
-
   return { ok: true, data: undefined }
 }
 

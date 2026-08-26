@@ -11,7 +11,7 @@ import {
   stripProjectFinancialsForEngineer,
   stripProjectInternalDataForCustomer,
 } from '@/lib/permissions'
-import { ensureCompanyLabourCatalog } from '@/lib/data/labour-types'
+import { ensureGlobalLabourTypesSeeded } from '@/lib/data/labour-types'
 
 export const PROJECT_LIST_SELECT = `
   *,
@@ -356,7 +356,7 @@ export async function getDefaultProjectForApi() {
 
 export async function listLabourTypesForApi() {
   const supabase = await createClient()
-  const result = await ensureCompanyLabourCatalog(supabase)
+  const result = await ensureGlobalLabourTypesSeeded(supabase)
   if (!result.ok) {
     return { data: null, error: result.error }
   }
