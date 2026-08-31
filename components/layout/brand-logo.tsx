@@ -36,12 +36,6 @@ export function BrandLogo({
         onError={() => {
           if (resolvedSrc !== DEFAULT_LOGO) setFailed(true)
         }}
-        onLoad={(event) => {
-          const img = event.currentTarget
-          // #region agent log
-          fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b15f8a'},body:JSON.stringify({sessionId:'b15f8a',runId:'post-fix',hypothesisId:'E',location:'components/layout/brand-logo.tsx:onLoad',message:'brand logo painted',data:{src:resolvedSrc,size,naturalWidth:img.naturalWidth,clientWidth:img.clientWidth,parentWidth:img.parentElement?.clientWidth??null,href:typeof window==='undefined'?null:window.location.pathname},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
-        }}
         className="block h-full w-full object-cover"
         style={{ width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", objectFit: "cover" }}
       />

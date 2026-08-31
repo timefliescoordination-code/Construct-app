@@ -25,7 +25,6 @@ import { shouldUseLiveFinancials } from "@/lib/projects/lifecycle"
 import { CONSTRUCTION_PREVIEW_MILESTONES } from "@/lib/projects/construction-preview"
 
 async function fetchFromApi<T>(path: string): Promise<T> {
-  const startedAt = Date.now()
   let res: Response
   try {
     res = await fetch(path, {
@@ -35,9 +34,6 @@ async function fetchFromApi<T>(path: string): Promise<T> {
   } catch (error) {
     const name =
       error instanceof DOMException || error instanceof Error ? error.name : ""
-    // #region agent log
-    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b15f8a'},body:JSON.stringify({sessionId:'b15f8a',runId:'post-fix',hypothesisId:'C',location:'lib/hooks/use-project-data.ts:fetchFromApi',message:'projects api fetch threw',data:{path,name,ms:Date.now()-startedAt},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (name === "TimeoutError" || name === "AbortError") {
       throw new Error("This is taking too long. Refresh and try again.")
     }
@@ -50,15 +46,9 @@ async function fetchFromApi<T>(path: string): Promise<T> {
       typeof json.error === "string"
         ? json.error
         : `Request failed (${res.status})`
-    // #region agent log
-    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b15f8a'},body:JSON.stringify({sessionId:'b15f8a',runId:'post-fix',hypothesisId:'C',location:'lib/hooks/use-project-data.ts:fetchFromApi',message:'projects api not ok',data:{path,status:res.status,message,ms:Date.now()-startedAt},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     throw new Error(message)
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b15f8a'},body:JSON.stringify({sessionId:'b15f8a',runId:'post-fix',hypothesisId:'C',location:'lib/hooks/use-project-data.ts:fetchFromApi',message:'projects api ok',data:{path,status:res.status,ms:Date.now()-startedAt,rows:Array.isArray(json.data)?json.data.length:json.data==null?0:1},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return json.data as T
 }
 

@@ -37,29 +37,28 @@ export function ExpenseShortcutListener() {
   const [projectKindPickerOpen, setProjectKindPickerOpen] = useState(false)
   const [pendingProjectId, setPendingProjectId] = useState<string | null>(null)
 
+  const setProjects = registry.setProjects
+
   useEffect(() => {
     if (isLoading) return
-    if (role === "customer") return
+    if (!role || role === "customer") return
     if (pathname.startsWith("/proposal/")) return
+    if (pathname === "/login" || pathname === "/signup" || pathname === "/setup") return
 
     let cancelled = false
-    const url = "/api/projects?summary=true"
-    // #region agent log
-    fetch('http://127.0.0.1:7406/ingest/d702b43b-4e46-403e-a16b-cd4a4de78fb9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b15f8a'},body:JSON.stringify({sessionId:'b15f8a',runId:'post-fix',hypothesisId:'C',location:'components/keyboard/expense-shortcut-listener.tsx:effect',message:'shortcut projects prefetch',data:{url,pathname},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    void fetch(url, { credentials: "include" })
+    void fetch("/api/projects?summary=true", { credentials: "include" })
       .then((res) => res.json())
       .then((json) => {
         if (cancelled) return
         const rows = (json.data ?? []) as { id: string; name: string }[]
-        registry.setProjects(rows.map((p) => ({ id: p.id, name: p.name })))
+        setProjects(rows.map((p) => ({ id: p.id, name: p.name })))
       })
       .catch(() => {})
 
     return () => {
       cancelled = true
     }
-  }, [isLoading, role, registry, pathname])
+  }, [isLoading, role, pathname, setProjects])
 
   const openProjectExpense = useCallback(
     (projectId: string) => {

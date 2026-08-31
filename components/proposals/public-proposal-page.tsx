@@ -31,11 +31,24 @@ export function PublicProposalPage({ token }: { token: string }) {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const res = await fetch(`/api/public/proposals/${encodeURIComponent(token)}`, {
-        cache: 'no-store',
-      })
-      const json = (await res.json()) as PublicProposalResponse
-      if (!cancelled) setData(json)
+      try {
+        const res = await fetch(`/api/public/proposals/${encodeURIComponent(token)}`, {
+          cache: 'no-store',
+        })
+        const json = (await res.json()) as PublicProposalResponse
+        if (!cancelled) setData(json)
+      } catch {
+        if (!cancelled) {
+          setData({
+            availability: 'unavailable',
+            is_historical: false,
+            newer_available: false,
+            current_share_path: null,
+            can_request_revision: false,
+            document: null,
+          })
+        }
+      }
     }
     void load()
     return () => {

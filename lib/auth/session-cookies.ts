@@ -17,11 +17,21 @@ export const AUTH_COOKIE_DEFAULTS: CookieOptions = {
 
 /** Merge provider options but always keep session cookies site-wide. */
 export function mergeAuthCookieOptions(options?: CookieOptions): CookieOptions {
-  return {
+  const merged: CookieOptions = {
     ...AUTH_COOKIE_DEFAULTS,
     ...options,
     path: '/',
   }
+
+  if (process.env.NODE_ENV !== 'production') {
+    return {
+      ...merged,
+      secure: false,
+      domain: undefined,
+    }
+  }
+
+  return merged
 }
 
 export function applyPendingAuthCookies(

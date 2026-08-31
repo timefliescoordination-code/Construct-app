@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAdminApi } from "@/lib/auth/require-admin"
+import { isServiceRoleConfigured } from "@/lib/supabase/env"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET() {
@@ -7,8 +8,7 @@ export async function GET() {
     const auth = await requireAdminApi()
     if ("error" in auth) return auth.error
 
-    const adminClient = createAdminClient()
-    const { data: profiles, error: profilesError } = await adminClient
+    const { data: profiles, error: profilesError } = await auth.supabase
       .from("profiles")
       .select("*")
       .order("created_at", { ascending: false })
@@ -18,11 +18,18 @@ export async function GET() {
       return NextResponse.json({ error: profilesError.message }, { status: 400 })
     }
 
-    const { data: credentials } = await adminClient.from("user_credentials").select("user_id, password")
-
-    const passwordByUserId = new Map(
-      (credentials ?? []).map((row) => [row.user_id, row.password]),
-    )
+    const passwordByUserId = new Map<string, string>()
+    if (isServiceRoleConfigured()) {
+      const adminClient = createAdminClient()
+      const { data: credentials } = await adminClient
+        .from("user_credentials")
+        .select("user_id, password")
+      for (const row of credentials ?? []) {
+        if (row.user_id && typeof row.password === "string") {
+          passwordByUserId.set(row.user_id, row.password)
+        }
+      }
+    }
 
     const users = (profiles ?? []).map((profile) => ({
       ...profile,

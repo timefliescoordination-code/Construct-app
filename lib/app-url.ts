@@ -20,6 +20,28 @@ type RequestLike = NextRequest | Request | { headers: Headers }
 
 /** Public site origin for redirects (never 0.0.0.0 behind Hostinger reverse proxy). */
 export function getPublicAppOrigin(request?: RequestLike): string {
+  if (request) {
+    const headers = request.headers
+    const forwardedHost = headers.get('x-forwarded-host')
+    const host = forwardedHost?.split(',')[0]?.trim() ?? headers.get('host') ?? ''
+    const isLocalHost =
+      /^localhost\b/i.test(host) ||
+      /^127\.0\.0\.1\b/.test(host) ||
+      /^\[::1\]/.test(host)
+
+    if (
+      host &&
+      !isInvalidRedirectHost(host) &&
+      (isLocalHost || process.env.NODE_ENV !== 'production')
+    ) {
+      const fallbackProto = process.env.NODE_ENV === 'production' ? 'https' : 'http'
+      const proto =
+        (headers.get('x-forwarded-proto') ?? fallbackProto).split(',')[0]?.trim() ||
+        fallbackProto
+      return `${proto}://${host}`
+    }
+  }
+
   const configured =
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
     process.env.NEXT_PUBLIC_SITE_URL?.trim()

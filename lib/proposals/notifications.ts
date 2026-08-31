@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/server'
+import { isServiceRoleConfigured } from '@/lib/supabase/env'
 
 export async function notifyStaffOnProposalRevision(
   input: {
@@ -12,6 +13,7 @@ export async function notifyStaffOnProposalRevision(
     dedupeKey: string
   },
 ): Promise<void> {
+  if (!isServiceRoleConfigured()) return
   const adminClient = createAdminClient()
 
   let project: { pm_id: string | null; name: string } | null = null

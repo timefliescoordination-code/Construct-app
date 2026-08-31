@@ -191,7 +191,15 @@ export function ExpenseShortcutRegistryProvider({
   }, [])
 
   const setProjects = useCallback((next: ProjectOption[]) => {
-    setProjectsState(next)
+    setProjectsState((prev) => {
+      if (
+        prev.length === next.length &&
+        prev.every((p, i) => p.id === next[i]?.id && p.name === next[i]?.name)
+      ) {
+        return prev
+      }
+      return next
+    })
   }, [])
 
   const value = useMemo(

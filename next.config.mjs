@@ -21,6 +21,7 @@ function ensureProductionServerActionsKey() {
 ensureProductionServerActionsKey()
 
 const nextConfig = {
+  allowedDevOrigins: ['127.0.0.1'],
   deploymentId:
     process.env.NEXT_DEPLOYMENT_ID ??
     process.env.HOSTINGER_DEPLOYMENT_ID ??
@@ -30,6 +31,9 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
+  },
+  async rewrites() {
+    return [{ source: '/favicon.ico', destination: '/images/vra-logo.png' }]
   },
 }
 

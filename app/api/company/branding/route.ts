@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { getCompanyBranding } from '@/lib/company/settings'
-import { isSupabaseConfigured } from '@/lib/supabase/env'
+import { isServiceRoleConfigured, isSupabaseConfigured } from '@/lib/supabase/env'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +19,8 @@ export async function GET() {
       data: { user },
     } = await supabase.auth.getUser()
 
-    const reader = user ? supabase : createAdminClient()
+    const reader =
+      user || !isServiceRoleConfigured() ? supabase : createAdminClient()
     const branding = await getCompanyBranding(reader)
 
     return NextResponse.json({ data: branding })

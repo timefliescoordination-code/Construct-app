@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/server'
+import { isServiceRoleConfigured } from '@/lib/supabase/env'
 import { customerChangeRequestLink, staffChangeRequestLink } from '@/lib/change-requests/workflow'
 import { notifyProjectCustomer } from '@/lib/notifications'
 
@@ -16,6 +17,7 @@ export async function notifyStaffOnChangeRequestSubmitted(
   _supabase: SupabaseClient,
   input: StaffNotifyInput,
 ): Promise<void> {
+  if (!isServiceRoleConfigured()) return
   const adminClient = createAdminClient()
 
   const { data: project } = await adminClient
@@ -80,6 +82,7 @@ export async function notifyCustomerOnChangeRequestStatus(
     dedupeKey: string
   },
 ): Promise<void> {
+  if (!isServiceRoleConfigured()) return
   const adminClient = createAdminClient()
   await notifyProjectCustomer(adminClient, {
     projectId: input.projectId,

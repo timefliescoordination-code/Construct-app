@@ -405,24 +405,10 @@ export async function listExpenseIdsWithInvoicesForProject(projectId: string) {
     return { expenseIds: [] as string[], error: 'You must be signed in to view invoices.' }
   }
 
-  const { data: expenses, error: expensesError } = await supabase
-    .from('expenses')
-    .select('id')
-    .eq('project_id', projectId)
-
-  if (expensesError) {
-    return { expenseIds: [] as string[], error: getSupabaseErrorMessage(expensesError) }
-  }
-
-  const expenseIds = (expenses ?? []).map((row) => row.id as string)
-  if (expenseIds.length === 0) {
-    return { expenseIds: [] as string[], error: null }
-  }
-
   const { data, error } = await supabase
     .from('expense_invoices')
-    .select('expense_id')
-    .in('expense_id', expenseIds)
+    .select('expense_id, expenses!inner(project_id)')
+    .eq('expenses.project_id', projectId)
 
   if (error) {
     return { expenseIds: [] as string[], error: getSupabaseErrorMessage(error) }

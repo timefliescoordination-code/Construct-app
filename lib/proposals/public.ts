@@ -15,6 +15,7 @@ import type {
   PublicProposalResponse,
 } from '@/lib/proposals/types'
 import type { ProposalItemSection } from '@/lib/proposals/constants'
+import { isServiceRoleConfigured } from '@/lib/supabase/env'
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10)
@@ -102,12 +103,11 @@ export async function getPublicProposalByToken(token: string): Promise<PublicPro
   const trimmed = token.trim()
   if (!trimmed || trimmed.length < 16) return emptyResponse('unavailable')
 
-  let admin
-  try {
-    admin = createAdminClient()
-  } catch {
+  if (!isServiceRoleConfigured()) {
     return emptyResponse('unavailable')
   }
+
+  const admin = createAdminClient()
 
   const company = await loadCompany(admin)
 
@@ -151,11 +151,10 @@ export async function getPublicProposalByToken(token: string): Promise<PublicPro
     proposal = parent
   }
 
+  if (proposal?.status === 'archived') return emptyResponse('unavailable')
+  if (proposal?.status === 'withdrawn') return emptyResponse('withdrawn')
   if (!proposal || !version) return emptyResponse('unavailable')
-  if (proposal.status === 'archived') return emptyResponse('unavailable')
-  if (proposal.status === 'withdrawn' || version.status === 'withdrawn') {
-    return emptyResponse('withdrawn')
-  }
+  if (version.status === 'withdrawn') return emptyResponse('withdrawn')
   if (isExpired(version.valid_until, version.status)) {
     return emptyResponse('expired')
   }

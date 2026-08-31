@@ -24,11 +24,17 @@ function isTelegramWebhookRoute(pathname: string) {
   return pathname === '/api/telegram/webhook'
 }
 
+/** Deploy health check — documented as public; must not require a staff session. */
+function isTelegramHealthRoute(pathname: string) {
+  return pathname === '/api/telegram/health'
+}
+
 function isPublicApiRoute(pathname: string) {
   return (
     pathname.startsWith('/api/auth/') ||
     pathname.startsWith('/api/public/') ||
-    pathname === '/api/company/branding'
+    pathname === '/api/company/branding' ||
+    isTelegramHealthRoute(pathname)
   )
 }
 
@@ -42,6 +48,7 @@ export async function updateSession(request: NextRequest) {
     publicRoutes.some((route) => pathname.startsWith(route)) ||
     isPublicProposalRoute(pathname) ||
     isTelegramWebhookRoute(pathname) ||
+    isTelegramHealthRoute(pathname) ||
     isPublicApiRoute(pathname)
 
   if (!isSupabaseConfigured()) {
@@ -86,6 +93,9 @@ export async function updateSession(request: NextRequest) {
 
   // If user is not logged in and trying to access protected route
   if (!user && !isPublicRoute) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     return redirectTo(request, '/login')
   }
 

@@ -186,6 +186,11 @@ export function getSupabaseEnvDiagnostics(): {
   }
 }
 
+export function isServiceRoleConfigured(): boolean {
+  const key = resolveServiceRoleKey()
+  return Boolean(key) && !PLACEHOLDER_VALUES.has(key)
+}
+
 export function getServiceRoleKey(): string {
   const key = resolveServiceRoleKey()
 

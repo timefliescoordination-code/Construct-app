@@ -15,4 +15,14 @@ describe('mergeAuthCookieOptions', () => {
     assert.equal(mergeAuthCookieOptions({ maxAge: 3600 }).maxAge, 3600)
     assert.equal(mergeAuthCookieOptions({ maxAge: 3600 }).path, '/')
   })
+
+  it('does not mark cookies Secure or host-scoped in development', () => {
+    const merged = mergeAuthCookieOptions({
+      secure: true,
+      domain: 'vraconstruction.app',
+    })
+    assert.equal(merged.secure, false)
+    assert.equal(merged.domain, undefined)
+    assert.equal(merged.path, '/')
+  })
 })
