@@ -4,6 +4,7 @@ import { COMPANY_SETTINGS_ID } from '@/lib/company/constants'
 import {
   MAX_CLIENT_MESSAGE_LENGTH,
   MAX_REVISION_REQUESTS_PER_HOUR,
+  formatProposalNumber,
   type ProposalMethod,
 } from '@/lib/proposals/constants'
 import { recordProposalAudit, notifyStaffOnProposalRevision } from '@/lib/proposals/notifications'
@@ -79,7 +80,7 @@ function toDocument(
   company: PublicProposalDocument['company'],
 ): PublicProposalDocument {
   return {
-    proposal_number: proposalNumber,
+    proposal_number: formatProposalNumber(proposalNumber, version.version_number),
     title: version.title,
     version_number: version.version_number,
     method: version.method,
@@ -338,7 +339,7 @@ export async function submitPublicRevisionRequest(
       projectId: proposal.project_id,
       createdBy: proposal.created_by,
       proposalId,
-      proposalNumber: proposal.proposal_number,
+      proposalNumber: formatProposalNumber(proposal.proposal_number, versionMeta?.version_number),
       versionNumber: versionMeta?.version_number ?? viewed.document.version_number,
       messagePreview: trimmedMessage.slice(0, 140),
       dedupeKey: `proposal-revision:${versionId}:${Math.floor(Date.now() / (5 * 60 * 1000))}`,

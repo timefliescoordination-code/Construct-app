@@ -6,7 +6,7 @@ import { BrandLogo } from '@/components/layout/brand-logo'
 import { ScrollTable } from '@/components/layout/scroll-table'
 import { formatINR } from '@/lib/currency'
 import { formatAreaRateDisplay } from '@/lib/proposals/calculations'
-import { PROPOSAL_METHOD_LABELS } from '@/lib/proposals/constants'
+import { PROPOSAL_METHOD_LABELS, formatProposalNumber } from '@/lib/proposals/constants'
 import type { PublicProposalDocument, PublicProposalItem } from '@/lib/proposals/types'
 import { cn } from '@/lib/utils'
 
@@ -110,11 +110,9 @@ export function ProposalDocumentView({
         <dl className="mt-6 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
           <div>
             <dt className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Proposal</dt>
-            <dd className="mt-1 font-medium">#{document.proposal_number}</dd>
-          </div>
-          <div>
-            <dt className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Version</dt>
-            <dd className="mt-1 font-medium">{document.version_number}</dd>
+            <dd className="mt-1 font-medium">
+              #{formatProposalNumber(document.proposal_number, document.version_number)}
+            </dd>
           </div>
           <div>
             <dt className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Date</dt>

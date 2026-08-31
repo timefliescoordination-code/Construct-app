@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/table'
 import { ProposalStatusBadge } from '@/components/proposals/proposal-status-badge'
 import { formatINR } from '@/lib/currency'
-import { PROPOSAL_METHOD_LABELS } from '@/lib/proposals/constants'
+import { PROPOSAL_METHOD_LABELS, formatProposalNumber } from '@/lib/proposals/constants'
 import { proposalDisplayClient, proposalDisplayName } from '@/lib/proposals/access'
 import type { ProposalListRow } from '@/lib/proposals/types'
 import { ScrollTable } from '@/components/layout/scroll-table'
@@ -128,7 +128,7 @@ export function ProposalsList({ projectId }: { projectId?: string }) {
               <TableRow key={row.id}>
                 <TableCell className="font-medium">
                   <Link href={`/proposals/${row.id}`} className="hover:underline">
-                    {row.proposal_number}
+                    {formatProposalNumber(row.proposal_number, version?.version_number)}
                   </Link>
                   {row.open_revision_count ? (
                     <p className="text-xs text-amber-700">

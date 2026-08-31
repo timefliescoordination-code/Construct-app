@@ -35,7 +35,7 @@ import {
   withdrawProposalAction,
 } from '@/lib/proposals/actions'
 import { canCreateRevisionFromStatus, canEditProposalVersion, publicSharePath, isProposalConvertedToProject } from '@/lib/proposals/access'
-import { PROPOSAL_METHOD_LABELS } from '@/lib/proposals/constants'
+import { PROPOSAL_METHOD_LABELS, formatProposalNumber } from '@/lib/proposals/constants'
 import type { ProposalDetail, ProposalVersionWithItems, PublicProposalDocument } from '@/lib/proposals/types'
 import { formatINR } from '@/lib/currency'
 import { useCompanyBranding } from '@/lib/hooks/use-company-branding'
@@ -47,7 +47,7 @@ function toDocument(
   logoUrl: string | null,
 ): PublicProposalDocument {
   return {
-    proposal_number: proposal.proposal_number,
+    proposal_number: formatProposalNumber(proposal.proposal_number, version.version_number),
     title: version.title || proposal.title,
     version_number: version.version_number,
     method: version.method,
@@ -217,7 +217,7 @@ export function ProposalDetailContent({ proposal }: { proposal: ProposalDetail }
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-              {proposal.proposal_number}
+              {formatProposalNumber(proposal.proposal_number, current?.version_number)}
             </h1>
             <ProposalStatusBadge status={proposal.status} />
           </div>
@@ -272,7 +272,8 @@ export function ProposalDetailContent({ proposal }: { proposal: ProposalDetail }
                 return (
                   <div key={req.id} className="rounded-lg border border-amber-500/20 bg-background/60 p-3">
                     <p className="text-sm font-medium text-foreground">
-                      {proposal.project?.client_name || proposal.proposed_client_name || 'Client'} · {proposal.proposal_number}
+                      {proposal.project?.client_name || proposal.proposed_client_name || 'Client'} ·{' '}
+                    {formatProposalNumber(proposal.proposal_number, version?.version_number)}
                       {version ? ` — Version ${version.version_number}` : ''}
                     </p>
                     <p className="mt-1 whitespace-pre-line text-sm">{req.client_message}</p>
@@ -296,7 +297,11 @@ export function ProposalDetailContent({ proposal }: { proposal: ProposalDetail }
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Current version</CardDescription>
-            <CardTitle className="text-2xl">Version {current?.version_number ?? '—'}</CardTitle>
+            <CardTitle className="text-2xl">
+              {current
+                ? formatProposalNumber(proposal.proposal_number, current.version_number)
+                : '—'}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
             <p>{current ? PROPOSAL_METHOD_LABELS[current.method] : '—'}</p>
@@ -357,7 +362,9 @@ export function ProposalDetailContent({ proposal }: { proposal: ProposalDetail }
               >
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium">Version {version.version_number}</p>
+                    <p className="font-medium">
+                      {formatProposalNumber(proposal.proposal_number, version.version_number)}
+                    </p>
                     <ProposalStatusBadge status={status} />
                     {version.id === proposal.current_version_id ? (
                       <span className="text-xs font-medium text-primary">Current</span>
@@ -405,7 +412,9 @@ export function ProposalDetailContent({ proposal }: { proposal: ProposalDetail }
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>
-              {previewVersion ? `Version ${previewVersion.version_number}` : 'Preview'}
+              {previewVersion
+                ? formatProposalNumber(proposal.proposal_number, previewVersion.version_number)
+                : 'Preview'}
             </DialogTitle>
           </DialogHeader>
           {previewDoc ? <ProposalDocumentView document={previewDoc} /> : null}

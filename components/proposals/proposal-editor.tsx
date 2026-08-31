@@ -34,7 +34,7 @@ import {
   toQuantity,
   validateProposalForShare,
 } from '@/lib/proposals/calculations'
-import { DEFAULT_PROPOSAL_NOTES, defaultUnitForSection, type ProposalMethod } from '@/lib/proposals/constants'
+import { DEFAULT_PROPOSAL_NOTES, defaultUnitForSection, formatProposalNumber, type ProposalMethod } from '@/lib/proposals/constants'
 import type { ProposalDetail, ProposalItemDraft, PublicProposalDocument } from '@/lib/proposals/types'
 import { formatINR } from '@/lib/currency'
 import { cn } from '@/lib/utils'
@@ -228,7 +228,9 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
   }
 
   const previewDocument: PublicProposalDocument = {
-    proposal_number: proposal?.proposal_number || 'DRAFT',
+    proposal_number: proposal?.proposal_number
+      ? formatProposalNumber(proposal.proposal_number, currentVersion?.version_number ?? 1)
+      : 'DRAFT',
     title: title || 'Construction proposal',
     version_number: currentVersion?.version_number ?? 1,
     method,
@@ -272,7 +274,9 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
             </Link>
           </Button>
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            {mode === 'create' ? 'Create proposal' : `Edit ${proposal?.proposal_number ?? 'proposal'}`}
+            {mode === 'create'
+              ? 'Create proposal'
+              : `Edit ${proposal ? formatProposalNumber(proposal.proposal_number, currentVersion?.version_number) : 'proposal'}`}
           </h1>
           <p className="text-sm text-muted-foreground">
             Enter proposed project details here. This is not added to the project list until you move

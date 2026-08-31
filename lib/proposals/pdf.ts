@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable'
 import { format } from 'date-fns'
 import type { PublicProposalDocument } from '@/lib/proposals/types'
 import { formatAreaRateDisplay } from '@/lib/proposals/calculations'
-import { PROPOSAL_METHOD_LABELS } from '@/lib/proposals/constants'
+import { PROPOSAL_METHOD_LABELS, formatProposalNumber } from '@/lib/proposals/constants'
 
 const MARGIN_X = 48
 const INK: [number, number, number] = [28, 28, 28]
@@ -103,9 +103,9 @@ export function downloadProposalPdf(document: PublicProposalDocument) {
   pdf.text(document.project_address || '', MARGIN_X, y, { maxWidth: pageWidth - MARGIN_X * 2 })
   y += 28
 
+  const displayNumber = formatProposalNumber(document.proposal_number, document.version_number)
   const meta = [
-    `Proposal #${document.proposal_number}`,
-    `Version ${document.version_number}`,
+    `Proposal #${displayNumber}`,
     format(new Date(document.proposal_date), 'd MMM yyyy'),
     PROPOSAL_METHOD_LABELS[document.method],
   ]
@@ -165,5 +165,5 @@ export function downloadProposalPdf(document: PublicProposalDocument) {
     pdf.text(notes, MARGIN_X, y)
   }
 
-  pdf.save(`${document.proposal_number}-proposal.pdf`)
+  pdf.save(`${displayNumber.replaceAll('/', '-')}-proposal.pdf`)
 }

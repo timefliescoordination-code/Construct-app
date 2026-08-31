@@ -109,3 +109,19 @@ export function defaultUnitForSection(section: ProposalItemSection): string {
   if (section === 'boq') return 'item'
   return 'sqft'
 }
+
+/** Stored series is VRA-106; display adds /version from the first version onward. */
+export function proposalSeriesNumber(proposalNumber: string): string {
+  return proposalNumber.replace(/\/\d+$/, '').trim()
+}
+
+export function formatProposalNumber(
+  proposalNumber: string,
+  versionNumber?: number | null,
+): string {
+  const series = proposalSeriesNumber(proposalNumber)
+  if (!series) return proposalNumber
+  const parsed = Number(versionNumber)
+  const version = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1
+  return `${series}/${version}`
+}
