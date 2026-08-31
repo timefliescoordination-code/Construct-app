@@ -23,6 +23,7 @@ export const ENGINEER_RESTRICTED_PROJECT_TABS = new Set([
   "payments",
   "additional-works",
   "reports",
+  "proposals",
 ])
 
 /** Tabs a site engineer may open on a project (no payments, reports, or additional works). */
@@ -89,6 +90,11 @@ export function canUserUploadSitePhotosOnProject(
 /** Only admin and PM can edit milestones, project settings, or approve expenses. */
 export function canManageProjectData(role: UserRole | null): boolean {
   return role === "admin" || role === "pm"
+}
+
+/** Admin and PM manage client quotations. Reuses canManageProjectData — no second permission system. */
+export function canManageProposals(role: UserRole | null): boolean {
+  return canManageProjectData(role)
 }
 
 /** Admin-only unified expenses hub and finance APIs. */

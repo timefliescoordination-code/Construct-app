@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Wallet,
   Building2,
+  FileText,
   ClipboardList,
   Settings,
   Tags,
@@ -68,6 +69,16 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     ...(role !== "customer"
       ? [
           { id: "projects", href: "/projects", label: "Projects", icon: FolderKanban },
+          ...(role === "admin" || role === "pm"
+            ? [
+                {
+                  id: "proposals",
+                  href: "/proposals",
+                  label: "Proposals",
+                  icon: FileText,
+                },
+              ]
+            : []),
           ...(role === "admin" || role === "pm" || role === "engineer"
             ? [
                 {
@@ -147,6 +158,9 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     }
     if (href === "/change-requests") {
       return pathname.startsWith("/change-requests")
+    }
+    if (href === "/proposals") {
+      return pathname.startsWith("/proposals")
     }
     if (href === "/admin/company") {
       return pathname.startsWith("/admin/company")

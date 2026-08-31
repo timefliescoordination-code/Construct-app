@@ -5,7 +5,19 @@ import { dashboardPath } from '@/lib/auth/dashboard-path'
 import { getSupabaseEnv, isSupabaseConfigured } from '@/lib/supabase/env'
 
 // Public routes that don't require authentication
-const publicRoutes = ['/login', '/signup', '/auth/callback', '/auth/error', '/auth/signout', '/setup']
+const publicRoutes = [
+  '/login',
+  '/signup',
+  '/auth/callback',
+  '/auth/error',
+  '/auth/signout',
+  '/setup',
+]
+
+/** Public client quotation — must not match /proposals (admin list). */
+function isPublicProposalRoute(pathname: string) {
+  return pathname === '/proposal' || pathname.startsWith('/proposal/')
+}
 
 /** Telegram servers call the webhook without app cookies. Auth is via TELEGRAM_WEBHOOK_SECRET. */
 function isTelegramWebhookRoute(pathname: string) {
@@ -13,7 +25,11 @@ function isTelegramWebhookRoute(pathname: string) {
 }
 
 function isPublicApiRoute(pathname: string) {
-  return pathname.startsWith('/api/auth/')
+  return (
+    pathname.startsWith('/api/auth/') ||
+    pathname.startsWith('/api/public/') ||
+    pathname === '/api/company/branding'
+  )
 }
 
 function redirectTo(request: NextRequest, pathname: string) {
@@ -24,6 +40,7 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const isPublicRoute =
     publicRoutes.some((route) => pathname.startsWith(route)) ||
+    isPublicProposalRoute(pathname) ||
     isTelegramWebhookRoute(pathname) ||
     isPublicApiRoute(pathname)
 
@@ -91,6 +108,7 @@ export async function updateSession(request: NextRequest) {
       if (
         pathname.startsWith('/admin') ||
         pathname === '/pm' ||
+        pathname.startsWith('/proposals') ||
         pathname.startsWith('/projects/new') ||
         pathname.includes('/edit')
       ) {
@@ -104,6 +122,7 @@ export async function updateSession(request: NextRequest) {
         pathname === '/pm' ||
         pathname === '/engineer' ||
         pathname.startsWith('/change-requests') ||
+        pathname.startsWith('/proposals') ||
         pathname.startsWith('/projects/new') ||
         pathname.includes('/edit') ||
         pathname.startsWith('/integrations')

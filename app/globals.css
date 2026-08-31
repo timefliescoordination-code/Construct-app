@@ -192,15 +192,19 @@
   }
 
   #client-payments-print-root,
-  #client-payments-print-root * {
+  #client-payments-print-root *,
+  #proposal-print-root,
+  #proposal-print-root * {
     visibility: visible;
   }
 
-  #client-payments-print-root {
+  #client-payments-print-root,
+  #proposal-print-root {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
     display: block !important;
+    background: #fff !important;
   }
 }

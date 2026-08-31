@@ -49,6 +49,7 @@ export function CompanySettingsContent() {
     email: "",
     address: "",
     website: "",
+    proposal_default_notes: "",
   })
 
   const loadSettings = useCallback(async () => {
@@ -69,6 +70,7 @@ export function CompanySettingsContent() {
         email: data?.email ?? "",
         address: data?.address ?? "",
         website: data?.website ?? "",
+        proposal_default_notes: data?.proposal_default_notes ?? "",
       })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load settings")
@@ -90,6 +92,7 @@ export function CompanySettingsContent() {
       formData.set("email", form.email)
       formData.set("address", form.address)
       formData.set("website", form.website)
+      formData.set("proposal_default_notes", form.proposal_default_notes)
 
       const result = await updateCompanySettingsAction(formData)
       if (!result.ok) {
@@ -233,6 +236,21 @@ export function CompanySettingsContent() {
                     }
                     placeholder="Office address"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="proposal_default_notes">Default proposal notes</Label>
+                  <Textarea
+                    id="proposal_default_notes"
+                    rows={6}
+                    value={form.proposal_default_notes}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, proposal_default_notes: e.target.value }))
+                    }
+                    placeholder="Copied onto new proposals. Changing this later does not rewrite existing quotations."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    New proposals copy these notes onto that version only. Existing proposals stay unchanged.
+                  </p>
                 </div>
                 <Button onClick={() => void handleSave()} disabled={saving}>
                   {saving ? (

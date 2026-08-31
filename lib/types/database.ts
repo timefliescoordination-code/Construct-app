@@ -28,6 +28,7 @@ export interface CompanySettings {
   address: string | null
   website: string | null
   logo_path: string | null
+  proposal_default_notes?: string | null
   updated_at: string
   updated_by: string | null
 }

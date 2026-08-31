@@ -39,6 +39,10 @@ export function getSupabaseErrorMessage(error: unknown): string {
       return 'Expense invoice tables are missing. In Supabase SQL Editor, run supabase/expense-invoices-module.sql, then refresh this page.'
     }
 
+    if (/proposals|proposal_versions|proposal_items|proposal_revision_requests/i.test(msg)) {
+      return 'Proposal tables are missing. In Supabase SQL Editor, run supabase/migrations/20260831120000_proposals.sql, then refresh this page.'
+    }
+
     if (/finance_categories|company_expenses|company_income|personal_expenses/i.test(msg)) {
       return 'Finance tables are missing. In Supabase SQL Editor, run (in order): supabase/migrations/20260602120000_company_personal_expenses.sql, 20260602130000_company_income.sql, 20260602140000_finance_categories.sql — then refresh.'
     }

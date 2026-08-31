@@ -40,6 +40,7 @@ export function ExpenseShortcutListener() {
   useEffect(() => {
     if (isLoading) return
     if (role === "customer") return
+    if (pathname.startsWith("/proposal/")) return
 
     let cancelled = false
     const url = "/api/projects?summary=true"
@@ -58,7 +59,7 @@ export function ExpenseShortcutListener() {
     return () => {
       cancelled = true
     }
-  }, [isLoading, role, registry])
+  }, [isLoading, role, registry, pathname])
 
   const openProjectExpense = useCallback(
     (projectId: string) => {
@@ -185,6 +186,7 @@ export function ExpenseShortcutListener() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (pathname.startsWith("/proposal/")) return
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
       if (isTypingTarget(e.target)) return
       const key = e.key.toLowerCase()
@@ -201,7 +203,7 @@ export function ExpenseShortcutListener() {
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [handleCtrlE, handleCtrlL, role])
+  }, [handleCtrlE, handleCtrlL, role, pathname])
 
   return (
     <>

@@ -53,6 +53,7 @@ export async function updateCompanySettingsAction(
   const email = normalizeOptional(formData.get('email'))
   const address = normalizeOptional(formData.get('address'))
   const website = normalizeOptional(formData.get('website'))
+  const proposalDefaultNotes = normalizeOptional(formData.get('proposal_default_notes'))
 
   if (!companyName) {
     return { ok: false, error: 'Company name is required.' }
@@ -71,6 +72,7 @@ export async function updateCompanySettingsAction(
       email,
       address,
       website,
+      proposal_default_notes: proposalDefaultNotes,
       updated_by: auth.user.id,
       updated_at: new Date().toISOString(),
     })

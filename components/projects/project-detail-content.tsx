@@ -12,6 +12,7 @@ import {
   Flag, 
   PlusCircle, 
   FileBarChart, 
+  FileText,
   Camera,
   PenLine,
   Users,
@@ -35,6 +36,7 @@ import { AdditionalWorksTab } from "./project-detail/additional-works-tab"
 import { ReportsTab } from "./project-detail/reports-tab"
 import { PhotosTab } from "./project-detail/photos-tab"
 import { DesignTab } from "./project-detail/design-tab"
+import { ProjectProposalsTab } from "./project-detail/proposals-tab"
 import { isConstructionActive } from "@/lib/projects/lifecycle"
 import { ManpowerTab } from "./project-detail/manpower-tab"
 import {
@@ -94,6 +96,7 @@ interface ProjectDetailContentProps {
 const PROJECT_TAB_IDS = [
   "design",
   "overview",
+  "proposals",
   "expenses",
   "payments",
   "milestones",
@@ -325,6 +328,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
       [
         { id: "design", label: "Design", icon: PenLine },
         { id: "overview", label: "Overview", icon: LayoutDashboard },
+        { id: "proposals", label: "Proposals", icon: FileText },
         { id: "expenses", label: "Expenses", icon: Receipt },
         { id: "payments", label: "Payments", icon: CreditCard },
         { id: "milestones", label: "Milestones", icon: Flag },
@@ -491,6 +495,8 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
             onExpenseStatusChange={refreshProject}
           />
         )
+      case "proposals":
+        return <ProjectProposalsTab projectId={project.id} />
       case "expenses":
         return (
           <ExpensesTab
