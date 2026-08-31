@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BoqExcelImport } from '@/components/proposals/boq-excel-import'
 import { formatINR } from '@/lib/currency'
 import { linePrice, toQuantity } from '@/lib/proposals/calculations'
 import { PROPOSAL_UNITS, defaultUnitForSection, type ProposalItemSection } from '@/lib/proposals/constants'
@@ -75,6 +76,8 @@ export function ProposalItemsEditor({
         </p>
       </div>
 
+      {section === 'boq' ? <BoqExcelImport items={items} onChange={onChange} /> : null}
+
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full min-w-[52rem] text-sm">
           <thead className="bg-muted/50 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -92,7 +95,9 @@ export function ProposalItemsEditor({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
-                  No items yet.
+                  {section === 'boq'
+                    ? 'No items yet. Upload an Excel file or add items one by one.'
+                    : 'No items yet.'}
                 </td>
               </tr>
             ) : (

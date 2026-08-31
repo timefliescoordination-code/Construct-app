@@ -441,7 +441,7 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
           title="BOQ"
           items={items}
           onChange={setItems}
-          emptyHint="Add each measurable item with quantity, unit, and rate."
+          emptyHint="Upload an Excel or CSV file, or add each measurable item with quantity, unit, and rate."
         />
       )}
 

@@ -101,6 +101,10 @@ export const MAX_REVISION_REQUESTS_PER_HOUR = 8
 
 export const MAX_CLIENT_MESSAGE_LENGTH = 4000
 
+export const MAX_BOQ_IMPORT_ROWS = 500
+
+export const MAX_BOQ_IMPORT_BYTES = 8 * 1024 * 1024
+
 export function defaultUnitForSection(section: ProposalItemSection): string {
   if (section === 'boq') return 'item'
   return 'sqft'
