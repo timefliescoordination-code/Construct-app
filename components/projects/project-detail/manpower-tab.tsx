@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -70,6 +71,8 @@ import {
   updateManpowerWeekRateAction,
   upsertManpowerCellAction,
 } from "@/lib/projects/manpower-actions"
+import { useExpenseShortcutRegistryOptional } from "@/lib/keyboard/expense-shortcut-context"
+import { AddWeekShortcutTooltip } from "@/components/keyboard/add-expense-shortcut-tooltip"
 
 const UNASSIGNED_TEAM_ID = "__unassigned__"
 
@@ -96,6 +99,10 @@ export function ManpowerTab({
   readOnly = false,
 }: ManpowerTabProps) {
   const { isAdmin } = useAuth()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const manpowerShortcuts = useExpenseShortcutRegistryOptional()
   const [data, setData] = useState<ManpowerPayload | null>(null)
   const [teamSummaries, setTeamSummaries] = useState<LabourTeamExpenseSummary[]>([])
   const [totalApprovedLabour, setTotalApprovedLabour] = useState(0)
@@ -211,13 +218,28 @@ export function ManpowerTab({
   const isDuplicateSelectedWeek =
     selectedWeekStartIso != null && existingWeekStarts.has(selectedWeekStartIso)
 
-  const openAddWeekDialog = () => {
-    const existingStarts = weeks.map((week) => week.startDate)
+  const openAddWeekDialog = useCallback(() => {
+    const existingStarts = (data?.weeks ?? []).map((week) => week.startDate)
     const suggestedIso = nextWeekStartDate(projectStartDate, existingStarts)
     setSelectedWeekDate(new Date(`${suggestedIso}T00:00:00`))
     setSelectedMilestoneId(stageOptions[0]?.id ?? "")
     setAddWeekOpen(true)
-  }
+  }, [data, projectStartDate, stageOptions])
+
+  useEffect(() => {
+    if (readOnly || !manpowerShortcuts) return
+    return manpowerShortcuts.registerManpowerAdd(projectId, openAddWeekDialog)
+  }, [readOnly, manpowerShortcuts, projectId, openAddWeekDialog])
+
+  useEffect(() => {
+    if (readOnly || loading) return
+    if (searchParams.get("addWeek") !== "1") return
+    openAddWeekDialog()
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete("addWeek")
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [readOnly, loading, searchParams, openAddWeekDialog, router, pathname])
 
   const handleAddWeek = async () => {
     if (!selectedMilestoneId) {
@@ -373,10 +395,12 @@ export function ManpowerTab({
             </Button>
           )}
           {!readOnly && (
-            <Button size="sm" onClick={openAddWeekDialog}>
-              <Plus className="mr-1 h-4 w-4" />
-              Add Week
-            </Button>
+            <AddWeekShortcutTooltip>
+              <Button size="sm" onClick={openAddWeekDialog}>
+                <Plus className="mr-1 h-4 w-4" />
+                Add Week
+              </Button>
+            </AddWeekShortcutTooltip>
           )}
         </div>
       </div>

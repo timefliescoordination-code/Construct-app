@@ -7,6 +7,7 @@ import { useExpenseShortcutRegistry } from "@/lib/keyboard/expense-shortcut-cont
 import { ExpenseTypePickerDialog } from "@/components/keyboard/expense-type-picker-dialog"
 import { CompanyFinancePickerDialog } from "@/components/keyboard/company-finance-picker-dialog"
 import { ProjectPickerDialog } from "@/components/finance/project-picker-dialog"
+import { canEnterManpowerData } from "@/lib/permissions"
 
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false
@@ -29,6 +30,9 @@ export function ExpenseShortcutListener() {
   const [fullPickerOpen, setFullPickerOpen] = useState(false)
   const [companyPickerOpen, setCompanyPickerOpen] = useState(false)
   const [projectPickerOpen, setProjectPickerOpen] = useState(false)
+  const [projectPickerMode, setProjectPickerMode] = useState<"expense" | "manpower">(
+    "expense",
+  )
 
   useEffect(() => {
     if (isLoading) return
@@ -76,6 +80,39 @@ export function ExpenseShortcutListener() {
     router.push("/admin/expenses?tab=personal&add=1")
   }, [pathname, registry, router])
 
+  const openProjectManpower = useCallback(
+    (projectId: string) => {
+      if (registry.triggerManpowerAdd(projectId)) return
+      router.push(`/projects/${projectId}?tab=manpower&addWeek=1`)
+    },
+    [registry, router],
+  )
+
+  const openManpowerPicker = useCallback(() => {
+    if (registry.projects.length === 1) {
+      openProjectManpower(registry.projects[0].id)
+      return
+    }
+    setProjectPickerMode("manpower")
+    setProjectPickerOpen(true)
+  }, [openProjectManpower, registry.projects])
+
+  const handleCtrlL = useCallback(() => {
+    if (isLoading || !canEnterManpowerData(role)) return
+
+    const projectMatch = pathname.match(PROJECT_ID_PATTERN)
+    if (projectMatch) {
+      openProjectManpower(projectMatch[1])
+      return
+    }
+
+    if (pathname === "/login" || pathname === "/signup" || pathname === "/customer") {
+      return
+    }
+
+    openManpowerPicker()
+  }, [isLoading, role, pathname, openProjectManpower, openManpowerPicker])
+
   const handleCtrlE = useCallback(() => {
     if (isLoading || !role || role === "customer") return
 
@@ -117,14 +154,23 @@ export function ExpenseShortcutListener() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "e") return
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
       if (isTypingTarget(e.target)) return
-      e.preventDefault()
-      handleCtrlE()
+      const key = e.key.toLowerCase()
+      if (key === "e") {
+        e.preventDefault()
+        handleCtrlE()
+        return
+      }
+      if (key === "l") {
+        if (!canEnterManpowerData(role)) return
+        e.preventDefault()
+        handleCtrlL()
+      }
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [handleCtrlE])
+  }, [handleCtrlE, handleCtrlL, role])
 
   return (
     <>
@@ -133,6 +179,7 @@ export function ExpenseShortcutListener() {
         onOpenChange={setFullPickerOpen}
         onPickProject={() => {
           setFullPickerOpen(false)
+          setProjectPickerMode("expense")
           setProjectPickerOpen(true)
         }}
         onPickCompanyExpense={() => {
@@ -164,6 +211,16 @@ export function ExpenseShortcutListener() {
         open={projectPickerOpen}
         onOpenChange={setProjectPickerOpen}
         projects={registry.projects}
+        title={
+          projectPickerMode === "manpower"
+            ? "Select project for manpower"
+            : "Select project"
+        }
+        hrefForProject={
+          projectPickerMode === "manpower"
+            ? (id) => `/projects/${id}?tab=manpower&addWeek=1`
+            : undefined
+        }
       />
     </>
   )
