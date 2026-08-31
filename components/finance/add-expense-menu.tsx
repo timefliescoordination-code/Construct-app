@@ -8,6 +8,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ProjectPickerDialog } from "@/components/finance/project-picker-dialog"
@@ -28,6 +31,7 @@ export function AddExpenseMenu({
 }: AddExpenseMenuProps) {
   const router = useRouter()
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerMode, setPickerMode] = useState<"expense" | "receipt">("expense")
 
   return (
     <>
@@ -44,14 +48,28 @@ export function AddExpenseMenu({
             </Button>
           </DropdownMenuTrigger>
         </AddExpenseShortcutTooltip>
-        <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuItem
-            onSelect={() => {
-              window.setTimeout(() => setPickerOpen(true), 0)
-            }}
-          >
-            Project expense
-          </DropdownMenuItem>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Project expense</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-56">
+              <DropdownMenuItem
+                onSelect={() => {
+                  setPickerMode("expense")
+                  window.setTimeout(() => setPickerOpen(true), 0)
+                }}
+              >
+                Project expense
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setPickerMode("receipt")
+                  window.setTimeout(() => setPickerOpen(true), 0)
+                }}
+              >
+                Project payments (Receipts)
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
           <DropdownMenuItem
             onSelect={() =>
               router.push("/admin/expenses?tab=company&add=1")
@@ -80,6 +98,16 @@ export function AddExpenseMenu({
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         projects={projects}
+        title={
+          pickerMode === "receipt"
+            ? "Select project for receipts"
+            : "Select project"
+        }
+        hrefForProject={
+          pickerMode === "receipt"
+            ? (id) => `/projects/${id}?tab=payments&addReceipt=1`
+            : undefined
+        }
       />
     </>
   )

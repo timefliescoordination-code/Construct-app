@@ -7,7 +7,8 @@ import { useExpenseShortcutRegistry } from "@/lib/keyboard/expense-shortcut-cont
 import { ExpenseTypePickerDialog } from "@/components/keyboard/expense-type-picker-dialog"
 import { CompanyFinancePickerDialog } from "@/components/keyboard/company-finance-picker-dialog"
 import { ProjectPickerDialog } from "@/components/finance/project-picker-dialog"
-import { canEnterManpowerData } from "@/lib/permissions"
+import { ProjectExpensePickerDialog } from "@/components/keyboard/project-expense-picker-dialog"
+import { canEnterManpowerData, canViewProjectFinancials } from "@/lib/permissions"
 
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false
@@ -30,9 +31,11 @@ export function ExpenseShortcutListener() {
   const [fullPickerOpen, setFullPickerOpen] = useState(false)
   const [companyPickerOpen, setCompanyPickerOpen] = useState(false)
   const [projectPickerOpen, setProjectPickerOpen] = useState(false)
-  const [projectPickerMode, setProjectPickerMode] = useState<"expense" | "manpower">(
-    "expense",
-  )
+  const [projectPickerMode, setProjectPickerMode] = useState<
+    "expense" | "manpower" | "receipt"
+  >("expense")
+  const [projectKindPickerOpen, setProjectKindPickerOpen] = useState(false)
+  const [pendingProjectId, setPendingProjectId] = useState<string | null>(null)
 
   useEffect(() => {
     if (isLoading) return
@@ -64,6 +67,29 @@ export function ExpenseShortcutListener() {
     },
     [registry, router],
   )
+
+  const openProjectReceipt = useCallback(
+    (projectId: string) => {
+      if (registry.triggerClientPaymentAdd(projectId)) return
+      router.push(`/projects/${projectId}?tab=payments&addReceipt=1`)
+    },
+    [registry, router],
+  )
+
+  const openProjectKindPicker = useCallback((projectId?: string) => {
+    setPendingProjectId(projectId ?? null)
+    setProjectKindPickerOpen(true)
+  }, [])
+
+  const chooseProjectForExpense = useCallback(() => {
+    setProjectPickerMode("expense")
+    setProjectPickerOpen(true)
+  }, [])
+
+  const chooseProjectForReceipt = useCallback(() => {
+    setProjectPickerMode("receipt")
+    setProjectPickerOpen(true)
+  }, [])
 
   const openCompanyExpense = useCallback(() => {
     if (pathname === "/admin/expenses" && registry.triggerCompanyExpense()) return
@@ -118,7 +144,11 @@ export function ExpenseShortcutListener() {
 
     const projectMatch = pathname.match(PROJECT_ID_PATTERN)
     if (projectMatch) {
-      openProjectExpense(projectMatch[1])
+      if (canViewProjectFinancials(role)) {
+        openProjectKindPicker(projectMatch[1])
+      } else {
+        openProjectExpense(projectMatch[1])
+      }
       return
     }
 
@@ -150,6 +180,7 @@ export function ExpenseShortcutListener() {
     openProjectExpense,
     openPersonalExpense,
     registry,
+    openProjectKindPicker,
   ])
 
   useEffect(() => {
@@ -179,8 +210,13 @@ export function ExpenseShortcutListener() {
         onOpenChange={setFullPickerOpen}
         onPickProject={() => {
           setFullPickerOpen(false)
-          setProjectPickerMode("expense")
-          setProjectPickerOpen(true)
+          window.setTimeout(() => {
+            if (canViewProjectFinancials(role)) {
+              openProjectKindPicker()
+            } else {
+              chooseProjectForExpense()
+            }
+          }, 0)
         }}
         onPickCompanyExpense={() => {
           setFullPickerOpen(false)
@@ -207,6 +243,31 @@ export function ExpenseShortcutListener() {
           openCompanyIncome()
         }}
       />
+      <ProjectExpensePickerDialog
+        open={projectKindPickerOpen}
+        onOpenChange={setProjectKindPickerOpen}
+        showReceipts={canViewProjectFinancials(role)}
+        onPickExpense={() => {
+          setProjectKindPickerOpen(false)
+          window.setTimeout(() => {
+            if (pendingProjectId) {
+              openProjectExpense(pendingProjectId)
+              return
+            }
+            chooseProjectForExpense()
+          }, 0)
+        }}
+        onPickReceipt={() => {
+          setProjectKindPickerOpen(false)
+          window.setTimeout(() => {
+            if (pendingProjectId) {
+              openProjectReceipt(pendingProjectId)
+              return
+            }
+            chooseProjectForReceipt()
+          }, 0)
+        }}
+      />
       <ProjectPickerDialog
         open={projectPickerOpen}
         onOpenChange={setProjectPickerOpen}
@@ -214,12 +275,16 @@ export function ExpenseShortcutListener() {
         title={
           projectPickerMode === "manpower"
             ? "Select project for manpower"
-            : "Select project"
+            : projectPickerMode === "receipt"
+              ? "Select project for receipts"
+              : "Select project"
         }
         hrefForProject={
           projectPickerMode === "manpower"
             ? (id) => `/projects/${id}?tab=manpower&addWeek=1`
-            : undefined
+            : projectPickerMode === "receipt"
+              ? (id) => `/projects/${id}?tab=payments&addReceipt=1`
+              : undefined
         }
       />
     </>

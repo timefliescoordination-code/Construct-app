@@ -23,7 +23,7 @@ const OPTIONS = [
   {
     id: "project",
     label: "Project expense",
-    hint: "Bill for a construction project",
+    hint: "Bills or project payments (receipts)",
     icon: Building2,
   },
   {

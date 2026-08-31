@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import { useParams } from "next/navigation"
+import { useState, useEffect, useMemo, useCallback } from "react"
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -79,6 +79,7 @@ import {
 } from "@/lib/project-timeline"
 import { ClientPaymentsPrintSheet } from "@/components/projects/project-detail/client-payments-print"
 import { getProjectClientDisplayName } from "@/lib/staff-labels"
+import { useExpenseShortcutRegistryOptional } from "@/lib/keyboard/expense-shortcut-context"
 
 interface ClientPayment {
   id: string
@@ -159,8 +160,12 @@ export function PaymentsTab({
   onProjectChange,
 }: PaymentsTabProps = {}) {
   const params = useParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const projectId = propProjectId || project?.id || (params?.id as string)
   const { canManageProjects } = useAuth()
+  const paymentShortcuts = useExpenseShortcutRegistryOptional()
   
   const [clientPayments, setClientPayments] = useState<ClientPayment[]>(
     () => (project?.client_payments as ClientPayment[]) ?? [],
@@ -265,6 +270,32 @@ export function PaymentsTab({
       setIsLoading(false)
     }
   }
+
+  const openAddClientPayment = useCallback(() => {
+    setIsClientDialogOpen(true)
+  }, [])
+
+  useEffect(() => {
+    if (!canManageProjects || !projectId || !paymentShortcuts) return
+    return paymentShortcuts.registerClientPaymentAdd(projectId, openAddClientPayment)
+  }, [canManageProjects, projectId, paymentShortcuts, openAddClientPayment])
+
+  useEffect(() => {
+    if (!canManageProjects || isLoading) return
+    if (searchParams.get("addReceipt") !== "1") return
+    openAddClientPayment()
+    const nextParams = new URLSearchParams(searchParams.toString())
+    nextParams.delete("addReceipt")
+    const qs = nextParams.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [
+    canManageProjects,
+    isLoading,
+    searchParams,
+    openAddClientPayment,
+    router,
+    pathname,
+  ])
 
   const handleAddClientPayment = async () => {
     const stage = milestones.find((m) => m.id === clientMilestoneId)

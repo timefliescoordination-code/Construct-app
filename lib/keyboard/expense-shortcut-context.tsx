@@ -15,6 +15,7 @@ export type ProjectOption = { id: string; name: string }
 type ExpenseShortcutHandlers = {
   projectAdd: Map<string, () => void>
   manpowerAdd: Map<string, () => void>
+  clientPaymentAdd: Map<string, () => void>
   openCompanyExpense: (() => void) | null
   openCompanyIncome: (() => void) | null
   openPersonalExpense: (() => void) | null
@@ -24,12 +25,14 @@ type ExpenseShortcutHandlers = {
 type ExpenseShortcutContextValue = {
   registerProjectAdd: (projectId: string, openAdd: () => void) => () => void
   registerManpowerAdd: (projectId: string, openAdd: () => void) => () => void
+  registerClientPaymentAdd: (projectId: string, openAdd: () => void) => () => void
   registerCompanyExpense: (open: () => void) => () => void
   registerCompanyIncome: (open: () => void) => () => void
   registerPersonalExpense: (open: () => void) => () => void
   registerEngineerExpense: (open: () => void) => () => void
   triggerProjectAdd: (projectId: string) => boolean
   triggerManpowerAdd: (projectId: string) => boolean
+  triggerClientPaymentAdd: (projectId: string) => boolean
   triggerCompanyExpense: () => boolean
   triggerCompanyIncome: () => boolean
   triggerPersonalExpense: () => boolean
@@ -50,6 +53,7 @@ export function ExpenseShortcutRegistryProvider({
   const handlersRef = useRef<ExpenseShortcutHandlers>({
     projectAdd: new Map(),
     manpowerAdd: new Map(),
+    clientPaymentAdd: new Map(),
     openCompanyExpense: null,
     openCompanyIncome: null,
     openPersonalExpense: null,
@@ -72,6 +76,16 @@ export function ExpenseShortcutRegistryProvider({
       handlersRef.current.manpowerAdd.set(projectId, openAdd)
       return () => {
         handlersRef.current.manpowerAdd.delete(projectId)
+      }
+    },
+    [],
+  )
+
+  const registerClientPaymentAdd = useCallback(
+    (projectId: string, openAdd: () => void) => {
+      handlersRef.current.clientPaymentAdd.set(projectId, openAdd)
+      return () => {
+        handlersRef.current.clientPaymentAdd.delete(projectId)
       }
     },
     [],
@@ -131,6 +145,15 @@ export function ExpenseShortcutRegistryProvider({
     return false
   }, [])
 
+  const triggerClientPaymentAdd = useCallback((projectId: string) => {
+    const fn = handlersRef.current.clientPaymentAdd.get(projectId)
+    if (fn) {
+      fn()
+      return true
+    }
+    return false
+  }, [])
+
   const triggerCompanyExpense = useCallback(() => {
     const fn = handlersRef.current.openCompanyExpense
     if (fn) {
@@ -175,12 +198,14 @@ export function ExpenseShortcutRegistryProvider({
     (): ExpenseShortcutContextValue => ({
       registerProjectAdd,
       registerManpowerAdd,
+      registerClientPaymentAdd,
       registerCompanyExpense,
       registerCompanyIncome,
       registerPersonalExpense,
       registerEngineerExpense,
       triggerProjectAdd,
       triggerManpowerAdd,
+      triggerClientPaymentAdd,
       triggerCompanyExpense,
       triggerCompanyIncome,
       triggerPersonalExpense,
@@ -191,12 +216,14 @@ export function ExpenseShortcutRegistryProvider({
     [
       registerProjectAdd,
       registerManpowerAdd,
+      registerClientPaymentAdd,
       registerCompanyExpense,
       registerCompanyIncome,
       registerPersonalExpense,
       registerEngineerExpense,
       triggerProjectAdd,
       triggerManpowerAdd,
+      triggerClientPaymentAdd,
       triggerCompanyExpense,
       triggerCompanyIncome,
       triggerPersonalExpense,
