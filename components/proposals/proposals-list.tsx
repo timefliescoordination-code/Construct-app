@@ -25,6 +25,7 @@ import {
 import { ProposalStatusBadge } from '@/components/proposals/proposal-status-badge'
 import { formatINR } from '@/lib/currency'
 import { PROPOSAL_METHOD_LABELS } from '@/lib/proposals/constants'
+import { proposalDisplayClient, proposalDisplayName } from '@/lib/proposals/access'
 import type { ProposalListRow } from '@/lib/proposals/types'
 import { ScrollTable } from '@/components/layout/scroll-table'
 
@@ -82,17 +83,19 @@ export function ProposalsList({ projectId }: { projectId?: string }) {
           <EmptyTitle>No proposals yet</EmptyTitle>
           <EmptyDescription>
             {projectId
-              ? 'No proposals for this project yet.'
-              : 'Create a proposal for one of your projects.'}
+              ? 'No proposals have been moved onto this project yet.'
+              : 'Create a proposal with a proposed project name and address. It is added to the project list only when you move it.'}
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button asChild>
-            <Link href={projectId ? `/proposals/new?projectId=${projectId}` : '/proposals/new'}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create proposal
-            </Link>
-          </Button>
+          {projectId ? null : (
+            <Button asChild>
+              <Link href="/proposals/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Create proposal
+              </Link>
+            </Button>
+          )}
         </EmptyContent>
       </Empty>
     )
@@ -104,7 +107,7 @@ export function ProposalsList({ projectId }: { projectId?: string }) {
         <TableHeader>
           <TableRow>
             <TableHead>Proposal No.</TableHead>
-            <TableHead>Project</TableHead>
+            <TableHead>Proposed project</TableHead>
             <TableHead>Client</TableHead>
             <TableHead>Method</TableHead>
             <TableHead>Version</TableHead>
@@ -134,8 +137,15 @@ export function ProposalsList({ projectId }: { projectId?: string }) {
                     </p>
                   ) : null}
                 </TableCell>
-                <TableCell>{row.project?.name ?? '—'}</TableCell>
-                <TableCell>{row.project?.client_name || '—'}</TableCell>
+                <TableCell>
+                  <div>{proposalDisplayName(row) || '—'}</div>
+                  {row.project_id ? (
+                    <p className="text-xs text-muted-foreground">On project list</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Proposal only</p>
+                  )}
+                </TableCell>
+                <TableCell>{proposalDisplayClient(row) || '—'}</TableCell>
                 <TableCell>
                   {version?.method ? PROPOSAL_METHOD_LABELS[version.method] : '—'}
                 </TableCell>

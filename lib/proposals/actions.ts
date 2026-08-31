@@ -17,6 +17,7 @@ import {
   canShareProposalVersion,
 } from '@/lib/proposals/access'
 import { recordProposalAudit } from '@/lib/proposals/notifications'
+import { createProjectAction } from '@/lib/projects/actions'
 import type { ProposalEditorPayload } from '@/lib/proposals/types'
 import type { ProposalItemSection, ProposalMethod } from '@/lib/proposals/constants'
 import type { UserRole } from '@/lib/types/database'
@@ -76,9 +77,22 @@ async function assertProjectAccess(
   return { ok: true }
 }
 
-function revalidateProposalPaths(projectId: string, proposalId?: string) {
+async function assertProposalRecordAccess(
+  session: SessionOk,
+  proposal: { project_id: string | null; created_by: string | null },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (session.role === 'admin') return { ok: true }
+  if (proposal.project_id) return assertProjectAccess(session, proposal.project_id)
+  if (proposal.created_by === session.userId) return { ok: true }
+  return {
+    ok: false,
+    error: 'You can only manage proposals you created until they are moved to the project list.',
+  }
+}
+
+function revalidateProposalPaths(projectId: string | null | undefined, proposalId?: string) {
   revalidatePath('/proposals')
-  revalidatePath(`/projects/${projectId}`)
+  if (projectId) revalidatePath(`/projects/${projectId}`)
   if (proposalId) {
     revalidatePath(`/proposals/${proposalId}`)
     revalidatePath(`/proposals/${proposalId}/edit`)
@@ -95,45 +109,30 @@ function todayIsoDate() {
   return new Date().toISOString().slice(0, 10)
 }
 
-type ProjectSnapshot = {
-  id: string
+type ProposedProjectSnapshot = {
   name: string
   client_name: string
   site_address: string
   client_phone: string | null
-  customer_id: string | null
   client_email: string | null
 }
 
-async function loadProjectSnapshot(
-  supabase: SessionOk['supabase'],
-  projectId: string,
-): Promise<{ ok: true; project: ProjectSnapshot } | { ok: false; error: string }> {
-  const { data: project, error } = await supabase
-    .from('projects')
-    .select('id, name, client_name, site_address, client_phone, customer_id')
-    .eq('id', projectId)
-    .maybeSingle()
-
-  if (error) return { ok: false, error: getSupabaseErrorMessage(error) }
-  if (!project) return { ok: false, error: 'Project not found.' }
-  if (!project.name?.trim()) return { ok: false, error: 'Project name is required.' }
-
-  let clientEmail: string | null = null
-  if (project.customer_id) {
-    const { data: customer } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('id', project.customer_id)
-      .maybeSingle()
-    clientEmail = customer?.email ?? null
+function snapshotFromProposed(
+  payload: ProposalEditorPayload,
+): { ok: true; snapshot: ProposedProjectSnapshot } | { ok: false; error: string } {
+  const name = payload.proposedProjectName.trim()
+  const siteAddress = payload.proposedSiteAddress.trim()
+  if (!name) {
+    return { ok: false, error: 'Proposed project name is required.' }
   }
-
   return {
     ok: true,
-    project: {
-      ...project,
-      client_email: clientEmail,
+    snapshot: {
+      name,
+      client_name: payload.proposedClientName.trim(),
+      site_address: siteAddress,
+      client_phone: payload.proposedClientPhone.trim() || null,
+      client_email: payload.proposedClientEmail.trim() || null,
     },
   }
 }
@@ -213,10 +212,7 @@ export async function createProposalAction(
   const session = await getManageSession()
   if (!session.ok) return session
 
-  const access = await assertProjectAccess(session, payload.projectId)
-  if (!access.ok) return access
-
-  const snapshot = await loadProjectSnapshot(session.supabase, payload.projectId)
+  const snapshot = snapshotFromProposed(payload)
   if (!snapshot.ok) return snapshot
 
   if (!payload.title.trim()) {
@@ -243,7 +239,12 @@ export async function createProposalAction(
   const { data: proposal, error: proposalError } = await session.supabase
     .from('proposals')
     .insert({
-      project_id: payload.projectId,
+      project_id: null,
+      proposed_project_name: snapshot.snapshot.name,
+      proposed_site_address: snapshot.snapshot.site_address,
+      proposed_client_name: snapshot.snapshot.client_name,
+      proposed_client_phone: snapshot.snapshot.client_phone,
+      proposed_client_email: snapshot.snapshot.client_email,
       proposal_number: proposalNumber,
       title: payload.title.trim(),
       status: 'draft',
@@ -270,11 +271,11 @@ export async function createProposalAction(
       built_up_total: totals.builtUpTotal,
       additional_works_total: totals.additionalWorksTotal,
       grand_total: totals.grandTotal,
-      snapshot_project_name: snapshot.project.name,
-      snapshot_client_name: snapshot.project.client_name ?? '',
-      snapshot_project_address: snapshot.project.site_address ?? '',
-      snapshot_client_phone: snapshot.project.client_phone,
-      snapshot_client_email: snapshot.project.client_email,
+      snapshot_project_name: snapshot.snapshot.name,
+      snapshot_client_name: snapshot.snapshot.client_name,
+      snapshot_project_address: snapshot.snapshot.site_address,
+      snapshot_client_phone: snapshot.snapshot.client_phone,
+      snapshot_client_email: snapshot.snapshot.client_email,
       created_by: session.userId,
     })
     .select('id')
@@ -308,7 +309,7 @@ export async function createProposalAction(
     actorRole: session.role,
   })
 
-  revalidateProposalPaths(payload.projectId, proposal.id)
+  revalidateProposalPaths(null, proposal.id)
   return { ok: true, data: { id: proposal.id, proposalNumber: String(proposalNumber) } }
 }
 
@@ -321,14 +322,14 @@ export async function updateDraftProposalAction(
 
   const { data: proposal, error: loadError } = await session.supabase
     .from('proposals')
-    .select('id, project_id, current_version_id, status')
+    .select('id, project_id, created_by, current_version_id, status')
     .eq('id', proposalId)
     .maybeSingle()
 
   if (loadError) return { ok: false, error: getSupabaseErrorMessage(loadError) }
   if (!proposal) return { ok: false, error: 'Proposal not found.' }
 
-  const access = await assertProjectAccess(session, proposal.project_id)
+  const access = await assertProposalRecordAccess(session, proposal)
   if (!access.ok) return access
 
   if (!proposal.current_version_id) {
@@ -353,11 +354,8 @@ export async function updateDraftProposalAction(
     }
   }
 
-  const snapshot = await loadProjectSnapshot(session.supabase, payload.projectId)
+  const snapshot = snapshotFromProposed(payload)
   if (!snapshot.ok) return snapshot
-  if (payload.projectId !== proposal.project_id) {
-    return { ok: false, error: 'A proposal cannot be moved to a different project.' }
-  }
 
   const lines = preparedLines(payload)
   const totals = computeProposalTotals(payload.method, lines)
@@ -374,11 +372,11 @@ export async function updateDraftProposalAction(
       built_up_total: totals.builtUpTotal,
       additional_works_total: totals.additionalWorksTotal,
       grand_total: totals.grandTotal,
-      snapshot_project_name: snapshot.project.name,
-      snapshot_client_name: snapshot.project.client_name ?? '',
-      snapshot_project_address: snapshot.project.site_address ?? '',
-      snapshot_client_phone: snapshot.project.client_phone,
-      snapshot_client_email: snapshot.project.client_email,
+      snapshot_project_name: snapshot.snapshot.name,
+      snapshot_client_name: snapshot.snapshot.client_name,
+      snapshot_project_address: snapshot.snapshot.site_address,
+      snapshot_client_phone: snapshot.snapshot.client_phone,
+      snapshot_client_email: snapshot.snapshot.client_email,
     })
     .eq('id', version.id)
 
@@ -389,7 +387,14 @@ export async function updateDraftProposalAction(
 
   const { error: updateProposalError } = await session.supabase
     .from('proposals')
-    .update({ title: payload.title.trim() })
+    .update({
+      title: payload.title.trim(),
+      proposed_project_name: snapshot.snapshot.name,
+      proposed_site_address: snapshot.snapshot.site_address,
+      proposed_client_name: snapshot.snapshot.client_name,
+      proposed_client_phone: snapshot.snapshot.client_phone,
+      proposed_client_email: snapshot.snapshot.client_email,
+    })
     .eq('id', proposalId)
 
   if (updateProposalError) return { ok: false, error: getSupabaseErrorMessage(updateProposalError) }
@@ -414,7 +419,7 @@ export async function shareProposalAction(
 
   const { data: proposal, error: loadError } = await session.supabase
     .from('proposals')
-    .select('id, project_id, current_version_id, status, share_token, proposal_number, title')
+    .select('id, project_id, created_by, current_version_id, status, share_token, proposal_number, title')
     .eq('id', proposalId)
     .maybeSingle()
 
@@ -424,7 +429,7 @@ export async function shareProposalAction(
     return { ok: false, error: 'This proposal is no longer active.' }
   }
 
-  const access = await assertProjectAccess(session, proposal.project_id)
+  const access = await assertProposalRecordAccess(session, proposal)
   if (!access.ok) return access
   if (!proposal.current_version_id) {
     return { ok: false, error: 'This proposal has no current version to share.' }
@@ -555,7 +560,7 @@ export async function createProposalRevisionAction(
 
   const { data: proposal, error: loadError } = await session.supabase
     .from('proposals')
-    .select('id, project_id, current_version_id, status, title')
+    .select('id, project_id, created_by, current_version_id, status, title')
     .eq('id', proposalId)
     .maybeSingle()
 
@@ -565,7 +570,7 @@ export async function createProposalRevisionAction(
     return { ok: false, error: 'This proposal is no longer active.' }
   }
 
-  const access = await assertProjectAccess(session, proposal.project_id)
+  const access = await assertProposalRecordAccess(session, proposal)
   if (!access.ok) return access
 
   const { data: current, error: currentError } = await session.supabase
@@ -689,14 +694,14 @@ export async function withdrawProposalAction(
 
   const { data: proposal, error } = await session.supabase
     .from('proposals')
-    .select('id, project_id, current_version_id, status')
+    .select('id, project_id, created_by, current_version_id, status')
     .eq('id', proposalId)
     .maybeSingle()
 
   if (error) return { ok: false, error: getSupabaseErrorMessage(error) }
   if (!proposal) return { ok: false, error: 'Proposal not found.' }
 
-  const access = await assertProjectAccess(session, proposal.project_id)
+  const access = await assertProposalRecordAccess(session, proposal)
   if (!access.ok) return access
 
   const { error: updateError } = await session.supabase
@@ -733,14 +738,14 @@ export async function archiveProposalAction(
 
   const { data: proposal, error } = await session.supabase
     .from('proposals')
-    .select('id, project_id, current_version_id')
+    .select('id, project_id, created_by, current_version_id')
     .eq('id', proposalId)
     .maybeSingle()
 
   if (error) return { ok: false, error: getSupabaseErrorMessage(error) }
   if (!proposal) return { ok: false, error: 'Proposal not found.' }
 
-  const access = await assertProjectAccess(session, proposal.project_id)
+  const access = await assertProposalRecordAccess(session, proposal)
   if (!access.ok) return access
 
   const { error: updateError } = await session.supabase
@@ -773,14 +778,14 @@ export async function deleteDraftProposalAction(
 
   const { data: proposal, error } = await session.supabase
     .from('proposals')
-    .select('id, project_id, status')
+    .select('id, project_id, created_by, status')
     .eq('id', proposalId)
     .maybeSingle()
 
   if (error) return { ok: false, error: getSupabaseErrorMessage(error) }
   if (!proposal) return { ok: false, error: 'Proposal not found.' }
 
-  const access = await assertProjectAccess(session, proposal.project_id)
+  const access = await assertProposalRecordAccess(session, proposal)
   if (!access.ok) return access
 
   const { data: sharedVersion } = await session.supabase
@@ -800,4 +805,117 @@ export async function deleteDraftProposalAction(
 
   revalidateProposalPaths(proposal.project_id)
   return { ok: true, data: undefined }
+}
+
+export async function convertProposalToProjectAction(
+  proposalId: string,
+): Promise<ProposalActionResult<{ projectId: string }>> {
+  const session = await getManageSession()
+  if (!session.ok) return session
+
+  const { data: proposal, error } = await session.supabase
+    .from('proposals')
+    .select(
+      'id, project_id, created_by, status, current_version_id, proposed_project_name, proposed_site_address, proposed_client_name, proposed_client_phone, proposed_client_email',
+    )
+    .eq('id', proposalId)
+    .maybeSingle()
+
+  if (error) return { ok: false, error: getSupabaseErrorMessage(error) }
+  if (!proposal) return { ok: false, error: 'Proposal not found.' }
+
+  const access = await assertProposalRecordAccess(session, proposal)
+  if (!access.ok) return access
+
+  if (proposal.project_id) {
+    return { ok: false, error: 'This proposal is already on the project list.' }
+  }
+  if (proposal.status === 'withdrawn' || proposal.status === 'archived') {
+    return { ok: false, error: 'Withdrawn or archived proposals cannot be moved to the project list.' }
+  }
+
+  let name = proposal.proposed_project_name?.trim() ?? ''
+  let address = proposal.proposed_site_address?.trim() ?? ''
+  let clientName = proposal.proposed_client_name?.trim() ?? ''
+  let phone = proposal.proposed_client_phone?.trim() || null
+  let email = proposal.proposed_client_email?.trim() || null
+  let contractValue = 0
+
+  if (proposal.current_version_id) {
+    const { data: version } = await session.supabase
+      .from('proposal_versions')
+      .select(
+        'snapshot_project_name, snapshot_project_address, snapshot_client_name, snapshot_client_phone, snapshot_client_email, grand_total',
+      )
+      .eq('id', proposal.current_version_id)
+      .maybeSingle()
+
+    if (version) {
+      name = name || version.snapshot_project_name?.trim() || ''
+      address = address || version.snapshot_project_address?.trim() || ''
+      clientName = clientName || version.snapshot_client_name?.trim() || ''
+      phone = phone || version.snapshot_client_phone
+      email = email || version.snapshot_client_email
+      contractValue = Number(version.grand_total) || 0
+    }
+  }
+
+  if (!name) {
+    return { ok: false, error: 'Add a proposed project name before moving this to the project list.' }
+  }
+  if (!address) {
+    return { ok: false, error: 'Add a project address before moving this to the project list.' }
+  }
+
+  const expectedMargin = 15
+  const created = await createProjectAction({
+    name,
+    client_name: clientName,
+    site_address: address,
+    client_phone: phone,
+    contract_value: contractValue,
+    additional_works_value: 0,
+    expected_margin_percent: expectedMargin,
+    start_date: null,
+    expected_completion_date: null,
+    pm_id: session.role === 'pm' ? session.userId : null,
+    customer_id: null,
+    stage_budget: contractValue * (1 - expectedMargin / 100),
+    assigned_engineer_ids: [],
+  })
+
+  if (!created.ok) return created
+
+  const { error: linkError } = await session.supabase
+    .from('proposals')
+    .update({
+      project_id: created.projectId,
+      proposed_project_name: name,
+      proposed_site_address: address,
+      proposed_client_name: clientName,
+      proposed_client_phone: phone,
+      proposed_client_email: email,
+      converted_at: new Date().toISOString(),
+      converted_by: session.userId,
+    })
+    .eq('id', proposalId)
+
+  if (linkError) {
+    return {
+      ok: false,
+      error: `The project was created, but this proposal could not be linked. Open the project list and check for “${name}”. ${getSupabaseErrorMessage(linkError)}`,
+    }
+  }
+
+  await recordProposalAudit(session.supabase, {
+    proposalId,
+    proposalVersionId: proposal.current_version_id,
+    eventType: 'converted_to_project',
+    actorId: session.userId,
+    actorRole: session.role,
+    metadata: { project_id: created.projectId },
+  })
+
+  revalidateProposalPaths(created.projectId, proposalId)
+  return { ok: true, data: { projectId: created.projectId } }
 }

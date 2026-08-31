@@ -58,3 +58,36 @@ export function canCreateRevisionFromStatus(status: string, sharedAt: string | n
 export function publicSharePath(token: string): string {
   return `/proposal/${token}`
 }
+
+export function proposalDisplayName(row: {
+  proposed_project_name?: string | null
+  project?: { name?: string | null } | null
+  snapshot_project_name?: string | null
+}): string {
+  return (
+    row.project?.name?.trim() ||
+    row.proposed_project_name?.trim() ||
+    row.snapshot_project_name?.trim() ||
+    ''
+  )
+}
+
+export function proposalDisplayClient(row: {
+  proposed_client_name?: string | null
+  project?: { client_name?: string | null } | null
+  snapshot_client_name?: string | null
+}): string {
+  return (
+    row.project?.client_name?.trim() ||
+    row.proposed_client_name?.trim() ||
+    row.snapshot_client_name?.trim() ||
+    ''
+  )
+}
+
+export function isProposalConvertedToProject(row: {
+  project_id?: string | null
+  converted_at?: string | null
+}): boolean {
+  return Boolean(row.project_id)
+}

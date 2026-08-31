@@ -3,7 +3,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 
 export async function notifyStaffOnProposalRevision(
   input: {
-    projectId: string
+    projectId: string | null
+    createdBy?: string | null
     proposalId: string
     proposalNumber: string
     versionNumber: number
@@ -13,16 +14,21 @@ export async function notifyStaffOnProposalRevision(
 ): Promise<void> {
   const adminClient = createAdminClient()
 
-  const { data: project } = await adminClient
-    .from('projects')
-    .select('pm_id, name')
-    .eq('id', input.projectId)
-    .maybeSingle()
+  let project: { pm_id: string | null; name: string } | null = null
+  if (input.projectId) {
+    const { data } = await adminClient
+      .from('projects')
+      .select('pm_id, name')
+      .eq('id', input.projectId)
+      .maybeSingle()
+    project = data
+  }
 
   const { data: admins } = await adminClient.from('profiles').select('id').eq('role', 'admin')
 
   const recipientIds = new Set<string>()
   if (project?.pm_id) recipientIds.add(project.pm_id)
+  if (input.createdBy) recipientIds.add(input.createdBy)
   for (const row of admins ?? []) {
     if (row.id) recipientIds.add(row.id)
   }
@@ -70,6 +76,7 @@ export async function recordProposalAudit(
       | 'withdrawn'
       | 'archived'
       | 'accepted'
+      | 'converted_to_project'
     actorId?: string | null
     actorRole?: string | null
     metadata?: Record<string, unknown> | null

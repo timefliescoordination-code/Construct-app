@@ -43,6 +43,7 @@ export const PROPOSAL_AUDIT_EVENT_TYPES = [
   'withdrawn',
   'archived',
   'accepted',
+  'converted_to_project',
 ] as const
 export type ProposalAuditEventType = (typeof PROPOSAL_AUDIT_EVENT_TYPES)[number]
 

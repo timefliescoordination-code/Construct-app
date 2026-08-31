@@ -1,8 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { Plus } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { ProposalsList } from '@/components/proposals/proposals-list'
 
 export function ProjectProposalsTab({ projectId }: { projectId: string }) {
@@ -12,15 +10,13 @@ export function ProjectProposalsTab({ projectId }: { projectId: string }) {
         <div>
           <h2 className="text-lg font-semibold">Proposals</h2>
           <p className="text-sm text-muted-foreground">
-            Formal quotations for this project. Shared versions are never overwritten.
+            Quotations that were moved onto this project. New proposals are created from the{' '}
+            <Link href="/proposals" className="text-primary hover:underline">
+              Proposals
+            </Link>{' '}
+            page.
           </p>
         </div>
-        <Button asChild>
-          <Link href={`/proposals/new?projectId=${projectId}`}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create proposal
-          </Link>
-        </Button>
       </div>
       <ProposalsList projectId={projectId} />
     </div>

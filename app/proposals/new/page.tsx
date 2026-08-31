@@ -10,17 +10,12 @@ export const metadata: Metadata = {
   description: 'Create a construction proposal',
 }
 
-export default async function NewProposalPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ projectId?: string }>
-}) {
-  const { projectId } = await searchParams
+export default function NewProposalPage() {
   return (
     <PageShell>
       <DashboardHeader />
       <PageMain>
-        <ProposalEditor mode="create" initialProjectId={projectId} />
+        <ProposalEditor mode="create" />
       </PageMain>
     </PageShell>
   )

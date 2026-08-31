@@ -21,6 +21,7 @@ import {
 import { ProposalItemsEditor } from '@/components/proposals/proposal-items-editor'
 import { ProposalDocumentView } from '@/components/proposals/proposal-document'
 import { ShareProposalDialog } from '@/components/proposals/share-proposal-dialog'
+import { ConvertToProjectButton } from '@/components/proposals/convert-to-project-button'
 import {
   createProposalAction,
   getProposalDefaultNotesAction,
@@ -39,16 +40,8 @@ import { formatINR } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 import { useCompanyBranding } from '@/lib/hooks/use-company-branding'
 
-type ProjectOption = {
-  id: string
-  name: string
-  client_name: string
-  site_address: string
-}
-
 type ProposalEditorProps = {
   mode: 'create' | 'edit'
-  initialProjectId?: string
   proposal?: ProposalDetail | null
 }
 
@@ -65,15 +58,27 @@ function versionToDrafts(proposal: ProposalDetail | null | undefined): ProposalI
   }))
 }
 
-export function ProposalEditor({ mode, initialProjectId, proposal }: ProposalEditorProps) {
+export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
   const router = useRouter()
   const { branding } = useCompanyBranding()
   const currentVersion =
     proposal?.versions.find((v) => v.id === proposal.current_version_id) ?? proposal?.versions[0]
 
-  const [projects, setProjects] = useState<ProjectOption[]>([])
-  const [loadingProjects, setLoadingProjects] = useState(true)
-  const [projectId, setProjectId] = useState(initialProjectId || proposal?.project_id || '')
+  const [proposedProjectName, setProposedProjectName] = useState(
+    proposal?.proposed_project_name || currentVersion?.snapshot_project_name || '',
+  )
+  const [proposedSiteAddress, setProposedSiteAddress] = useState(
+    proposal?.proposed_site_address || currentVersion?.snapshot_project_address || '',
+  )
+  const [proposedClientName, setProposedClientName] = useState(
+    proposal?.proposed_client_name || currentVersion?.snapshot_client_name || '',
+  )
+  const [proposedClientPhone, setProposedClientPhone] = useState(
+    proposal?.proposed_client_phone || currentVersion?.snapshot_client_phone || '',
+  )
+  const [proposedClientEmail, setProposedClientEmail] = useState(
+    proposal?.proposed_client_email || currentVersion?.snapshot_client_email || '',
+  )
   const [title, setTitle] = useState(proposal?.title || currentVersion?.title || '')
   const [proposalDate, setProposalDate] = useState(
     currentVersion?.proposal_date || format(new Date(), 'yyyy-MM-dd'),
@@ -95,27 +100,6 @@ export function ProposalEditor({ mode, initialProjectId, proposal }: ProposalEdi
   const [sharePath, setSharePath] = useState<string | null>(null)
 
   useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoadingProjects(true)
-      try {
-        const res = await fetch('/api/projects?summary=true', { credentials: 'include' })
-        const json = await res.json()
-        const rows = (json.data ?? []) as ProjectOption[]
-        if (!cancelled) setProjects(rows)
-      } catch {
-        if (!cancelled) toast.error('Could not load projects.')
-      } finally {
-        if (!cancelled) setLoadingProjects(false)
-      }
-    }
-    void load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
     if (mode !== 'create' || notes) return
     let cancelled = false
     void getProposalDefaultNotesAction().then((result) => {
@@ -127,8 +111,6 @@ export function ProposalEditor({ mode, initialProjectId, proposal }: ProposalEdi
       cancelled = true
     }
   }, [mode, notes])
-
-  const selectedProject = projects.find((p) => p.id === projectId) ?? proposal?.project ?? null
 
   const computed = useMemo(() => {
     const lines = computeProposalLines(
@@ -147,8 +129,12 @@ export function ProposalEditor({ mode, initialProjectId, proposal }: ProposalEdi
   }, [items, method])
 
   const toPayload = () => ({
-    projectId,
-    title: title.trim() || `${selectedProject?.name ?? 'Project'} proposal`,
+    proposedProjectName,
+    proposedSiteAddress,
+    proposedClientName,
+    proposedClientPhone,
+    proposedClientEmail,
+    title: title.trim() || `${proposedProjectName.trim() || 'Project'} proposal`,
     proposalDate,
     validUntil: validUntil || null,
     method,
@@ -181,12 +167,8 @@ export function ProposalEditor({ mode, initialProjectId, proposal }: ProposalEdi
   }
 
   const saveDraft = async (andStay = true) => {
-    if (!projectId) {
-      toast.error('Select a project.')
-      return null
-    }
-    if (!selectedProject?.name?.trim()) {
-      toast.error('Project name is required.')
+    if (!proposedProjectName.trim()) {
+      toast.error('Enter the proposed project name.')
       return null
     }
     setSaving(true)
@@ -215,8 +197,8 @@ export function ProposalEditor({ mode, initialProjectId, proposal }: ProposalEdi
 
   const handleShare = async () => {
     const error = validateProposalForShare({
-      projectName: selectedProject?.name ?? '',
-      projectAddress: selectedProject?.site_address ?? currentVersion?.snapshot_project_address ?? '',
+      projectName: proposedProjectName,
+      projectAddress: proposedSiteAddress,
       method,
       items: toPayload().items,
     })
@@ -252,10 +234,9 @@ export function ProposalEditor({ mode, initialProjectId, proposal }: ProposalEdi
     method,
     proposal_date: proposalDate,
     valid_until: validUntil || null,
-    project_name: selectedProject?.name || currentVersion?.snapshot_project_name || 'Untitled project',
-    project_address:
-      selectedProject?.site_address || currentVersion?.snapshot_project_address || '',
-    client_name: selectedProject?.client_name || currentVersion?.snapshot_client_name || '',
+    project_name: proposedProjectName.trim() || 'Untitled project',
+    project_address: proposedSiteAddress.trim(),
+    client_name: proposedClientName.trim(),
     notes,
     items: computed.lines.map((line) => ({
       sort_order: line.sortOrder,
@@ -294,51 +275,77 @@ export function ProposalEditor({ mode, initialProjectId, proposal }: ProposalEdi
             {mode === 'create' ? 'Create proposal' : `Edit ${proposal?.proposal_number ?? 'proposal'}`}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Prepare a professional construction quotation. Totals are calculated for you.
+            Enter proposed project details here. This is not added to the project list until you move
+            it.
           </p>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Project</CardTitle>
-          <CardDescription>The proposal belongs to an existing project. Name and address are required to share.</CardDescription>
+          <CardTitle>Proposed project</CardTitle>
+          <CardDescription>
+            These details belong to this proposal only. A real project is created when someone clicks
+            “Move this to project list”.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="proposal-project">Project</Label>
-            <select
-              id="proposal-project"
-              className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
-              value={projectId}
-              disabled={mode === 'edit' || loadingProjects}
-              onChange={(e) => setProjectId(e.target.value)}
-            >
-              <option value="">{loadingProjects ? 'Loading projects…' : 'Select a project'}</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                  {project.client_name ? ` — ${project.client_name}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          {selectedProject ? (
-            <dl className="grid gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-muted-foreground">Project name</dt>
-                <dd className="font-medium">{selectedProject.name}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Client</dt>
-                <dd>{selectedProject.client_name || '—'}</dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="text-muted-foreground">Address</dt>
-                <dd className="whitespace-pre-line">{selectedProject.site_address || 'Add a site address on the project before sharing.'}</dd>
-              </div>
-            </dl>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          {proposal?.project_id && proposal.project ? (
+            <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm sm:col-span-2">
+              This proposal is on the project list as{' '}
+              <Link href={`/projects/${proposal.project.id}`} className="font-medium hover:underline">
+                {proposal.project.name}
+              </Link>
+              .
+            </div>
           ) : null}
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="proposed-project-name">Proposed project name</Label>
+            <Input
+              id="proposed-project-name"
+              value={proposedProjectName}
+              onChange={(e) => setProposedProjectName(e.target.value)}
+              placeholder="e.g. Sharma residence, Anna Nagar"
+            />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="proposed-project-address">Project address</Label>
+            <Textarea
+              id="proposed-project-address"
+              rows={3}
+              value={proposedSiteAddress}
+              onChange={(e) => setProposedSiteAddress(e.target.value)}
+              placeholder="Site address required before sharing"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="proposed-client-name">Client name</Label>
+            <Input
+              id="proposed-client-name"
+              value={proposedClientName}
+              onChange={(e) => setProposedClientName(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="proposed-client-phone">Client phone</Label>
+            <Input
+              id="proposed-client-phone"
+              value={proposedClientPhone}
+              onChange={(e) => setProposedClientPhone(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="proposed-client-email">Client email</Label>
+            <Input
+              id="proposed-client-email"
+              type="email"
+              value={proposedClientEmail}
+              onChange={(e) => setProposedClientEmail(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -465,6 +472,13 @@ export function ProposalEditor({ mode, initialProjectId, proposal }: ProposalEdi
               <Eye className="h-4 w-4" />
               Preview
             </Button>
+            {mode === 'edit' && proposal && !proposal.project_id ? (
+              <ConvertToProjectButton
+                proposalId={proposal.id}
+                className="gap-2"
+                beforeConvert={async () => Boolean(await saveDraft(false))}
+              />
+            ) : null}
             <Button className="gap-2" onClick={() => void handleShare()} disabled={sharing}>
               {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
               Share proposal

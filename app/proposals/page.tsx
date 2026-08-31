@@ -20,7 +20,7 @@ export default function ProposalsPage() {
       <PageMain>
         <PageHeader
           title="Proposals"
-          description="Create professional construction quotations and share them with clients."
+          description="Create quotations with proposed project details. They become projects only when moved to the project list."
         >
           <Button asChild>
             <Link href="/proposals/new">

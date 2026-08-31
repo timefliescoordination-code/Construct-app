@@ -27,13 +27,14 @@ import {
 import { ProposalDocumentView } from '@/components/proposals/proposal-document'
 import { ProposalStatusBadge } from '@/components/proposals/proposal-status-badge'
 import { ShareProposalDialog } from '@/components/proposals/share-proposal-dialog'
+import { ConvertToProjectButton } from '@/components/proposals/convert-to-project-button'
 import {
   archiveProposalAction,
   createProposalRevisionAction,
   shareProposalAction,
   withdrawProposalAction,
 } from '@/lib/proposals/actions'
-import { canCreateRevisionFromStatus, canEditProposalVersion, publicSharePath } from '@/lib/proposals/access'
+import { canCreateRevisionFromStatus, canEditProposalVersion, publicSharePath, isProposalConvertedToProject } from '@/lib/proposals/access'
 import { PROPOSAL_METHOD_LABELS } from '@/lib/proposals/constants'
 import type { ProposalDetail, ProposalVersionWithItems, PublicProposalDocument } from '@/lib/proposals/types'
 import { formatINR } from '@/lib/currency'
@@ -98,6 +99,22 @@ export function ProposalDetailContent({ proposal }: { proposal: ProposalDetail }
   const openRequests = proposal.revision_requests.filter((req) => req.status === 'open')
   const canEdit = current ? canEditProposalVersion(current.status, current.shared_at) : false
   const canRevise = current ? canCreateRevisionFromStatus(current.status, current.shared_at) : false
+  const isOnProjectList = isProposalConvertedToProject(proposal)
+  const proposedName =
+    proposal.project?.name ||
+    proposal.proposed_project_name ||
+    current?.snapshot_project_name ||
+    '—'
+  const proposedClient =
+    proposal.project?.client_name ||
+    proposal.proposed_client_name ||
+    current?.snapshot_client_name ||
+    ''
+  const proposedAddress =
+    proposal.project?.site_address ||
+    proposal.proposed_site_address ||
+    current?.snapshot_project_address ||
+    ''
 
   const previewDoc = useMemo(() => {
     if (!previewVersion) return null
@@ -239,6 +256,9 @@ export function ProposalDetailContent({ proposal }: { proposal: ProposalDetail }
               Create revision
             </Button>
           ) : null}
+          {!isOnProjectList && proposal.status !== 'withdrawn' && proposal.status !== 'archived' ? (
+            <ConvertToProjectButton proposalId={proposal.id} className="gap-2" />
+          ) : null}
         </div>
       </div>
 
@@ -252,7 +272,7 @@ export function ProposalDetailContent({ proposal }: { proposal: ProposalDetail }
                 return (
                   <div key={req.id} className="rounded-lg border border-amber-500/20 bg-background/60 p-3">
                     <p className="text-sm font-medium text-foreground">
-                      {proposal.project?.client_name || 'Client'} · {proposal.proposal_number}
+                      {proposal.project?.client_name || proposal.proposed_client_name || 'Client'} · {proposal.proposal_number}
                       {version ? ` — Version ${version.version_number}` : ''}
                     </p>
                     <p className="mt-1 whitespace-pre-line text-sm">{req.client_message}</p>
@@ -292,12 +312,21 @@ export function ProposalDetailContent({ proposal }: { proposal: ProposalDetail }
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Project</CardDescription>
-            <CardTitle className="text-lg">{proposal.project?.name ?? '—'}</CardTitle>
+            <CardDescription>{isOnProjectList ? 'Project' : 'Proposed project'}</CardDescription>
+            <CardTitle className="text-lg">{proposedName}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm text-muted-foreground">
-            <p>{proposal.project?.client_name || 'No client name'}</p>
-            <p className="whitespace-pre-line">{proposal.project?.site_address || 'No address'}</p>
+            <p>{proposedClient || 'No client name'}</p>
+            <p className="whitespace-pre-line">{proposedAddress || 'No address'}</p>
+            {isOnProjectList && proposal.project ? (
+              <p>
+                <Link href={`/projects/${proposal.project.id}`} className="text-primary hover:underline">
+                  Open in project list
+                </Link>
+              </p>
+            ) : (
+              <p>Not on the project list yet.</p>
+            )}
           </CardContent>
         </Card>
         <Card>

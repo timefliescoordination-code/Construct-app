@@ -290,7 +290,7 @@ export async function submitPublicRevisionRequest(
 
   const { data: proposal } = await admin
     .from('proposals')
-    .select('id, project_id, proposal_number, status, current_version_id')
+    .select('id, project_id, created_by, proposal_number, status, current_version_id')
     .eq('id', proposalId)
     .maybeSingle()
 
@@ -336,6 +336,7 @@ export async function submitPublicRevisionRequest(
   try {
     await notifyStaffOnProposalRevision({
       projectId: proposal.project_id,
+      createdBy: proposal.created_by,
       proposalId,
       proposalNumber: proposal.proposal_number,
       versionNumber: versionMeta?.version_number ?? viewed.document.version_number,

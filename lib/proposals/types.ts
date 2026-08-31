@@ -57,7 +57,14 @@ export type ProposalVersionRow = {
 
 export type ProposalRow = {
   id: string
-  project_id: string
+  project_id: string | null
+  proposed_project_name: string
+  proposed_site_address: string
+  proposed_client_name: string
+  proposed_client_phone: string | null
+  proposed_client_email: string | null
+  converted_at: string | null
+  converted_by: string | null
   proposal_number: string
   title: string
   current_version_id: string | null
@@ -176,7 +183,11 @@ export type PublicProposalResponse = {
 }
 
 export type ProposalEditorPayload = {
-  projectId: string
+  proposedProjectName: string
+  proposedSiteAddress: string
+  proposedClientName: string
+  proposedClientPhone: string
+  proposedClientEmail: string
   title: string
   proposalDate: string
   validUntil: string | null

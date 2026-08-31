@@ -19,7 +19,9 @@ export async function listProposals(
     .from('proposals')
     .select(
       `
-      id, project_id, proposal_number, title, current_version_id, status, share_token,
+      id, project_id, proposed_project_name, proposed_site_address, proposed_client_name,
+      proposed_client_phone, proposed_client_email, converted_at, converted_by,
+      proposal_number, title, current_version_id, status, share_token,
       archived_at, created_by, created_at, updated_at,
       project:projects(id, name, client_name, site_address)
     `,
