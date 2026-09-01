@@ -7,6 +7,8 @@ import { calculateMilestoneCompletionFromExpenses } from '@/lib/financial-calcul
 import { expensesByMilestoneId } from '@/lib/project-tab-hydration'
 import { notifyExpenseStatusChange, notifyMilestoneStarted, notifyPaymentRequest } from '@/lib/notifications'
 import { resolveExpenseStatusForRole } from '@/lib/permissions'
+import { canCompleteMilestoneWithQuality } from '@/lib/quality/status'
+import type { QualityInspectionStatus } from '@/lib/quality/constants'
 import type {
   AdditionalWorkStatus,
   Expense,
@@ -915,14 +917,33 @@ export async function updateMilestonesAction(input: {
 
   const { data: existingMilestones } = await session.supabase
     .from('milestones')
-    .select('id, status')
+    .select('id, status, requires_quality_approval')
     .eq('project_id', input.projectId)
 
   const statusById = new Map(
     (existingMilestones ?? []).map((row) => [row.id, row.status as string]),
   )
+  const qualityById = new Map(
+    (existingMilestones ?? []).map((row) => [
+      row.id,
+      Boolean(row.requires_quality_approval),
+    ]),
+  )
 
   for (const milestone of input.milestones) {
+    if (milestone.status === 'completed' && qualityById.get(milestone.id)) {
+      const { data: inspections } = await session.supabase
+        .from('quality_inspections')
+        .select('status')
+        .eq('milestone_id', milestone.id)
+      const gate = canCompleteMilestoneWithQuality({
+        requiresQualityApproval: true,
+        inspections: (inspections ?? []).map((row) => ({
+          status: row.status as QualityInspectionStatus,
+        })),
+      })
+      if (!gate.ok) return gate
+    }
     const previousStatus = statusById.get(milestone.id)
     const { error } = await session.supabase
       .from('milestones')
@@ -998,10 +1019,24 @@ export async function updateMilestoneAction(input: {
 
   const { data: previous } = await session.supabase
     .from('milestones')
-    .select('status')
+    .select('status, requires_quality_approval')
     .eq('id', input.milestoneId)
     .eq('project_id', input.projectId)
     .maybeSingle()
+
+  if (input.status === 'completed' && previous?.requires_quality_approval) {
+    const { data: inspections } = await session.supabase
+      .from('quality_inspections')
+      .select('status')
+      .eq('milestone_id', input.milestoneId)
+    const gate = canCompleteMilestoneWithQuality({
+      requiresQualityApproval: true,
+      inspections: (inspections ?? []).map((row) => ({
+        status: row.status as QualityInspectionStatus,
+      })),
+    })
+    if (!gate.ok) return gate
+  }
 
   const { data: expenses } = await session.supabase
     .from('expenses')

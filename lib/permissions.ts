@@ -33,6 +33,7 @@ export const ENGINEER_ALLOWED_PROJECT_TABS = new Set([
   "milestones",
   "manpower",
   "photos",
+  "quality",
 ])
 
 /** Customers only see design collaboration and site photos — no profit or internal ops. */

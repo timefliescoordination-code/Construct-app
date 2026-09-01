@@ -12,6 +12,7 @@ import {
   Building2,
   FileText,
   ClipboardList,
+  ClipboardCheck,
   Settings,
   Tags,
   Flag,
@@ -87,6 +88,12 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
                   label: "Change requests",
                   icon: ClipboardList,
                 },
+                {
+                  id: "inspections",
+                  href: "/inspections",
+                  label: "Quality inspections",
+                  icon: ClipboardCheck,
+                },
               ]
             : []),
         ]
@@ -114,6 +121,12 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
           href: "/admin/settings/milestones",
           label: "Milestones",
           icon: Flag,
+        },
+        {
+          id: "checklists",
+          href: "/admin/settings/checklists",
+          label: "Quality checklists",
+          icon: ClipboardCheck,
         },
         {
           id: "labours",
@@ -158,6 +171,12 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     }
     if (href === "/change-requests") {
       return pathname.startsWith("/change-requests")
+    }
+    if (href === "/inspections") {
+      return pathname.startsWith("/inspections")
+    }
+    if (href === "/admin/settings/checklists") {
+      return pathname.startsWith("/admin/settings/checklists")
     }
     if (href === "/proposals") {
       return pathname.startsWith("/proposals")

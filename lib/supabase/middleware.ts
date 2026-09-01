@@ -132,6 +132,7 @@ export async function updateSession(request: NextRequest) {
         pathname === '/pm' ||
         pathname === '/engineer' ||
         pathname.startsWith('/change-requests') ||
+        pathname.startsWith('/inspections') ||
         pathname.startsWith('/proposals') ||
         pathname.startsWith('/projects/new') ||
         pathname.includes('/edit') ||

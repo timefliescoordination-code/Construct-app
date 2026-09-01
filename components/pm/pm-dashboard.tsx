@@ -50,6 +50,7 @@ import { ScrollTable } from "@/components/layout/scroll-table"
 import { toast } from "sonner"
 import { projectIdleFromProject } from "@/lib/project-idle"
 import { ProjectIdleBadge } from "@/components/projects/project-idle-badge"
+import { PmQualityCard } from "@/components/quality/pm-quality-card"
 
 interface PmProjectRow {
   id: string
@@ -404,6 +405,8 @@ export function PMDashboard() {
             }
           />
         </div>
+
+        <PmQualityCard />
 
         <div className={CONTENT_SIDEBAR_GRID_CLASS}>
           <div className={CONTENT_SIDEBAR_MAIN_CLASS}>

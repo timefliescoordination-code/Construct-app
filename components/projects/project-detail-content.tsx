@@ -14,6 +14,7 @@ import {
   FileBarChart, 
   FileText,
   Camera,
+  ClipboardCheck,
   PenLine,
   Users,
   Edit,
@@ -35,6 +36,7 @@ import { MilestonesTab } from "./project-detail/milestones-tab"
 import { AdditionalWorksTab } from "./project-detail/additional-works-tab"
 import { ReportsTab } from "./project-detail/reports-tab"
 import { PhotosTab } from "./project-detail/photos-tab"
+import { ProjectQualityTab } from "@/components/quality/project-quality-tab"
 import { DesignTab } from "./project-detail/design-tab"
 import { ProjectProposalsTab } from "./project-detail/proposals-tab"
 import { isConstructionActive } from "@/lib/projects/lifecycle"
@@ -104,6 +106,7 @@ const PROJECT_TAB_IDS = [
   "additional-works",
   "reports",
   "photos",
+  "quality",
 ] as const
 
 const RECENT_EXPENSE_ACTION_MS = 3 * 24 * 60 * 60 * 1000
@@ -336,6 +339,7 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
         { id: "additional-works", label: "Additional Works", icon: PlusCircle },
         { id: "reports", label: "Reports", icon: FileBarChart },
         { id: "photos", label: "Photos", icon: Camera },
+        { id: "quality", label: "Quality", icon: ClipboardCheck },
       ].filter((tab) => canAccessProjectTab(role, tab.id)),
     [role],
   )
@@ -554,6 +558,8 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
             customerMode={isCustomer}
           />
         )
+      case "quality":
+        return <ProjectQualityTab project={project} />
       default:
         return null
     }

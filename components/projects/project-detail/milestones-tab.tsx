@@ -88,6 +88,8 @@ interface Milestone {
   notes: string | null
   status: "completed" | "in-progress" | "pending"
   sort_order: number
+  requires_quality_approval?: boolean
+  quality_approval_status?: string
 }
 
 interface Project {
@@ -684,6 +686,11 @@ export function MilestonesTab({
                             )}>
                               {milestone.status === "completed" ? "Completed" : milestone.status === "in-progress" ? "In Progress" : "Pending"}
                             </Badge>
+                            {milestone.requires_quality_approval ? (
+                              <Badge variant="outline" className="text-[10px]">
+                                Quality: {milestone.quality_approval_status ?? "pending"}
+                              </Badge>
+                            ) : null}
                           </div>
                           
                           {/* Stage Budget Info */}

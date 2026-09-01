@@ -66,6 +66,7 @@ import { ExpenseBulkEntryDialog } from "@/components/expense/expense-bulk-entry-
 import { AddExpenseShortcutTooltip } from "@/components/keyboard/add-expense-shortcut-tooltip"
 import { DashboardHeader } from "@/components/dashboard/header"
 import { MetricCard } from "@/components/layout/metric-card"
+import { EngineerQualityCard } from "@/components/quality/engineer-quality-card"
 import {
   CONTENT_SIDEBAR_GRID_CLASS,
   CONTENT_SIDEBAR_MAIN_CLASS,
@@ -700,7 +701,22 @@ export function EngineerDashboard() {
               </Badge>
             </div>
           </div>
+          {!engineerData.showAll && engineerData.activeProject ? (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/projects/${engineerData.activeProject.id}?tab=quality`}>
+                Start inspection
+              </Link>
+            </Button>
+          ) : null}
         </div>
+
+        <EngineerQualityCard
+          projectId={
+            engineerData.showAll || effectiveProjectId === SHOW_ALL_PROJECTS
+              ? null
+              : effectiveProjectId
+          }
+        />
 
         {/* Quick Stats - NO budget/profit info for engineer */}
         <div className={STATS_GRID_CLASS}>
