@@ -126,4 +126,17 @@ describe('validateProposalForShare', () => {
     })
     assert.equal(error, null)
   })
+
+  it('does not delete leftover items from the other pricing method when sharing', () => {
+    const error = validateProposalForShare({
+      projectName: 'Arun Residence',
+      projectAddress: 'Chennai',
+      method: 'sqft',
+      items: [
+        { section: 'built_up', description: 'Construction', quantity: 1800, unit: 'sqft', rate: 2100 },
+        { section: 'boq', description: 'Steel takeoff still in progress', quantity: 0, unit: '', rate: 0 },
+      ],
+    })
+    assert.equal(error, null)
+  })
 })

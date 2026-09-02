@@ -90,6 +90,11 @@ export function sumSection(lines: Array<{ section: string; price: number }>, sec
   )
 }
 
+export function itemBelongsToMethod(section: ProposalItemSection, method: ProposalMethod): boolean {
+  if (method === 'boq') return section === 'boq'
+  return section === 'built_up' || section === 'additional'
+}
+
 export function computeProposalTotals(
   method: ProposalMethod,
   lines: Array<{ section: string; price: number }>,
@@ -138,7 +143,9 @@ export function validateProposalForShare(input: {
     return 'Choose a pricing method.'
   }
 
-  const filled = input.items.filter((item) => item.description.trim())
+  const filled = input.items.filter(
+    (item) => item.description.trim() && itemBelongsToMethod(item.section, input.method),
+  )
   const billed = filled.filter((item) => !isHeading(item))
   if (input.method === 'sqft') {
     const hasPricing = billed.some((item) => item.section === 'built_up' || item.section === 'additional')

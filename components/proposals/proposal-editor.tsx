@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
@@ -31,6 +31,7 @@ import {
 import {
   computeProposalLines,
   computeProposalTotals,
+  itemBelongsToMethod,
   toQuantity,
   validateProposalForShare,
 } from '@/lib/proposals/calculations'
@@ -41,6 +42,7 @@ import { cn } from '@/lib/utils'
 import { useCompanyBranding } from '@/lib/hooks/use-company-branding'
 import { useUndoableState } from '@/lib/hooks/use-undoable-state'
 import { measurementsFromUnknown } from '@/lib/proposals/boq-structure'
+import { itemHasEnteredData, keepItemsWhenChangingMethod } from '@/lib/proposals/pricing-items'
 import { undoRedoHotkey } from '@/lib/proposals/undo-stack'
 
 type ProposalEditorProps = {
@@ -159,6 +161,13 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [sharePath, setSharePath] = useState<string | null>(null)
+  const [persistedId, setPersistedId] = useState(proposal?.id ?? null)
+  const [draftTick, setDraftTick] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const persistInFlight = useRef(false)
+  const persistAgain = useRef(false)
+  const skipAutosave = useRef(true)
+  const persistedIdRef = useRef(persistedId)
+  persistedIdRef.current = persistedId
 
   useEffect(() => {
     if (mode !== 'create' || notes) return
@@ -206,30 +215,95 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
     return { lines, totals: computeProposalTotals(method, lines) }
   }, [items, method])
 
-  const toPayload = () => ({
-    proposedProjectName,
-    proposedSiteAddress,
-    proposedClientName,
-    proposedClientPhone,
-    proposedClientEmail,
-    title: title.trim() || `${proposedProjectName.trim() || 'Project'} proposal`,
-    proposalDate,
-    validUntil: validUntil || null,
-    method,
-    notes,
-    items: items
-      .filter((item) => item.description.trim())
-      .map((item) => ({
-        section: item.section,
-        description: item.description.trim(),
-        quantity: toQuantity(item.quantity),
-        unit: item.unit.trim() || (item.kind === 'heading' ? '' : defaultUnitForSection(item.section)),
-        rate: toQuantity(item.rate),
-        kind: (item.kind === 'heading' ? 'heading' : 'item') as ProposalItemKind,
-        measurements: item.kind === 'heading' ? null : item.measurements ?? null,
-        nested: item.kind === 'heading' ? false : Boolean(item.nested),
-      })),
-  })
+  const toPayload = () => {
+    const projectName = proposedProjectName.trim() || 'Untitled proposal'
+    return {
+      proposedProjectName: projectName,
+      proposedSiteAddress,
+      proposedClientName,
+      proposedClientPhone,
+      proposedClientEmail,
+      title: title.trim() || (proposedProjectName.trim() ? `${proposedProjectName.trim()} proposal` : 'Untitled proposal'),
+      proposalDate,
+      validUntil: validUntil || null,
+      method,
+      notes,
+      items: items
+        .filter((item) => item.description.trim())
+        .map((item) => ({
+          section: item.section,
+          description: item.description.trim(),
+          quantity: toQuantity(item.quantity),
+          unit: item.unit.trim() || (item.kind === 'heading' ? '' : defaultUnitForSection(item.section)),
+          rate: toQuantity(item.rate),
+          kind: (item.kind === 'heading' ? 'heading' : 'item') as ProposalItemKind,
+          measurements: item.kind === 'heading' ? null : item.measurements ?? null,
+          nested: item.kind === 'heading' ? false : Boolean(item.nested),
+        })),
+    }
+  }
+
+  const hasEnteredWork =
+    Boolean(
+      proposedProjectName.trim() ||
+        proposedSiteAddress.trim() ||
+        proposedClientName.trim() ||
+        proposedClientPhone.trim() ||
+        proposedClientEmail.trim() ||
+        title.trim(),
+    ) || items.some(itemHasEnteredData)
+
+  const saveDraft = async (andStay = true, silent = false) => {
+    if (currentVersion?.shared_at) {
+      if (!silent) toast.error('Shared proposal versions cannot be edited. Create a revision instead.')
+      return persistedIdRef.current
+    }
+    if (!silent && !proposedProjectName.trim() && !hasEnteredWork) {
+      toast.error('Enter the proposed project name.')
+      return null
+    }
+    if (!hasEnteredWork && !persistedIdRef.current) return null
+
+    if (persistInFlight.current) {
+      persistAgain.current = true
+      return persistedIdRef.current
+    }
+
+    persistInFlight.current = true
+    if (silent) setDraftTick('saving')
+    else setSaving(true)
+    try {
+      const payload = toPayload()
+      const existingId = persistedIdRef.current
+      const result = existingId
+        ? await updateDraftProposalAction(existingId, payload)
+        : await createProposalAction(payload)
+      if (!result.ok) {
+        toast.error(result.error)
+        if (silent) setDraftTick('idle')
+        return null
+      }
+      const nextId = 'id' in result.data && result.data.id ? result.data.id : existingId
+      if (nextId && nextId !== existingId) {
+        persistedIdRef.current = nextId
+        setPersistedId(nextId)
+        window.history.replaceState(window.history.state, '', `/proposals/${nextId}/edit`)
+      }
+      if (!silent) toast.success('Draft saved')
+      else setDraftTick('saved')
+      if (!silent && andStay && mode === 'edit') {
+        router.refresh()
+      }
+      return nextId ?? null
+    } finally {
+      persistInFlight.current = false
+      setSaving(false)
+      if (persistAgain.current) {
+        persistAgain.current = false
+        void saveDraft(true, true)
+      }
+    }
+  }
 
   const handleMethodChange = (next: ProposalMethod) => {
     if (currentVersion?.shared_at) {
@@ -237,45 +311,35 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
       return
     }
     if (next === method) return
-    let nextItems = items
-    if (next === 'sqft' && !items.some((item) => item.section === 'built_up' || item.section === 'additional')) {
-      nextItems = [
-        { section: 'built_up', description: '', quantity: '', unit: 'sqft', rate: '' },
-      ]
-    } else if (next === 'boq' && !items.some((item) => item.section === 'boq')) {
-      nextItems = [{ section: 'boq', description: '', quantity: '', unit: 'item', rate: '', kind: 'item' }]
-    }
-    pricing.set({ method: next, items: nextItems })
+    pricing.set({ method: next, items: keepItemsWhenChangingMethod(items, next) })
   }
 
-  const saveDraft = async (andStay = true) => {
-    if (!proposedProjectName.trim()) {
-      toast.error('Enter the proposed project name.')
-      return null
+  useEffect(() => {
+    if (skipAutosave.current) {
+      skipAutosave.current = false
+      return
     }
-    setSaving(true)
-    try {
-      const payload = toPayload()
-      const result =
-        mode === 'edit' && proposal
-          ? await updateDraftProposalAction(proposal.id, payload)
-          : await createProposalAction(payload)
-      if (!result.ok) {
-        toast.error(result.error)
-        return null
-      }
-      toast.success('Draft saved')
-      if (mode === 'create') {
-        router.replace(`/proposals/${result.data.id}/edit`)
-        router.refresh()
-      } else if (andStay) {
-        router.refresh()
-      }
-      return 'id' in result.data ? result.data.id : proposal?.id ?? null
-    } finally {
-      setSaving(false)
-    }
-  }
+    if (currentVersion?.shared_at) return
+    if (!hasEnteredWork) return
+    const timer = window.setTimeout(() => {
+      void saveDraft(true, true)
+    }, 1600)
+    return () => window.clearTimeout(timer)
+  }, [
+    proposedProjectName,
+    proposedSiteAddress,
+    proposedClientName,
+    proposedClientPhone,
+    proposedClientEmail,
+    title,
+    proposalDate,
+    validUntil,
+    method,
+    notes,
+    items,
+    hasEnteredWork,
+    currentVersion?.shared_at,
+  ])
 
   const handleShare = async () => {
     const error = validateProposalForShare({
@@ -291,7 +355,7 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
 
     setSharing(true)
     try {
-      let id = proposal?.id ?? null
+      let id = persistedId ?? proposal?.id ?? null
       if (mode === 'create' || (currentVersion && !currentVersion.shared_at)) {
         id = await saveDraft(false)
       }
@@ -322,7 +386,9 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
     project_address: proposedSiteAddress.trim(),
     client_name: proposedClientName.trim(),
     notes,
-    items: computed.lines.map((line) => ({
+    items: computed.lines
+      .filter((line) => itemBelongsToMethod(line.section, method))
+      .map((line) => ({
       sort_order: line.sortOrder,
       section: line.section,
       description: line.description,
@@ -353,15 +419,15 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <Button variant="ghost" size="sm" className="-ml-2 gap-2" asChild>
-            <Link href={proposal ? `/proposals/${proposal.id}` : '/proposals'}>
+            <Link href={persistedId ? `/proposals/${persistedId}` : '/proposals'}>
               <ArrowLeft className="h-4 w-4" />
               Back
             </Link>
           </Button>
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            {mode === 'create'
+            {mode === 'create' && !persistedId
               ? 'Create proposal'
-              : `Edit ${proposal ? formatProposalNumber(proposal.proposal_number, currentVersion?.version_number) : 'proposal'}`}
+              : `Edit ${proposal ? formatProposalNumber(proposal.proposal_number, currentVersion?.version_number) : 'draft'}`}
           </h1>
           <p className="text-sm text-muted-foreground">
             Enter proposed project details here. This is not added to the project list until you move
@@ -512,7 +578,7 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
               </label>
             </RadioGroup>
             <p className="text-xs text-muted-foreground">
-              Undo and redo cover the pricing method and item table. Ctrl+Z / Ctrl+Y (Cmd on Mac).
+              Switching Sqft and BOQ keeps entered items in this draft. Undo/redo: Ctrl+Z / Ctrl+Y (Cmd on Mac).
             </p>
           </div>
         </CardContent>
@@ -564,6 +630,11 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
               Total proposal value
             </p>
             <p className="text-2xl font-semibold tabular-nums">{formatINR(computed.totals.grandTotal)}</p>
+            {draftTick === 'saving' ? (
+              <p className="text-xs text-muted-foreground">Saving draft…</p>
+            ) : draftTick === 'saved' ? (
+              <p className="text-xs text-muted-foreground">Draft saved. You can leave and continue later.</p>
+            ) : null}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <PricingHistoryButtons

@@ -150,7 +150,6 @@ async function loadDefaultNotes(supabase: SessionOk['supabase']): Promise<string
 }
 
 function preparedLines(payload: ProposalEditorPayload) {
-  const method = payload.method
   const raw = payload.items
     .map((item, index) => ({
       section: item.section,
@@ -163,11 +162,7 @@ function preparedLines(payload: ProposalEditorPayload) {
       measurements: item.measurements ?? null,
       nested: Boolean(item.nested),
     }))
-    .filter((item) => {
-      if (!item.description.trim()) return false
-      if (method === 'sqft') return item.section === 'built_up' || item.section === 'additional'
-      return item.section === 'boq'
-    })
+    .filter((item) => item.description.trim())
 
   return computeProposalLines(raw)
 }
