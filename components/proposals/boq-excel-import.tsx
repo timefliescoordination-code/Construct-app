@@ -130,7 +130,7 @@ export function BoqExcelImport({ items, onChange }: BoqExcelImportProps) {
               Click to upload a BOQ Excel file, or drag and drop
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              .xlsx, .xls, or .csv · Description, Qty, Unit, Rate
+              .xlsx, .xls, or .csv · Groups, Description, Nos/L/B/H, Qty, Unit, Rate
             </p>
           </>
         )}

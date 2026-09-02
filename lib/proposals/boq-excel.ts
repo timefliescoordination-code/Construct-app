@@ -1,9 +1,21 @@
 import * as XLSX from 'xlsx'
 import { toQuantity } from './calculations.ts'
 import { MAX_BOQ_IMPORT_ROWS, defaultUnitForSection } from './constants.ts'
-import type { ProposalItemDraft } from './types.ts'
+import { hasMeasurementValues, quantityFromMeasurements } from './boq-structure.ts'
+import type { BoqMeasurements, ProposalItemDraft } from './types.ts'
 
-type BoqField = 'description' | 'quantity' | 'unit' | 'rate' | 'amount'
+type BoqField =
+  | 'description'
+  | 'quantity'
+  | 'unit'
+  | 'rate'
+  | 'amount'
+  | 'nos'
+  | 'length'
+  | 'breadth'
+  | 'height'
+
+type HeaderMap = Partial<Record<BoqField, number>>
 
 export type ParsedBoqImport = {
   items: ProposalItemDraft[]
@@ -30,10 +42,23 @@ function descriptionScore(value: unknown): number {
   return 0
 }
 
+function classifyMeasurementHeader(value: unknown): Exclude<BoqField, 'description' | 'unit' | 'rate' | 'amount'> | null {
+  const header = normalizeHeader(value)
+  if (!header) return null
+  if (/^(nos|no|nos no|number)$/.test(header) || header === 'n') return 'nos'
+  if (/^(l|len|length)$/.test(header)) return 'length'
+  if (/^(b|br|breadth|width|w)$/.test(header)) return 'breadth'
+  if (/^(h|ht|height|d|dep|depth|thick|thickness)$/.test(header)) return 'height'
+  if (/^(qty|qnty|quantity|qty qty)$/.test(header)) return 'quantity'
+  return null
+}
+
 function classifyHeader(value: unknown): BoqField | 'ignore' {
   const header = normalizeHeader(value)
   if (!header) return 'ignore'
   if (/^(s no|sl no|sno|sr no|serial|serial no|item no|item code|code|#)$/.test(header)) return 'ignore'
+  const measurement = classifyMeasurementHeader(value)
+  if (measurement && measurement !== 'quantity') return measurement
   if ((/\bamount\b|\bamt\b/.test(header) || /^(total|value)$/.test(header)) && !/\brate\b/.test(header)) {
     return 'amount'
   }
@@ -44,8 +69,8 @@ function classifyHeader(value: unknown): BoqField | 'ignore' {
   return 'ignore'
 }
 
-function mapHeaderRow(row: unknown[]): Partial<Record<BoqField, number>> | null {
-  const map: Partial<Record<BoqField, number>> = {}
+function mapHeaderRow(row: unknown[]): HeaderMap | null {
+  const map: HeaderMap = {}
   let bestDescriptionScore = 0
   row.forEach((cell, index) => {
     const field = classifyHeader(cell)
@@ -62,8 +87,50 @@ function mapHeaderRow(row: unknown[]): Partial<Record<BoqField, number>> | null 
     map[field] = index
   })
   if (map.description == null) return null
-  if (map.quantity == null && map.rate == null && map.amount == null) return null
+  if (
+    map.quantity == null &&
+    map.rate == null &&
+    map.amount == null &&
+    map.nos == null &&
+    map.length == null &&
+    map.breadth == null &&
+    map.height == null
+  ) {
+    return null
+  }
   return map
+}
+
+function looksLikeSubHeaderRow(row: unknown[]): boolean {
+  let measurementCells = 0
+  let otherText = 0
+  for (const cell of row) {
+    const header = normalizeHeader(cell)
+    if (!header) continue
+    if (classifyMeasurementHeader(cell)) {
+      measurementCells += 1
+      continue
+    }
+    if (descriptionScore(cell) > 0 || classifyHeader(cell) === 'rate' || classifyHeader(cell) === 'unit') {
+      otherText += 1
+      continue
+    }
+    if (/^[a-z]{1,12}$/.test(header)) otherText += 1
+  }
+  return measurementCells >= 2 && measurementCells >= otherText
+}
+
+function mergeSubHeaderRow(map: HeaderMap, subRow: unknown[]): HeaderMap {
+  const next: HeaderMap = { ...map }
+  subRow.forEach((cell, index) => {
+    const field = classifyMeasurementHeader(cell)
+    if (!field) return
+    if (field !== 'quantity' && next.quantity === index) {
+      delete next.quantity
+    }
+    if (next[field] == null) next[field] = index
+  })
+  return next
 }
 
 function cellText(value: unknown): string {
@@ -86,7 +153,7 @@ function isBlankRow(row: unknown[]): boolean {
   return row.every((cell) => cellText(cell) === '')
 }
 
-function positionalMap(columnCount: number): Partial<Record<BoqField, number>> {
+function positionalMap(columnCount: number): HeaderMap {
   if (columnCount >= 6) {
     return { description: 1, unit: 2, quantity: 3, rate: 4, amount: 5 }
   }
@@ -104,14 +171,39 @@ function pickCell(row: unknown[], index: number | undefined): unknown {
   return row[index]
 }
 
-function toDraft(row: unknown[], map: Partial<Record<BoqField, number>>): ProposalItemDraft | null {
+function outlineDepth(description: string): number {
+  const match = description.match(/^(\d+(?:\.\d+)*)[.)]?\s+/)
+  if (match?.[1]) return match[1].split('.').filter(Boolean).length
+  if (/^[a-z][).]\s+/i.test(description) || /^\([a-z]\)\s+/i.test(description)) return 2
+  if (/^[ivxlcdm]+[).]\s+/i.test(description)) return 2
+  return 1
+}
+
+function rowHasPricing(quantity: string, rate: string, amount: string, measurements: BoqMeasurements | null): boolean {
+  return Boolean(quantity || rate || amount || hasMeasurementValues(measurements))
+}
+
+function measurementsFromRow(row: unknown[], map: HeaderMap): BoqMeasurements | null {
+  if (map.nos == null && map.length == null && map.breadth == null && map.height == null) {
+    return null
+  }
+  const measurements: BoqMeasurements = {
+    nos: formatNumber(pickCell(row, map.nos), false),
+    length: formatNumber(pickCell(row, map.length), false),
+    breadth: formatNumber(pickCell(row, map.breadth), false),
+    height: formatNumber(pickCell(row, map.height), false),
+  }
+  return hasMeasurementValues(measurements) ? measurements : null
+}
+
+function toDraft(row: unknown[], map: HeaderMap): ProposalItemDraft | null {
   const description = cellText(pickCell(row, map.description))
   if (!description || TOTAL_LABEL.test(description)) return null
 
   let quantity = formatNumber(pickCell(row, map.quantity), false)
   let rate = formatNumber(pickCell(row, map.rate), true)
   const amount = formatNumber(pickCell(row, map.amount), true)
-  const unit = cellText(pickCell(row, map.unit)) || defaultUnitForSection('boq')
+  const measurements = measurementsFromRow(row, map)
 
   const qtyN = toQuantity(quantity)
   const rateN = toQuantity(rate)
@@ -126,29 +218,78 @@ function toDraft(row: unknown[], map: Partial<Record<BoqField, number>>): Propos
     quantity = formatNumber(amountN / rateN, false)
   }
 
-  if (!quantity && !rate) return null
+  if (!rowHasPricing(quantity, rate, amount, measurements)) {
+    return {
+      section: 'boq',
+      description,
+      quantity: '',
+      unit: '',
+      rate: '',
+      kind: 'heading',
+      measurements: null,
+      nested: false,
+    }
+  }
+
+  if (hasMeasurementValues(measurements) && !quantity) {
+    quantity = formatNumber(quantityFromMeasurements(measurements, 0), false) || '1'
+  }
 
   return {
     section: 'boq',
     description,
     quantity: quantity || '1',
-    unit,
+    unit: cellText(pickCell(row, map.unit)) || defaultUnitForSection('boq'),
     rate: rate || '0',
+    kind: 'item',
+    measurements,
+    nested: false,
   }
+}
+
+function promoteNumberedParents(items: ProposalItemDraft[]): ProposalItemDraft[] {
+  return items.map((item, index) => {
+    if (item.kind === 'heading') return item
+    const depth = outlineDepth(item.description)
+    if (depth !== 1) return item
+    const next = items[index + 1]
+    if (!next || next.kind === 'heading') return item
+    if (outlineDepth(next.description) <= depth) return item
+    const qty = toQuantity(item.quantity)
+    const rate = toQuantity(item.rate)
+    if (qty > 0 || rate > 0 || hasMeasurementValues(item.measurements)) return item
+    return { ...item, kind: 'heading', quantity: '', unit: '', rate: '', measurements: null, nested: false }
+  })
+}
+
+function assignNesting(items: ProposalItemDraft[]): ProposalItemDraft[] {
+  let underHeading = false
+  return items.map((item) => {
+    if (item.kind === 'heading') {
+      underHeading = true
+      return { ...item, nested: false }
+    }
+    return { ...item, nested: underHeading }
+  })
 }
 
 export function parseBoqMatrix(rows: unknown[][]): ParsedBoqImport | { error: string } {
   const filled = rows.map((row) => (Array.isArray(row) ? row : []))
   let headerIndex = -1
-  let map: Partial<Record<BoqField, number>> | null = null
+  let map: HeaderMap | null = null
 
   const scanLimit = Math.min(filled.length, 30)
   for (let i = 0; i < scanLimit; i++) {
-    if (isBlankRow(filled[i])) continue
-    const found = mapHeaderRow(filled[i])
+    if (isBlankRow(filled[i] ?? [])) continue
+    const found = mapHeaderRow(filled[i] ?? [])
     if (found) {
       headerIndex = i
       map = found
+      const sub = filled[i + 1]
+      if (sub && looksLikeSubHeaderRow(sub)) {
+        map = mergeSubHeaderRow(found, sub)
+        headerIndex = i + 1
+      }
       break
     }
   }
@@ -169,7 +310,7 @@ export function parseBoqMatrix(rows: unknown[][]): ParsedBoqImport | { error: st
 
   for (let i = dataStart; i < filled.length; i++) {
     const row = filled[i]
-    if (isBlankRow(row)) continue
+    if (!row || isBlankRow(row)) continue
     const draft = toDraft(row, map)
     if (!draft) {
       skipped += 1
@@ -185,11 +326,11 @@ export function parseBoqMatrix(rows: unknown[][]): ParsedBoqImport | { error: st
   if (items.length === 0) {
     return {
       error:
-        'No BOQ items found. Use columns Description, Qty, Unit, and Rate (Amount is optional).',
+        'No BOQ items found. Use columns Description, Qty, Unit, and Rate (Amount is optional). Group headings and Nos / L / B / H columns are supported.',
     }
   }
 
-  return { items, skipped, truncated }
+  return { items: assignNesting(promoteNumberedParents(items)), skipped, truncated }
 }
 
 export function parseBoqWorkbookData(data: ArrayBuffer | Uint8Array | string): ParsedBoqImport | { error: string } {
@@ -224,12 +365,24 @@ export function mergeImportedBoqItems(
 export function buildBoqTemplateWorkbook(): Uint8Array {
   const workbook = XLSX.utils.book_new()
   const sheet = XLSX.utils.aoa_to_sheet([
-    ['S.No', 'Description', 'Qty', 'Unit', 'Rate'],
-    [1, 'RCC foundation', 10, 'cu.ft', 150],
-    [2, 'Steel reinforcement', 2, 'MT', 70000],
-    [3, 'Internal plastering', 1800, 'sqft', 45],
+    ['S.No', 'Description', 'Nos', 'L', 'B', 'H', 'Qty', 'Unit', 'Rate'],
+    ['1', 'Concrete quantity', '', '', '', '', '', '', ''],
+    ['1.1', 'Steel', '', '', '', '', 2, 'MT', 70000],
+    ['1.2', 'Shuttering', '', '', '', '', 50, 'sqft', 45],
+    ['1.3', 'Concrete', 1, 10, 10, 1, 100, 'cu.ft', 150],
+    ['2', 'RCC foundation', '', '', '', '', 10, 'cu.ft', 150],
   ])
-  sheet['!cols'] = [{ wch: 8 }, { wch: 36 }, { wch: 10 }, { wch: 10 }, { wch: 12 }]
+  sheet['!cols'] = [
+    { wch: 8 },
+    { wch: 28 },
+    { wch: 8 },
+    { wch: 8 },
+    { wch: 8 },
+    { wch: 8 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 12 },
+  ]
   XLSX.utils.book_append_sheet(workbook, sheet, 'BOQ')
   return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as Uint8Array
 }

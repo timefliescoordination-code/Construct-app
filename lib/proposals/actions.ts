@@ -21,6 +21,7 @@ import { createProjectAction } from '@/lib/projects/actions'
 import type { ProposalEditorPayload } from '@/lib/proposals/types'
 import type { ProposalItemSection, ProposalMethod } from '@/lib/proposals/constants'
 import type { UserRole } from '@/lib/types/database'
+import { measurementsFromUnknown, measurementsToJson } from '@/lib/proposals/boq-structure'
 
 export type ProposalActionResult<T = void> =
   | { ok: true; data: T }
@@ -158,6 +159,9 @@ function preparedLines(payload: ProposalEditorPayload) {
       unit: item.unit,
       rate: item.rate,
       sortOrder: index,
+      kind: item.kind,
+      measurements: item.measurements ?? null,
+      nested: Boolean(item.nested),
     }))
     .filter((item) => {
       if (!item.description.trim()) return false
@@ -182,7 +186,7 @@ async function replaceVersionItems(
 
   if (lines.length === 0) return { ok: true }
 
-  const { error: insertError } = await supabase.from('proposal_items').insert(
+    const { error: insertError } = await supabase.from('proposal_items').insert(
     lines.map((line) => ({
       proposal_version_id: versionId,
       section: line.section,
@@ -192,6 +196,9 @@ async function replaceVersionItems(
       unit: line.unit,
       rate: line.rate,
       price: line.price,
+      kind: line.kind,
+      measurements: measurementsToJson(line.measurements),
+      nested: line.nested,
     })),
   )
 
@@ -460,6 +467,9 @@ export async function shareProposalAction(
       quantity: item.quantity,
       unit: item.unit,
       rate: item.rate,
+      kind: item.kind,
+      measurements: measurementsFromUnknown(item.measurements),
+      nested: Boolean(item.nested),
     })),
   })
   if (shareError) return { ok: false, error: shareError }
@@ -472,6 +482,9 @@ export async function shareProposalAction(
       unit: item.unit,
       rate: item.rate,
       sortOrder: index,
+      kind: item.kind,
+      measurements: measurementsFromUnknown(item.measurements),
+      nested: Boolean(item.nested),
     })),
   )
   const totals = computeProposalTotals(version.method as ProposalMethod, lines)
@@ -642,6 +655,9 @@ export async function createProposalRevisionAction(
         unit: item.unit,
         rate: item.rate,
         price: item.price,
+        kind: item.kind ?? 'item',
+        measurements: measurementsFromUnknown(item.measurements),
+        nested: Boolean(item.nested),
       })),
     )
     if (copyError) {

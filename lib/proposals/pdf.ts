@@ -1,8 +1,9 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { format } from 'date-fns'
-import type { PublicProposalDocument } from '@/lib/proposals/types'
-import { formatAreaRateDisplay } from '@/lib/proposals/calculations'
+import type { PublicProposalDocument, PublicProposalItem } from '@/lib/proposals/types'
+import { formatAreaRateDisplay, formatBoqLineDisplay } from '@/lib/proposals/calculations'
+import { boqSerialLabel, isChildRow, isHeading } from '@/lib/proposals/boq-structure'
 import { PROPOSAL_METHOD_LABELS, formatProposalNumber } from '@/lib/proposals/constants'
 
 const MARGIN_X = 48
@@ -23,11 +24,39 @@ function sectionItems(doc: PublicProposalDocument, section: 'built_up' | 'additi
     .sort((a, b) => a.sort_order - b.sort_order)
 }
 
+type PdfTableRow = {
+  cells: [string, string, string, string]
+  heading?: boolean
+}
+
+function toPdfRows(
+  items: PublicProposalItem[],
+  qtyColumn: boolean,
+  money: (n: number) => string,
+): PdfTableRow[] {
+  return items.map((item, index) => {
+    const heading = isHeading(item)
+    const child = isChildRow(items, index)
+    const serial = qtyColumn ? boqSerialLabel(items, index, item.section) : String(index + 1)
+    const description = child ? `    ${item.description}` : item.description
+    if (heading) {
+      return { cells: [serial, description, '', ''], heading: true }
+    }
+    const qtyRate = qtyColumn
+      ? formatBoqLineDisplay(item, money)
+      : formatAreaRateDisplay(item.quantity, item.unit, item.rate, money)
+    return {
+      cells: [serial, description, qtyRate, money(item.price)],
+    }
+  })
+}
+
 function drawSectionTable(
   pdf: jsPDF,
   title: string,
-  rows: Array<[string, string, string, string]>,
+  rows: PdfTableRow[],
   startY: number,
+  qtyHeader: string,
 ) {
   pdf.setFont('helvetica', 'bold')
   pdf.setFontSize(11)
@@ -36,8 +65,8 @@ function drawSectionTable(
 
   autoTable(pdf, {
     startY: startY + 8,
-    head: [['S.No', 'Description', 'Area / Unit Rate', 'Price']],
-    body: rows,
+    head: [['S.No', 'Description', qtyHeader, 'Price']],
+    body: rows.map((row) => row.cells),
     theme: 'plain',
     margin: { left: MARGIN_X, right: MARGIN_X },
     styles: {
@@ -58,6 +87,13 @@ function drawSectionTable(
       1: { cellWidth: 'auto' },
       2: { cellWidth: 150 },
       3: { cellWidth: 90, halign: 'right' },
+    },
+    didParseCell: (data) => {
+      if (data.section !== 'body') return
+      const row = rows[data.row.index]
+      if (row?.heading) {
+        data.cell.styles.fontStyle = 'bold'
+      }
     },
     didDrawCell: (data) => {
       if (data.section === 'head') {
@@ -118,32 +154,17 @@ export function downloadProposalPdf(document: PublicProposalDocument) {
   const money = (n: number) => formatPdfAmount(n)
 
   if (document.method === 'sqft') {
-    const built = sectionItems(document, 'built_up').map((item, index) => [
-      String(index + 1),
-      item.description,
-      formatAreaRateDisplay(item.quantity, item.unit, item.rate, formatPdfAmount),
-      money(item.price),
-    ])
+    const built = toPdfRows(sectionItems(document, 'built_up'), false, money)
     if (built.length) {
-      y = drawSectionTable(pdf, 'AS PER BUILT-UP AREA', built as Array<[string, string, string, string]>, y) + 22
+      y = drawSectionTable(pdf, 'AS PER BUILT-UP AREA', built, y, 'Area / Unit Rate') + 22
     }
-    const extra = sectionItems(document, 'additional').map((item, index) => [
-      String(index + 1),
-      item.description,
-      formatAreaRateDisplay(item.quantity, item.unit, item.rate, formatPdfAmount),
-      money(item.price),
-    ])
+    const extra = toPdfRows(sectionItems(document, 'additional'), false, money)
     if (extra.length) {
-      y = drawSectionTable(pdf, 'ADDITIONAL WORKS', extra as Array<[string, string, string, string]>, y) + 22
+      y = drawSectionTable(pdf, 'ADDITIONAL WORKS', extra, y, 'Area / Unit Rate') + 22
     }
   } else {
-    const boq = sectionItems(document, 'boq').map((item, index) => [
-      String(index + 1),
-      item.description,
-      formatAreaRateDisplay(item.quantity, item.unit, item.rate, formatPdfAmount),
-      money(item.price),
-    ])
-    y = drawSectionTable(pdf, 'BOQ', boq as Array<[string, string, string, string]>, y) + 22
+    const boq = toPdfRows(sectionItems(document, 'boq'), true, money)
+    y = drawSectionTable(pdf, 'BOQ', boq, y, 'Quantity / Rate') + 22
   }
 
   pdf.setFont('helvetica', 'bold')

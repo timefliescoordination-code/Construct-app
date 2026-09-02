@@ -1,11 +1,19 @@
 import type {
   ProposalAuditEventType,
+  ProposalItemKind,
   ProposalItemSection,
   ProposalMethod,
   ProposalStatus,
   ProposalVersionStatus,
   RevisionRequestStatus,
 } from '@/lib/proposals/constants'
+
+export type BoqMeasurements = {
+  nos: string
+  length: string
+  breadth: string
+  height: string
+}
 
 export type ProposalItemDraft = {
   id?: string
@@ -14,6 +22,9 @@ export type ProposalItemDraft = {
   quantity: string
   unit: string
   rate: string
+  kind?: ProposalItemKind
+  measurements?: BoqMeasurements | null
+  nested?: boolean
 }
 
 export type ProposalItemRow = {
@@ -26,6 +37,9 @@ export type ProposalItemRow = {
   unit: string
   rate: number
   price: number
+  kind?: ProposalItemKind
+  measurements?: BoqMeasurements | Record<string, unknown> | null
+  nested?: boolean
 }
 
 export type ProposalVersionRow = {
@@ -145,6 +159,9 @@ export type PublicProposalItem = {
   unit: string
   rate: number
   price: number
+  kind?: ProposalItemKind
+  measurements?: BoqMeasurements | null
+  nested?: boolean
 }
 
 export type PublicProposalDocument = {
@@ -199,5 +216,8 @@ export type ProposalEditorPayload = {
     quantity: number
     unit: string
     rate: number
+    kind?: ProposalItemKind
+    measurements?: BoqMeasurements | null
+    nested?: boolean
   }>
 }

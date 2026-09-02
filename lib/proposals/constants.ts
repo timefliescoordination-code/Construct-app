@@ -29,6 +29,9 @@ export type ProposalVersionStatus = (typeof PROPOSAL_VERSION_STATUSES)[number]
 export const PROPOSAL_ITEM_SECTIONS = ['built_up', 'additional', 'boq'] as const
 export type ProposalItemSection = (typeof PROPOSAL_ITEM_SECTIONS)[number]
 
+export const PROPOSAL_ITEM_KINDS = ['heading', 'item'] as const
+export type ProposalItemKind = (typeof PROPOSAL_ITEM_KINDS)[number]
+
 export const REVISION_REQUEST_STATUSES = ['open', 'resolved', 'dismissed'] as const
 export type RevisionRequestStatus = (typeof REVISION_REQUEST_STATUSES)[number]
 

@@ -16,6 +16,7 @@ import type {
 } from '@/lib/proposals/types'
 import type { ProposalItemSection } from '@/lib/proposals/constants'
 import { isServiceRoleConfigured } from '@/lib/supabase/env'
+import { measurementsFromUnknown } from '@/lib/proposals/boq-structure'
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10)
@@ -164,7 +165,7 @@ export async function getPublicProposalByToken(token: string): Promise<PublicPro
 
   const { data: itemRows } = await admin
     .from('proposal_items')
-    .select('section, sort_order, description, quantity, unit, rate, price')
+    .select('section, sort_order, description, quantity, unit, rate, price, kind, measurements, nested')
     .eq('proposal_version_id', version.id)
     .order('sort_order', { ascending: true })
 
@@ -176,6 +177,9 @@ export async function getPublicProposalByToken(token: string): Promise<PublicPro
     unit: item.unit,
     rate: Number(item.rate) || 0,
     price: Number(item.price) || 0,
+    kind: item.kind === 'heading' ? 'heading' : 'item',
+    measurements: measurementsFromUnknown(item.measurements),
+    nested: Boolean(item.nested),
   }))
 
   const { data: latestPublished } = await admin

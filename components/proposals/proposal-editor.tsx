@@ -34,11 +34,12 @@ import {
   toQuantity,
   validateProposalForShare,
 } from '@/lib/proposals/calculations'
-import { DEFAULT_PROPOSAL_NOTES, defaultUnitForSection, formatProposalNumber, type ProposalMethod } from '@/lib/proposals/constants'
+import { DEFAULT_PROPOSAL_NOTES, defaultUnitForSection, formatProposalNumber, type ProposalItemKind, type ProposalMethod } from '@/lib/proposals/constants'
 import type { ProposalDetail, ProposalItemDraft, PublicProposalDocument } from '@/lib/proposals/types'
 import { formatINR } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 import { useCompanyBranding } from '@/lib/hooks/use-company-branding'
+import { measurementsFromUnknown } from '@/lib/proposals/boq-structure'
 
 type ProposalEditorProps = {
   mode: 'create' | 'edit'
@@ -55,6 +56,9 @@ function versionToDrafts(proposal: ProposalDetail | null | undefined): ProposalI
     quantity: String(item.quantity ?? ''),
     unit: item.unit,
     rate: String(item.rate ?? ''),
+    kind: item.kind === 'heading' ? 'heading' : 'item',
+    measurements: measurementsFromUnknown(item.measurements),
+    nested: Boolean(item.nested),
   }))
 }
 
@@ -123,6 +127,9 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
           unit: item.unit,
           rate: toQuantity(item.rate),
           sortOrder: index,
+          kind: item.kind,
+          measurements: item.measurements ?? null,
+          nested: Boolean(item.nested),
         })),
     )
     return { lines, totals: computeProposalTotals(method, lines) }
@@ -145,8 +152,11 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
         section: item.section,
         description: item.description.trim(),
         quantity: toQuantity(item.quantity),
-        unit: item.unit.trim() || defaultUnitForSection(item.section),
+        unit: item.unit.trim() || (item.kind === 'heading' ? '' : defaultUnitForSection(item.section)),
         rate: toQuantity(item.rate),
+        kind: (item.kind === 'heading' ? 'heading' : 'item') as ProposalItemKind,
+        measurements: item.kind === 'heading' ? null : item.measurements ?? null,
+        nested: item.kind === 'heading' ? false : Boolean(item.nested),
       })),
   })
 
@@ -162,7 +172,7 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
       ])
     }
     if (next === 'boq' && !items.some((item) => item.section === 'boq')) {
-      setItems([{ section: 'boq', description: '', quantity: '', unit: 'item', rate: '' }])
+      setItems([{ section: 'boq', description: '', quantity: '', unit: 'item', rate: '', kind: 'item' }])
     }
   }
 
@@ -248,6 +258,9 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
       unit: line.unit,
       rate: line.rate,
       price: line.price,
+      kind: line.kind,
+      measurements: line.measurements,
+      nested: line.nested,
     })),
     built_up_total: computed.totals.builtUpTotal,
     additional_works_total: computed.totals.additionalWorksTotal,
@@ -445,7 +458,7 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
           title="BOQ"
           items={items}
           onChange={setItems}
-          emptyHint="Upload an Excel or CSV file, or add each measurable item with quantity, unit, and rate."
+          emptyHint="Upload an Excel or CSV file, or add a group such as Concrete quantity and sub-items under it."
         />
       )}
 

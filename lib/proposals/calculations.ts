@@ -1,4 +1,11 @@
-import type { ProposalItemSection, ProposalMethod } from '@/lib/proposals/constants'
+import type { ProposalItemKind, ProposalItemSection, ProposalMethod } from './constants.ts'
+import {
+  formatMeasurementsHint,
+  isHeading,
+  itemKind,
+  quantityFromMeasurements,
+} from './boq-structure.ts'
+import type { BoqMeasurements } from './types.ts'
 
 export type ProposalLineInput = {
   section: ProposalItemSection
@@ -7,6 +14,9 @@ export type ProposalLineInput = {
   unit: string
   rate: number | string
   sortOrder?: number
+  kind?: ProposalItemKind
+  measurements?: BoqMeasurements | null
+  nested?: boolean
 }
 
 export type ProposalLineComputed = {
@@ -17,6 +27,9 @@ export type ProposalLineComputed = {
   rate: number
   price: number
   sortOrder: number
+  kind: ProposalItemKind
+  measurements: BoqMeasurements | null
+  nested: boolean
 }
 
 /** Round to paise (2 decimal places). Never format then parse. */
@@ -38,7 +51,23 @@ export function linePrice(quantity: number | string, rate: number | string): num
 
 export function computeProposalLines(rows: ProposalLineInput[]): ProposalLineComputed[] {
   return rows.map((row, index) => {
-    const quantity = toQuantity(row.quantity)
+    const kind = itemKind(row.kind)
+    if (kind === 'heading') {
+      return {
+        section: row.section,
+        description: row.description.trim(),
+        quantity: 0,
+        unit: '',
+        rate: 0,
+        price: 0,
+        sortOrder: row.sortOrder ?? index,
+        kind,
+        measurements: null,
+        nested: false,
+      }
+    }
+
+    const quantity = quantityFromMeasurements(row.measurements, row.quantity)
     const rate = toQuantity(row.rate)
     return {
       section: row.section,
@@ -48,6 +77,9 @@ export function computeProposalLines(rows: ProposalLineInput[]): ProposalLineCom
       rate: roundMoney(rate),
       price: linePrice(quantity, rate),
       sortOrder: row.sortOrder ?? index,
+      kind,
+      measurements: row.measurements ?? null,
+      nested: Boolean(row.nested),
     }
   })
 }
@@ -86,6 +118,8 @@ export type ShareValidationItem = {
   unit: string
   rate: number | string
   section: ProposalItemSection
+  kind?: ProposalItemKind
+  measurements?: BoqMeasurements | null
 }
 
 export function validateProposalForShare(input: {
@@ -105,20 +139,21 @@ export function validateProposalForShare(input: {
   }
 
   const filled = input.items.filter((item) => item.description.trim())
+  const billed = filled.filter((item) => !isHeading(item))
   if (input.method === 'sqft') {
-    const hasPricing = filled.some((item) => item.section === 'built_up' || item.section === 'additional')
+    const hasPricing = billed.some((item) => item.section === 'built_up' || item.section === 'additional')
     if (!hasPricing) {
       return 'Add at least one item under Built-up Area or Additional Works before sharing.'
     }
-  } else if (!filled.some((item) => item.section === 'boq')) {
+  } else if (!billed.some((item) => item.section === 'boq')) {
     return 'Add at least one BOQ item before sharing.'
   }
 
-  for (const item of filled) {
+  for (const item of billed) {
     if (!item.unit.trim()) {
       return `Unit is required for “${item.description.trim()}”.`
     }
-    const quantity = toQuantity(item.quantity)
+    const quantity = quantityFromMeasurements(item.measurements, item.quantity)
     const rate = toQuantity(item.rate)
     if (!(quantity > 0)) {
       return `Enter a valid quantity for “${item.description.trim()}”.`
@@ -135,5 +170,20 @@ export function formatAreaRateDisplay(quantity: number, unit: string, rate: numb
   const qty = Number.isInteger(quantity)
     ? quantity.toLocaleString('en-IN')
     : quantity.toLocaleString('en-IN', { maximumFractionDigits: 2 })
-  return `${qty} ${unit} × ${formatMoney(rate)}`
+  const unitPart = unit.trim() ? ` ${unit}` : ''
+  return `${qty}${unitPart} × ${formatMoney(rate)}`
+}
+
+export function formatBoqLineDisplay(
+  item: {
+    quantity: number
+    unit: string
+    rate: number
+    measurements?: BoqMeasurements | null
+  },
+  formatMoney: (n: number) => string,
+): string {
+  const hint = formatMeasurementsHint(item.measurements)
+  const base = formatAreaRateDisplay(item.quantity, item.unit, item.rate, formatMoney)
+  return hint ? `${base} (${hint})` : base
 }

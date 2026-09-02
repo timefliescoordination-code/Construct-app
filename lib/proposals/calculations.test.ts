@@ -62,6 +62,27 @@ describe('computeProposalTotals boq', () => {
     assert.equal(totals.grandTotal, 141500)
     assert.equal(totals.builtUpTotal, 0)
   })
+
+  it('ignores group headings and uses measurement takeoff for quantity', () => {
+    const lines = computeProposalLines([
+      { section: 'boq', description: 'Concrete quantity', quantity: 0, unit: '', rate: 0, kind: 'heading' },
+      { section: 'boq', description: 'Steel', quantity: 2, unit: 'MT', rate: 70000, kind: 'item' },
+      {
+        section: 'boq',
+        description: 'Concrete',
+        quantity: 0,
+        unit: 'cu.ft',
+        rate: 150,
+        kind: 'item',
+        measurements: { nos: '1', length: '10', breadth: '10', height: '1' },
+      },
+    ])
+    assert.equal(lines[0]?.price, 0)
+    assert.equal(lines[2]?.quantity, 100)
+    assert.equal(lines[2]?.price, 15000)
+    const totals = computeProposalTotals('boq', lines)
+    assert.equal(totals.grandTotal, 155000)
+  })
 })
 
 describe('validateProposalForShare', () => {
@@ -81,6 +102,19 @@ describe('validateProposalForShare', () => {
       items: [],
     })
     assert.equal(typeof missingItems, 'string')
+  })
+
+  it('does not require quantity or unit on group headings', () => {
+    const error = validateProposalForShare({
+      projectName: 'Arun Residence',
+      projectAddress: 'Chennai',
+      method: 'boq',
+      items: [
+        { section: 'boq', description: 'Concrete quantity', quantity: 0, unit: '', rate: 0, kind: 'heading' },
+        { section: 'boq', description: 'Steel', quantity: 2, unit: 'MT', rate: 70000, kind: 'item' },
+      ],
+    })
+    assert.equal(error, null)
   })
 
   it('accepts a valid sqft proposal', () => {

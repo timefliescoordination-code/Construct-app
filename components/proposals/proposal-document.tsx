@@ -5,7 +5,8 @@ import { format } from 'date-fns'
 import { BrandLogo } from '@/components/layout/brand-logo'
 import { ScrollTable } from '@/components/layout/scroll-table'
 import { formatINR } from '@/lib/currency'
-import { formatAreaRateDisplay } from '@/lib/proposals/calculations'
+import { formatAreaRateDisplay, formatBoqLineDisplay } from '@/lib/proposals/calculations'
+import { boqSerialLabel, isChildRow, isHeading } from '@/lib/proposals/boq-structure'
 import { PROPOSAL_METHOD_LABELS, formatProposalNumber } from '@/lib/proposals/constants'
 import type { PublicProposalDocument, PublicProposalItem } from '@/lib/proposals/types'
 import { cn } from '@/lib/utils'
@@ -35,18 +36,38 @@ function ProposalTable({
           </tr>
         </thead>
         <tbody>
-          {items.map((item, index) => (
-            <tr key={`${item.section}-${item.sort_order}-${index}`} className="border-b border-neutral-100">
-              <td className="py-3 pr-3 align-top text-neutral-500">{index + 1}</td>
-              <td className="py-3 pr-3 align-top font-medium text-neutral-900">{item.description}</td>
-              <td className="py-3 pr-3 align-top text-neutral-600">
-                {formatAreaRateDisplay(item.quantity, item.unit, item.rate, formatINR)}
-              </td>
-              <td className="py-3 text-right align-top font-medium tabular-nums text-neutral-900">
-                {formatINR(item.price)}
-              </td>
-            </tr>
-          ))}
+          {items.map((item, index) => {
+            const heading = isHeading(item)
+            const child = isChildRow(items, index)
+            const serial = showQtyColumn ? boqSerialLabel(items, index, item.section) : String(index + 1)
+            return (
+              <tr
+                key={`${item.section}-${item.sort_order}-${index}`}
+                className={cn('border-b border-neutral-100', heading && 'bg-neutral-50')}
+              >
+                <td className="py-3 pr-3 align-top text-neutral-500">{serial}</td>
+                <td
+                  className={cn(
+                    'py-3 pr-3 align-top font-medium text-neutral-900',
+                    child && 'pl-6',
+                    heading && 'font-semibold',
+                  )}
+                >
+                  {item.description}
+                </td>
+                <td className="py-3 pr-3 align-top text-neutral-600">
+                  {heading
+                    ? null
+                    : showQtyColumn
+                      ? formatBoqLineDisplay(item, formatINR)
+                      : formatAreaRateDisplay(item.quantity, item.unit, item.rate, formatINR)}
+                </td>
+                <td className="py-3 text-right align-top font-medium tabular-nums text-neutral-900">
+                  {heading ? null : formatINR(item.price)}
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </ScrollTable>

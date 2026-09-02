@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import * as XLSX from 'xlsx'
 import {
+  buildBoqTemplateWorkbook,
   mergeImportedBoqItems,
   parseBoqMatrix,
   parseBoqWorkbookData,
@@ -107,6 +108,17 @@ describe('parseBoqWorkbookData', () => {
     assert.equal(result.items[0]?.description, 'Gate')
     assert.equal(result.items[0]?.unit, 'nos')
   })
+
+  it('parses the downloadable template including a group and measurements', () => {
+    const result = parseBoqWorkbookData(buildBoqTemplateWorkbook())
+    assert.equal('error' in result, false)
+    if ('error' in result) return
+    assert.equal(result.items[0]?.kind, 'heading')
+    assert.equal(result.items[0]?.description, 'Concrete quantity')
+    const concrete = result.items.find((item) => item.description === 'Concrete')
+    assert.equal(concrete?.measurements?.height, '1')
+    assert.equal(concrete?.quantity, '100')
+  })
 })
 
 describe('mergeImportedBoqItems', () => {
@@ -122,5 +134,76 @@ describe('mergeImportedBoqItems', () => {
     assert.equal(merged.length, 2)
     assert.equal(merged[0]?.section, 'built_up')
     assert.equal(merged[1]?.description, 'New')
+  })
+})
+
+describe('grouped and measurement BOQ import', () => {
+  it('keeps description-only rows as group headings', () => {
+    const result = parseBoqMatrix([
+      ['Description', 'Qty', 'Unit', 'Rate'],
+      ['Concrete quantity', '', '', ''],
+      ['Steel', 2, 'MT', 70000],
+      ['Shuttering', 50, 'sqft', 45],
+      ['Concrete', 10, 'cu.ft', 150],
+    ])
+    assert.equal('error' in result, false)
+    if ('error' in result) return
+    assert.equal(result.items.length, 4)
+    assert.equal(result.items[0]?.kind, 'heading')
+    assert.equal(result.items[0]?.description, 'Concrete quantity')
+    assert.equal(result.items[1]?.kind, 'item')
+    assert.equal(result.items[1]?.nested, true)
+    assert.equal(result.items[1]?.description, 'Steel')
+    assert.equal(result.items[3]?.description, 'Concrete')
+  })
+
+  it('reads Nos / L / B / H sub-headers under Quantity', () => {
+    const result = parseBoqMatrix([
+      ['S.No', 'Description', 'Quantity', '', '', '', 'Unit', 'Rate'],
+      ['', '', 'Nos', 'L', 'B', 'H', '', ''],
+      ['1', 'Concrete quantity', '', '', '', '', '', ''],
+      ['1.1', 'Steel', '', '', '', '', 'MT', 70000],
+      ['1.2', 'Concrete', 1, 10, 10, 1, 'cu.ft', 150],
+    ])
+    assert.equal('error' in result, false)
+    if ('error' in result) return
+    assert.equal(result.items[0]?.kind, 'heading')
+    const concrete = result.items.find((item) => item.description === 'Concrete')
+    assert.equal(concrete?.kind, 'item')
+    assert.equal(concrete?.quantity, '100')
+    assert.equal(concrete?.unit, 'cu.ft')
+    assert.equal(concrete?.measurements?.nos, '1')
+    assert.equal(concrete?.measurements?.length, '10')
+    assert.equal(concrete?.measurements?.breadth, '10')
+    assert.equal(concrete?.measurements?.height, '1')
+    const steel = result.items.find((item) => item.description === 'Steel')
+    assert.equal(steel?.unit, 'MT')
+    assert.equal(steel?.rate, '70000')
+  })
+
+  it('promotes numbered parents when children follow', () => {
+    const result = parseBoqMatrix([
+      ['Description', 'Qty', 'Unit', 'Rate'],
+      ['1 Earthwork', '', '', ''],
+      ['1.1 Excavation', 20, 'cu.ft', 80],
+      ['1.2 Filling', 8, 'cu.ft', 60],
+    ])
+    assert.equal('error' in result, false)
+    if ('error' in result) return
+    assert.equal(result.items[0]?.kind, 'heading')
+    assert.equal(result.items[1]?.kind, 'item')
+    assert.equal(result.items[1]?.description, '1.1 Excavation')
+  })
+
+  it('still reads a flat sheet without groups', () => {
+    const result = parseBoqMatrix([
+      ['S.No', 'Description', 'Qty', 'Unit', 'Rate'],
+      [1, 'RCC foundation', 10, 'cu.ft', 150],
+    ])
+    assert.equal('error' in result, false)
+    if ('error' in result) return
+    assert.equal(result.items.length, 1)
+    assert.equal(result.items[0]?.kind, 'item')
+    assert.equal(result.items[0]?.quantity, '10')
   })
 })
