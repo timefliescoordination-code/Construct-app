@@ -15,7 +15,9 @@ type BoqField =
   | 'breadth'
   | 'height'
 
-type HeaderMap = Partial<Record<BoqField, number>>
+type HeaderMap = Partial<Record<BoqField, number>> & {
+  descriptionSecondary?: number
+}
 
 export type ParsedBoqImport = {
   items: ProposalItemDraft[]
@@ -24,6 +26,9 @@ export type ParsedBoqImport = {
 }
 
 const TOTAL_LABEL = /^(grand\s*)?total$|^sub[\s-]*total$|^carried\s*forward$|^brought\s*forward$/i
+const LETTERED_CHILD = /^(?:\(?[a-z]\)|[a-z][.)]|[ivxlcdm]+[.)])\s+/i
+const UNIT_TOKEN =
+  /\b(cft|cu\.?\s*ft|cum|cu\.?\s*m|m3|m³|sqm|sq\.?\s*m|sqft|sft|rft|rmt|rm|nos|no|kg|mt|ton|tonne|bag|bags|job|ls|item|each|ltr|litre|liter)\b/i
 
 function normalizeHeader(value: unknown): string {
   return String(value ?? '')
@@ -36,8 +41,10 @@ function normalizeHeader(value: unknown): string {
 function descriptionScore(value: unknown): number {
   const header = normalizeHeader(value)
   if (!header) return 0
-  if (/\bdescription\b|\bparticular/.test(header)) return 3
-  if (/\bitem name\b|\bdetails\b/.test(header)) return 2
+  if (/\bdescription\b|\bparticular/.test(header)) return 5
+  if (/\bsub[ -]?group\b|\bsub[ -]?item\b|\bwork item\b|\bactivity\b/.test(header)) return 4
+  if (/\bitem name\b|\bdetails\b|\bspecification\b|\bspec\b/.test(header)) return 3
+  if (/^(group|heading|category|head)$/.test(header)) return 2
   if (/^(item|items|work)$/.test(header)) return 1
   return 0
 }
@@ -56,10 +63,10 @@ function classifyMeasurementHeader(value: unknown): Exclude<BoqField, 'descripti
 function classifyHeader(value: unknown): BoqField | 'ignore' {
   const header = normalizeHeader(value)
   if (!header) return 'ignore'
-  if (/^(s no|sl no|sno|sr no|serial|serial no|item no|item code|code|#)$/.test(header)) return 'ignore'
+  if (/^(s no|sl no|slno|sno|sr no|serial|serial no|item no|item code|code|#)$/.test(header)) return 'ignore'
   const measurement = classifyMeasurementHeader(value)
   if (measurement && measurement !== 'quantity') return measurement
-  if ((/\bamount\b|\bamt\b/.test(header) || /^(total|value)$/.test(header)) && !/\brate\b/.test(header)) {
+  if ((/\bamount\b|\bamt\b/.test(header) || /^(total|value|total amount)$/.test(header)) && !/\brate\b/.test(header)) {
     return 'amount'
   }
   if (/\brate\b|unit price|unit rate/.test(header)) return 'rate'
@@ -71,21 +78,20 @@ function classifyHeader(value: unknown): BoqField | 'ignore' {
 
 function mapHeaderRow(row: unknown[]): HeaderMap | null {
   const map: HeaderMap = {}
-  let bestDescriptionScore = 0
+  const descriptionCols: Array<{ index: number; score: number }> = []
   row.forEach((cell, index) => {
     const field = classifyHeader(cell)
     if (field === 'ignore') return
     if (field === 'description') {
-      const score = descriptionScore(cell)
-      if (score > bestDescriptionScore) {
-        map.description = index
-        bestDescriptionScore = score
-      }
+      descriptionCols.push({ index, score: descriptionScore(cell) })
       return
     }
     if (map[field] != null) return
     map[field] = index
   })
+  descriptionCols.sort((a, b) => b.score - a.score || a.index - b.index)
+  if (descriptionCols[0]) map.description = descriptionCols[0].index
+  if (descriptionCols[1]) map.descriptionSecondary = descriptionCols[1].index
   if (map.description == null) return null
   if (
     map.quantity == null &&
@@ -138,9 +144,22 @@ function cellText(value: unknown): string {
   return String(value).replace(/\s+/g, ' ').trim()
 }
 
+function parseBoqNumber(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  const text = String(value ?? '')
+    .replace(/[₹]/g, '')
+    .replace(/\b(?:rs|inr)\.?\b/gi, '')
+    .replace(/,/g, '')
+    .replace(/\s+/g, '')
+    .trim()
+  if (!text) return Number.NaN
+  const n = Number(text)
+  return Number.isFinite(n) ? n : Number.NaN
+}
+
 function formatNumber(value: unknown, money: boolean): string {
   if (value == null || value === '') return ''
-  const n = toQuantity(value as number | string)
+  const n = parseBoqNumber(value)
   if (!Number.isFinite(n)) return ''
   if (n === 0 && cellText(value) === '') return ''
   if (Number.isInteger(n)) return String(n)
@@ -153,7 +172,25 @@ function isBlankRow(row: unknown[]): boolean {
   return row.every((cell) => cellText(cell) === '')
 }
 
+function isLetteredChild(description: string): boolean {
+  return LETTERED_CHILD.test(description.trim())
+}
+
+function outlineDepth(description: string): number {
+  const match = description.match(/^(\d+(?:\.\d+)*)[.)]?\s+/)
+  if (match?.[1]) return match[1].split('.').filter(Boolean).length
+  if (isLetteredChild(description)) return 2
+  return 1
+}
+
+function isOutlineChild(description: string): boolean {
+  return outlineDepth(description) > 1 || isLetteredChild(description)
+}
+
 function positionalMap(columnCount: number): HeaderMap {
+  if (columnCount >= 7) {
+    return { descriptionSecondary: 1, description: 2, quantity: 3, unit: 4, rate: 5, amount: 6 }
+  }
   if (columnCount >= 6) {
     return { description: 1, unit: 2, quantity: 3, rate: 4, amount: 5 }
   }
@@ -166,17 +203,134 @@ function positionalMap(columnCount: number): HeaderMap {
   return { description: 0, quantity: 1, rate: 2 }
 }
 
+function columnStats(rows: unknown[][], col: number, sample: number) {
+  let numeric = 0
+  let unitish = 0
+  let text = 0
+  let filled = 0
+  let textLength = 0
+  const limit = Math.min(rows.length, sample)
+  for (let i = 0; i < limit; i++) {
+    const raw = rows[i]?.[col]
+    const value = cellText(raw)
+    if (!value) continue
+    filled += 1
+    if (Number.isFinite(parseBoqNumber(raw)) && !UNIT_TOKEN.test(value)) {
+      numeric += 1
+      continue
+    }
+    if (UNIT_TOKEN.test(value) && value.length <= 12) {
+      unitish += 1
+      continue
+    }
+    text += 1
+    textLength += value.length
+  }
+  return { filled, numeric, unitish, text, avgText: text ? textLength / text : 0 }
+}
+
+function looksLikeSerialColumn(rows: unknown[][], col: number): boolean {
+  const values = rows
+    .map((row) => parseBoqNumber(row[col]))
+    .filter((n) => Number.isFinite(n))
+  if (values.length < 2) return false
+  const ints = values.filter((n) => Number.isInteger(n) && n >= 0 && n <= 200)
+  if (ints.length < values.length * 0.75) return false
+  if ((ints[0] ?? 99) > 9) return false
+  let smallSteps = 0
+  for (let i = 1; i < ints.length; i++) {
+    const delta = (ints[i] ?? 0) - (ints[i - 1] ?? 0)
+    if (delta >= 0 && delta <= 5) smallSteps += 1
+  }
+  return smallSteps >= Math.ceil((ints.length - 1) * 0.5)
+}
+
+function inferHeaderMap(rows: unknown[][]): HeaderMap | null {
+  const width = rows.reduce((max, row) => Math.max(max, row.length), 0)
+  if (width < 3) return null
+  const sample = rows.slice(0, 25)
+  const stats = Array.from({ length: width }, (_, col) => ({ col, ...columnStats(sample, col, 25) }))
+  const used = new Set<number>()
+
+  for (const col of stats) {
+    if (looksLikeSerialColumn(sample, col.col)) used.add(col.col)
+  }
+
+  const description = [...stats]
+    .filter((col) => !used.has(col.col) && col.text > 0 && col.avgText >= 8)
+    .sort((a, b) => b.avgText * b.text - a.avgText * a.text)[0]
+  if (!description) return null
+  used.add(description.col)
+
+  const unit = [...stats]
+    .filter((col) => !used.has(col.col) && col.unitish >= Math.max(1, col.filled * 0.35))
+    .sort((a, b) => b.unitish - a.unitish)[0]
+  if (unit) used.add(unit.col)
+
+  const numericCols = [...stats]
+    .filter((col) => !used.has(col.col) && col.numeric >= 2 && col.numeric >= col.text)
+    .sort((a, b) => a.col - b.col)
+
+  const map: HeaderMap = { description: description.col }
+  if (unit) map.unit = unit.col
+  if (numericCols[0]) map.quantity = numericCols[0].col
+  if (numericCols[1]) map.rate = numericCols[1].col
+  if (numericCols[2]) map.amount = numericCols[2].col
+  else if (numericCols.length === 1) {
+    map.amount = numericCols[0].col
+    delete map.quantity
+  }
+  if (map.quantity == null && map.rate == null && map.amount == null) return null
+  return map
+}
+
+function unusedTextColumn(rows: unknown[][], map: HeaderMap, from: number): number | null {
+  const width = rows.reduce((max, row) => Math.max(max, row.length), 0)
+  const mapped = new Set(
+    [map.description, map.descriptionSecondary, map.quantity, map.unit, map.rate, map.amount, map.nos, map.length, map.breadth, map.height].filter(
+      (index): index is number => index != null,
+    ),
+  )
+  let best: { col: number; score: number } | null = null
+  for (let col = 0; col < width; col++) {
+    if (mapped.has(col)) continue
+    const stats = columnStats(rows.slice(from, from + 25), col, 25)
+    if (stats.text < 3 || stats.avgText < 10) continue
+    const score = stats.text * stats.avgText
+    if (!best || score > best.score) best = { col, score }
+  }
+  return best?.col ?? null
+}
+
+function refineDescriptionColumn(map: HeaderMap, rows: unknown[][], from: number): HeaderMap {
+  const sample = rows.slice(from, from + 25)
+  const current = columnStats(sample, map.description ?? -1, 25)
+  if (current.text >= 3 && current.avgText >= 8) return map
+  const fallback = unusedTextColumn(rows, map, from)
+  if (fallback == null) return map
+  return {
+    ...map,
+    descriptionSecondary: map.description,
+    description: fallback,
+  }
+}
+
 function pickCell(row: unknown[], index: number | undefined): unknown {
   if (index == null || index < 0 || index >= row.length) return ''
   return row[index]
 }
 
-function outlineDepth(description: string): number {
-  const match = description.match(/^(\d+(?:\.\d+)*)[.)]?\s+/)
-  if (match?.[1]) return match[1].split('.').filter(Boolean).length
-  if (/^[a-z][).]\s+/i.test(description) || /^\([a-z]\)\s+/i.test(description)) return 2
-  if (/^[ivxlcdm]+[).]\s+/i.test(description)) return 2
-  return 1
+function looksLikeSerialLabel(value: string): boolean {
+  return /^(?:\d+(?:\.\d+)*|[a-z]|[ivxlcdm]+)[.)]?$/i.test(value.trim())
+}
+
+function rowDescription(row: unknown[], map: HeaderMap): string {
+  const primary = cellText(pickCell(row, map.description))
+  const secondary = cellText(pickCell(row, map.descriptionSecondary))
+  if (!primary) return secondary
+  if (!secondary || secondary === primary || looksLikeSerialLabel(secondary)) return primary
+  if (secondary.length <= 4 && primary.length > 12) return primary
+  return `${secondary} — ${primary}`
 }
 
 function rowHasPricing(quantity: string, rate: string, amount: string, measurements: BoqMeasurements | null): boolean {
@@ -197,7 +351,7 @@ function measurementsFromRow(row: unknown[], map: HeaderMap): BoqMeasurements | 
 }
 
 function toDraft(row: unknown[], map: HeaderMap): ProposalItemDraft | null {
-  const description = cellText(pickCell(row, map.description))
+  const description = rowDescription(row, map)
   if (!description || TOTAL_LABEL.test(description)) return null
 
   let quantity = formatNumber(pickCell(row, map.quantity), false)
@@ -205,9 +359,9 @@ function toDraft(row: unknown[], map: HeaderMap): ProposalItemDraft | null {
   const amount = formatNumber(pickCell(row, map.amount), true)
   const measurements = measurementsFromRow(row, map)
 
-  const qtyN = toQuantity(quantity)
-  const rateN = toQuantity(rate)
-  const amountN = toQuantity(amount)
+  const qtyN = parseBoqNumber(quantity)
+  const rateN = parseBoqNumber(rate)
+  const amountN = parseBoqNumber(amount)
 
   if (!quantity && !rate && amountN > 0) {
     quantity = '1'
@@ -235,16 +389,59 @@ function toDraft(row: unknown[], map: HeaderMap): ProposalItemDraft | null {
     quantity = formatNumber(quantityFromMeasurements(measurements, 0), false) || '1'
   }
 
+  const unit = cellText(pickCell(row, map.unit))
+
   return {
     section: 'boq',
     description,
-    quantity: quantity || '1',
-    unit: cellText(pickCell(row, map.unit)) || defaultUnitForSection('boq'),
+    quantity: quantity || (isLetteredChild(description) ? '' : '1'),
+    unit: unit || (isLetteredChild(description) ? '' : defaultUnitForSection('boq')),
     rate: rate || '0',
     kind: 'item',
     measurements,
     nested: false,
   }
+}
+
+function nearlyEqual(a: number, b: number): boolean {
+  if (!(a > 0) || !(b > 0)) return false
+  return Math.abs(a - b) / Math.max(a, b) <= 0.02
+}
+
+function inheritParentTakeoff(items: ProposalItemDraft[]): ProposalItemDraft[] {
+  let parentQty = ''
+  let parentUnit = ''
+  return items.map((item) => {
+    if (!isLetteredChild(item.description)) {
+      if (toQuantity(item.quantity) > 0) parentQty = item.quantity
+      if (item.unit.trim()) parentUnit = item.unit
+      return item
+    }
+    let quantity = item.quantity
+    let unit = item.unit
+    if (!toQuantity(quantity) && parentQty) quantity = parentQty
+    if (!unit.trim() && parentUnit && (!quantity || nearlyEqual(toQuantity(quantity), toQuantity(parentQty)))) {
+      unit = parentUnit
+    }
+    if (!unit.trim() && parentUnit && !toQuantity(item.quantity) && !toQuantity(item.rate)) {
+      unit = parentUnit
+    }
+    return {
+      ...item,
+      quantity: quantity || item.quantity,
+      unit: unit || defaultUnitForSection('boq'),
+      nested: true,
+    }
+  })
+}
+
+function promoteParentsOfLetteredChildren(items: ProposalItemDraft[]): ProposalItemDraft[] {
+  return items.map((item, index) => {
+    if (item.kind === 'heading' || isLetteredChild(item.description)) return item
+    const next = items[index + 1]
+    if (!next || !isLetteredChild(next.description)) return item
+    return { ...item, kind: 'heading', quantity: '', unit: '', rate: '', measurements: null, nested: false }
+  })
 }
 
 function promoteNumberedParents(items: ProposalItemDraft[]): ProposalItemDraft[] {
@@ -263,47 +460,24 @@ function promoteNumberedParents(items: ProposalItemDraft[]): ProposalItemDraft[]
 }
 
 function assignNesting(items: ProposalItemDraft[]): ProposalItemDraft[] {
-  let underHeading = false
-  return items.map((item) => {
+  let mode: 'none' | 'all' | 'outline' = 'none'
+  return items.map((item, index) => {
     if (item.kind === 'heading') {
-      underHeading = true
+      const next = items[index + 1]
+      mode = next && next.kind !== 'heading' && isOutlineChild(next.description) ? 'outline' : 'all'
       return { ...item, nested: false }
     }
-    return { ...item, nested: underHeading }
+    if (mode === 'outline') {
+      if (isOutlineChild(item.description)) return { ...item, nested: true }
+      mode = 'none'
+      return { ...item, nested: false }
+    }
+    if (mode === 'all') return { ...item, nested: true }
+    return { ...item, nested: false }
   })
 }
 
-export function parseBoqMatrix(rows: unknown[][]): ParsedBoqImport | { error: string } {
-  const filled = rows.map((row) => (Array.isArray(row) ? row : []))
-  let headerIndex = -1
-  let map: HeaderMap | null = null
-
-  const scanLimit = Math.min(filled.length, 30)
-  for (let i = 0; i < scanLimit; i++) {
-    if (isBlankRow(filled[i] ?? [])) continue
-    const found = mapHeaderRow(filled[i] ?? [])
-    if (found) {
-      headerIndex = i
-      map = found
-      const sub = filled[i + 1]
-      if (sub && looksLikeSubHeaderRow(sub)) {
-        map = mergeSubHeaderRow(found, sub)
-        headerIndex = i + 1
-      }
-      break
-    }
-  }
-
-  let dataStart = 0
-  if (map && headerIndex >= 0) {
-    dataStart = headerIndex + 1
-  } else {
-    const sample = filled.find((row) => !isBlankRow(row))
-    if (!sample) return { error: 'The spreadsheet has no BOQ rows to import.' }
-    map = positionalMap(sample.length)
-    dataStart = 0
-  }
-
+function parseRowsWithMap(filled: unknown[][], map: HeaderMap, dataStart: number): ParsedBoqImport {
   const items: ProposalItemDraft[] = []
   let skipped = 0
   let truncated = false
@@ -323,14 +497,60 @@ export function parseBoqMatrix(rows: unknown[][]): ParsedBoqImport | { error: st
     items.push(draft)
   }
 
-  if (items.length === 0) {
-    return {
-      error:
-        'No BOQ items found. Use columns Description, Qty, Unit, and Rate (Amount is optional). Group headings and Nos / L / B / H columns are supported.',
+  return {
+    items: assignNesting(promoteNumberedParents(promoteParentsOfLetteredChildren(inheritParentTakeoff(items)))),
+    skipped,
+    truncated,
+  }
+}
+
+export function parseBoqMatrix(rows: unknown[][]): ParsedBoqImport | { error: string } {
+  const filled = rows.map((row) => (Array.isArray(row) ? row : []))
+  let headerIndex = -1
+  let map: HeaderMap | null = null
+
+  const scanLimit = Math.min(filled.length, 40)
+  for (let i = 0; i < scanLimit; i++) {
+    if (isBlankRow(filled[i] ?? [])) continue
+    const found = mapHeaderRow(filled[i] ?? [])
+    if (found) {
+      headerIndex = i
+      map = found
+      const sub = filled[i + 1]
+      if (sub && looksLikeSubHeaderRow(sub)) {
+        map = mergeSubHeaderRow(found, sub)
+        headerIndex = i + 1
+      }
+      break
     }
   }
 
-  return { items: assignNesting(promoteNumberedParents(items)), skipped, truncated }
+  let dataStart = 0
+  if (map && headerIndex >= 0) {
+    dataStart = headerIndex + 1
+    map = refineDescriptionColumn(map, filled, dataStart)
+  } else {
+    const dataRows = filled.filter((row) => !isBlankRow(row))
+    if (dataRows.length === 0) return { error: 'The spreadsheet has no BOQ rows to import.' }
+    map = inferHeaderMap(dataRows) ?? positionalMap(dataRows[0]?.length ?? 0)
+    dataStart = 0
+  }
+
+  let parsed = parseRowsWithMap(filled, map, dataStart)
+  if (parsed.items.length === 0) {
+    const dataRows = filled.filter((row) => !isBlankRow(row))
+    const inferred = inferHeaderMap(dataRows.slice(dataStart))
+    if (inferred) parsed = parseRowsWithMap(filled, inferred, dataStart)
+  }
+
+  if (parsed.items.length === 0) {
+    return {
+      error:
+        'No BOQ items found. Use Description (or Group / Sub-group), Qty, Unit, and Rate. Total/Amount is optional. Group headings and a/b/c sub-items are supported.',
+    }
+  }
+
+  return parsed
 }
 
 export function parseBoqWorkbookData(data: ArrayBuffer | Uint8Array | string): ParsedBoqImport | { error: string } {

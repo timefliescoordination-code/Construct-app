@@ -206,4 +206,75 @@ describe('grouped and measurement BOQ import', () => {
     assert.equal(result.items[0]?.kind, 'item')
     assert.equal(result.items[0]?.quantity, '10')
   })
+
+  it('reads Group / Sub-group contractor sheets with a/b/c children', () => {
+    const result = parseBoqMatrix([
+      ['Sl.No', 'Group', 'Sub-group', 'Qty', 'Unit', 'Rate (₹)', 'Total (₹)'],
+      [
+        1,
+        '',
+        'Earth Work Excavation in all types of soil including trimming sides.',
+        2068.3,
+        'cft',
+        45,
+        '93,074',
+      ],
+      [2, '', 'PCC Below Footing using 40mm jelly 1:4:8 with M-sand.', 4.9, 'm3', '7,000', '34,300'],
+      [
+        4,
+        '',
+        'RCC For Footing using 20mm jelly M25 (1:1:2) including steel and shuttering.',
+        13.1,
+        'm3',
+        '',
+        '',
+      ],
+      ['', '', 'a. Concrete M25 (1:1:2)', '', '', '7,290', '95,499'],
+      ['', '', 'b. Steel 550D As per spec', '', '', '70,000', '1,71,898'],
+      ['', '', 'c. Shuttering (plywood or Steel)', '', '', 85, 1114],
+      [6, '', 'SB Masonry in CM 1:6', 10.2, 'm3', 6200, 63240],
+    ])
+    assert.equal('error' in result, false)
+    if ('error' in result) return
+    const earth = result.items.find((item) => item.description.includes('Earth Work Excavation'))
+    assert.equal(earth?.kind, 'item')
+    assert.equal(earth?.nested, false)
+    assert.equal(earth?.quantity, '2068.3')
+    assert.equal(earth?.unit, 'cft')
+    assert.equal(earth?.rate, '45')
+
+    const rcc = result.items.find((item) => item.description.includes('RCC For Footing'))
+    assert.equal(rcc?.kind, 'heading')
+    assert.equal(rcc?.nested, false)
+
+    const concrete = result.items.find((item) => item.description.startsWith('a. Concrete'))
+    assert.equal(concrete?.kind, 'item')
+    assert.equal(concrete?.nested, true)
+    assert.equal(concrete?.quantity, '13.1')
+    assert.equal(concrete?.unit, 'm3')
+    assert.equal(concrete?.rate, '7290')
+
+    const steel = result.items.find((item) => item.description.startsWith('b. Steel'))
+    assert.equal(steel?.nested, true)
+    assert.equal(steel?.quantity, '2.4557')
+    assert.equal(steel?.rate, '70000')
+
+    const masonry = result.items.find((item) => item.description.includes('SB Masonry'))
+    assert.equal(masonry?.kind, 'item')
+    assert.equal(masonry?.nested, false)
+    assert.equal(masonry?.quantity, '10.2')
+  })
+
+  it('infers columns when headers are missing', () => {
+    const result = parseBoqMatrix([
+      [1, 'Earthwork excavation', 20, 'cft', 80, 1600],
+      [2, 'PCC 1:4:8', 5, 'm3', 7000, 35000],
+    ])
+    assert.equal('error' in result, false)
+    if ('error' in result) return
+    assert.equal(result.items.length, 2)
+    assert.equal(result.items[0]?.description, 'Earthwork excavation')
+    assert.equal(result.items[0]?.unit, 'cft')
+    assert.equal(result.items[1]?.rate, '7000')
+  })
 })
