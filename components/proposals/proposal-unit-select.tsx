@@ -51,7 +51,7 @@ export function ProposalUnitSelect({ value, onChange, disabled, id }: ProposalUn
           <ChevronsUpDown className="ml-1 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[12.5rem] p-0" align="start">
+      <PopoverContent className="w-[12.5rem] p-0" align="start" data-pricing-history>
         <Command>
           <CommandInput
             placeholder="Search or type a unit"

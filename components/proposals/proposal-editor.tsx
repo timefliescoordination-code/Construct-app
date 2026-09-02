@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
-import { ArrowLeft, Eye, Loader2, Save, Share2 } from 'lucide-react'
+import { ArrowLeft, Eye, Loader2, Redo2, Save, Share2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,7 +39,9 @@ import type { ProposalDetail, ProposalItemDraft, PublicProposalDocument } from '
 import { formatINR } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 import { useCompanyBranding } from '@/lib/hooks/use-company-branding'
+import { useUndoableState } from '@/lib/hooks/use-undoable-state'
 import { measurementsFromUnknown } from '@/lib/proposals/boq-structure'
+import { undoRedoHotkey } from '@/lib/proposals/undo-stack'
 
 type ProposalEditorProps = {
   mode: 'create' | 'edit'
@@ -60,6 +62,60 @@ function versionToDrafts(proposal: ProposalDetail | null | undefined): ProposalI
     measurements: measurementsFromUnknown(item.measurements),
     nested: Boolean(item.nested),
   }))
+}
+
+type PricingDraft = {
+  method: ProposalMethod
+  items: ProposalItemDraft[]
+}
+
+function initialItems(proposal: ProposalDetail | null | undefined): ProposalItemDraft[] {
+  const existing = versionToDrafts(proposal)
+  if (existing.length) return existing
+  return [
+    { section: 'built_up', description: '', quantity: '', unit: defaultUnitForSection('built_up'), rate: '' },
+  ]
+}
+
+function PricingHistoryButtons({
+  undo,
+  redo,
+  canUndo,
+  canRedo,
+}: {
+  undo: () => void
+  redo: () => void
+  canUndo: boolean
+  canRedo: boolean
+}) {
+  return (
+    <div className="flex gap-1">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="gap-1.5"
+        onClick={undo}
+        disabled={!canUndo}
+        title="Undo (Ctrl+Z)"
+      >
+        <Undo2 className="h-4 w-4" />
+        Undo
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="gap-1.5"
+        onClick={redo}
+        disabled={!canRedo}
+        title="Redo (Ctrl+Y)"
+      >
+        <Redo2 className="h-4 w-4" />
+        Redo
+      </Button>
+    </div>
+  )
 }
 
 export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
@@ -88,15 +144,16 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
     currentVersion?.proposal_date || format(new Date(), 'yyyy-MM-dd'),
   )
   const [validUntil, setValidUntil] = useState(currentVersion?.valid_until || '')
-  const [method, setMethod] = useState<ProposalMethod>(currentVersion?.method || 'sqft')
   const [notes, setNotes] = useState(currentVersion?.notes || '')
-  const [items, setItems] = useState<ProposalItemDraft[]>(() => {
-    const existing = versionToDrafts(proposal)
-    if (existing.length) return existing
-    return [
-      { section: 'built_up', description: '', quantity: '', unit: defaultUnitForSection('built_up'), rate: '' },
-    ]
-  })
+  const pricing = useUndoableState<PricingDraft>(() => ({
+    method: currentVersion?.method || 'sqft',
+    items: initialItems(proposal),
+  }))
+  const method = pricing.value.method
+  const items = pricing.value.items
+  const setItems = (next: ProposalItemDraft[], options?: { coalesce?: boolean }) => {
+    pricing.set((current) => ({ method: current.method, items: next }), options)
+  }
   const [saving, setSaving] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -115,6 +172,20 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
       cancelled = true
     }
   }, [mode, notes])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = undoRedoHotkey(event)
+      if (!action) return
+      const target = event.target
+      if (!(target instanceof Element) || !target.closest('[data-pricing-history]')) return
+      event.preventDefault()
+      if (action === 'undo') pricing.undo()
+      else pricing.redo()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [pricing.undo, pricing.redo])
 
   const computed = useMemo(() => {
     const lines = computeProposalLines(
@@ -165,15 +236,16 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
       toast.error('Pricing method cannot be changed after a version is shared. Create a revision instead.')
       return
     }
-    setMethod(next)
+    if (next === method) return
+    let nextItems = items
     if (next === 'sqft' && !items.some((item) => item.section === 'built_up' || item.section === 'additional')) {
-      setItems([
+      nextItems = [
         { section: 'built_up', description: '', quantity: '', unit: 'sqft', rate: '' },
-      ])
+      ]
+    } else if (next === 'boq' && !items.some((item) => item.section === 'boq')) {
+      nextItems = [{ section: 'boq', description: '', quantity: '', unit: 'item', rate: '', kind: 'item' }]
     }
-    if (next === 'boq' && !items.some((item) => item.section === 'boq')) {
-      setItems([{ section: 'boq', description: '', quantity: '', unit: 'item', rate: '', kind: 'item' }])
-    }
+    pricing.set({ method: next, items: nextItems })
   }
 
   const saveDraft = async (andStay = true) => {
@@ -398,8 +470,16 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
               onChange={(e) => setValidUntil(e.target.value)}
             />
           </div>
-          <div className="space-y-3 sm:col-span-2">
-            <Label>Pricing method</Label>
+          <div className="space-y-3 sm:col-span-2" data-pricing-history>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label>Pricing method</Label>
+              <PricingHistoryButtons
+                undo={pricing.undo}
+                redo={pricing.redo}
+                canUndo={pricing.canUndo}
+                canRedo={pricing.canRedo}
+              />
+            </div>
             <RadioGroup
               value={method}
               onValueChange={(value) => handleMethodChange(value as ProposalMethod)}
@@ -431,36 +511,41 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
                 </div>
               </label>
             </RadioGroup>
+            <p className="text-xs text-muted-foreground">
+              Undo and redo cover the pricing method and item table. Ctrl+Z / Ctrl+Y (Cmd on Mac).
+            </p>
           </div>
         </CardContent>
       </Card>
 
-      {method === 'sqft' ? (
-        <>
+      <div className="space-y-6" data-pricing-history>
+        {method === 'sqft' ? (
+          <>
+            <ProposalItemsEditor
+              section="built_up"
+              title="As per built-up area"
+              items={items}
+              onChange={setItems}
+              emptyHint="Example: Construction — 1,800 sqft × ₹2,100"
+            />
+            <ProposalItemsEditor
+              section="additional"
+              title="Additional works"
+              items={items}
+              onChange={setItems}
+              emptyHint="Optional. Add compound wall, gate, AC provisions, or any other work."
+            />
+          </>
+        ) : (
           <ProposalItemsEditor
-            section="built_up"
-            title="As per built-up area"
+            section="boq"
+            title="BOQ"
             items={items}
             onChange={setItems}
-            emptyHint="Example: Construction — 1,800 sqft × ₹2,100"
+            emptyHint="Upload an Excel or CSV file, or add a group such as Concrete quantity and sub-items under it."
           />
-          <ProposalItemsEditor
-            section="additional"
-            title="Additional works"
-            items={items}
-            onChange={setItems}
-            emptyHint="Optional. Add compound wall, gate, AC provisions, or any other work."
-          />
-        </>
-      ) : (
-        <ProposalItemsEditor
-          section="boq"
-          title="BOQ"
-          items={items}
-          onChange={setItems}
-          emptyHint="Upload an Excel or CSV file, or add a group such as Concrete quantity and sub-items under it."
-        />
-      )}
+        )}
+      </div>
 
       <Card>
         <CardHeader>
@@ -480,7 +565,13 @@ export function ProposalEditor({ mode, proposal }: ProposalEditorProps) {
             </p>
             <p className="text-2xl font-semibold tabular-nums">{formatINR(computed.totals.grandTotal)}</p>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <PricingHistoryButtons
+              undo={pricing.undo}
+              redo={pricing.redo}
+              canUndo={pricing.canUndo}
+              canRedo={pricing.canRedo}
+            />
             <Button variant="outline" className="gap-2" onClick={() => void saveDraft()} disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save draft

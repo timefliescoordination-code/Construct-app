@@ -22,11 +22,15 @@ import { defaultUnitForSection, type ProposalItemSection } from '@/lib/proposals
 import type { BoqMeasurements, ProposalItemDraft } from '@/lib/proposals/types'
 import { cn } from '@/lib/utils'
 
+type ProposalItemsChangeOptions = {
+  coalesce?: boolean
+}
+
 type ProposalItemsEditorProps = {
   section: ProposalItemSection
   title: string
   items: ProposalItemDraft[]
-  onChange: (items: ProposalItemDraft[]) => void
+  onChange: (items: ProposalItemDraft[], options?: ProposalItemsChangeOptions) => void
   emptyHint?: string
 }
 
@@ -83,8 +87,11 @@ export function ProposalItemsEditor({
     onChange([...items.slice(0, index), row, ...items.slice(index)])
   }
 
-  const updateRow = (index: number, patch: Partial<ProposalItemDraft>) => {
-    onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+  const updateRow = (index: number, patch: Partial<ProposalItemDraft>, options?: ProposalItemsChangeOptions) => {
+    onChange(
+      items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+      options,
+    )
   }
 
   const addRow = () => {
@@ -132,15 +139,19 @@ export function ProposalItemsEditor({
     onChange(moveItemBlock(items, index, direction))
   }
 
-  const setMeasurements = (index: number, measurements: BoqMeasurements | null) => {
-    updateRow(index, { measurements })
+  const setMeasurements = (
+    index: number,
+    measurements: BoqMeasurements | null,
+    options?: ProposalItemsChangeOptions,
+  ) => {
+    updateRow(index, { measurements }, options)
   }
 
   const updateMeasurement = (index: number, field: keyof BoqMeasurements, value: string) => {
     const item = items[index]
     if (!item) return
     const current = item.measurements ?? emptyBoqMeasurements()
-    setMeasurements(index, { ...current, [field]: value })
+    setMeasurements(index, { ...current, [field]: value }, { coalesce: true })
   }
 
   const groupTotal = (headingIndex: number) => {
@@ -222,7 +233,7 @@ export function ProposalItemsEditor({
                     <td className="px-3 py-2 align-top">
                       <Input
                         value={item.description}
-                        onChange={(e) => updateRow(index, { description: e.target.value })}
+                        onChange={(e) => updateRow(index, { description: e.target.value }, { coalesce: true })}
                         placeholder={heading ? 'Group name, e.g. Concrete quantity' : 'Description'}
                         className={cn(child && 'ml-6', heading && 'font-semibold')}
                       />
@@ -247,7 +258,7 @@ export function ProposalItemsEditor({
                         <Input
                           inputMode="decimal"
                           value={qtyDisplay}
-                          onChange={(e) => updateRow(index, { quantity: e.target.value })}
+                          onChange={(e) => updateRow(index, { quantity: e.target.value }, { coalesce: true })}
                           placeholder="0"
                           readOnly={measured}
                           className={measured ? 'bg-muted/40' : undefined}
@@ -267,7 +278,7 @@ export function ProposalItemsEditor({
                         <Input
                           inputMode="decimal"
                           value={item.rate}
-                          onChange={(e) => updateRow(index, { rate: e.target.value })}
+                          onChange={(e) => updateRow(index, { rate: e.target.value }, { coalesce: true })}
                           placeholder="0"
                         />
                       )}
