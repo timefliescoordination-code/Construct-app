@@ -53,12 +53,17 @@ describe('checkMarkdownPrivacy', () => {
 
 Quoted on a built-up-area basis.
 
-| Category | Approximate Share |
-|---|---:|
-| Materials | 50% |
-| Labour | 30% |
-| Equipment | 10% |
-| Miscellaneous | 10% |
+Categories recorded: Materials, Labour, Equipment, Miscellaneous.
+
+Subcategories recorded: Cement, Mixer.
+
+| Category | Subcategory | Approximate share |
+|---|---|---:|
+| Materials | Cement | 25% |
+| Materials | Other | 25% |
+| Labour |  | 30% |
+| Equipment | Mixer | 10% |
+| Miscellaneous | Other | 10% |
 `
     const result = checkMarkdownPrivacy(clean, [
       'John Example',

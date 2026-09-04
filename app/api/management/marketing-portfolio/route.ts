@@ -25,6 +25,9 @@ export async function GET() {
         markdown: item.markdown,
         copySafe: item.copySafe,
         privacyIssues: item.privacyIssues,
+        spendMix: item.spendMix,
+        expenseSheet: item.expenseSheet,
+        subcategories: item.subcategories,
       })),
     })
   } catch (error) {

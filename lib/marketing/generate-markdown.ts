@@ -1,4 +1,12 @@
-import type { PublicCaseStudy, PublicSpendShare, SafeChangeCategory, SafeQualityArea, StandardMilestone } from './types.ts'
+import type {
+  PublicCaseStudy,
+  PublicExpenseSheetRow,
+  PublicSpendShare,
+  PublicSubcategoryGroup,
+  SafeChangeCategory,
+  SafeQualityArea,
+  StandardMilestone,
+} from './types.ts'
 
 function hasSufficientData(data: PublicCaseStudy): boolean {
   const bandCount = [data.sizeBand, data.costBand, data.durationBand].filter(Boolean).length
@@ -54,9 +62,21 @@ function overviewBullets(data: PublicCaseStudy): string[] {
   return bullets
 }
 
-function expenseTable(mix: PublicSpendShare[]): string {
-  const rows = mix.map((row) => `| ${row.category} | ${row.percent}% |`).join('\n')
-  return `| Category | Approximate Share |\n|---|---:|\n${rows}`
+function categoriesRecordedLine(mix: PublicSpendShare[]): string {
+  return `Categories recorded: ${mix.map((row) => row.category).join(', ')}.`
+}
+
+function subcategoriesRecordedLine(groups: PublicSubcategoryGroup[] | undefined): string | null {
+  const names = (groups ?? []).flatMap((group) => group.names)
+  if (!names.length) return null
+  return `Subcategories recorded: ${names.join(', ')}.`
+}
+
+function expenseSheetTable(sheet: PublicExpenseSheetRow[]): string {
+  const rows = sheet
+    .map((row) => `| ${row.category} | ${row.subcategory ?? ''} | ${row.percent}% |`)
+    .join('\n')
+  return `| Category | Subcategory | Approximate share |\n|---|---|---:|\n${rows}`
 }
 
 function genericCostEducation(): string {
@@ -272,13 +292,26 @@ export function generateCaseStudyMarkdown(data: PublicCaseStudy): string {
   sections.push(costIntro.filter(Boolean).join('\n\n'))
 
   if (data.spendMix?.length) {
+    const sheet =
+      data.expenseSheet?.length
+        ? data.expenseSheet
+        : data.spendMix.map((row) => ({
+            category: row.category,
+            subcategory: null,
+            percent: row.percent,
+          }))
+    const subcategoryLine = subcategoriesRecordedLine(data.subcategoriesByCategory)
     sections.push('## Expense Distribution')
     sections.push(
       [
-        'The table uses approved project expenses only, rolled into four public categories. Individual bills, vendors, and dates are not shown. Percentages are rounded to the nearest five percent and forced to total one hundred percent.',
-        expenseTable(data.spendMix),
+        'The table uses approved project expenses only. Individual bills, vendors, and dates are not shown. Category shares are rounded to the nearest five percent and total one hundred percent. Subcategory shares are rounded the same way within each category.',
+        categoriesRecordedLine(data.spendMix),
+        subcategoryLine,
+        expenseSheetTable(sheet),
         'Categories with no supporting records are omitted rather than filled with guesses.',
-      ].join('\n\n'),
+      ]
+        .filter((block): block is string => Boolean(block))
+        .join('\n\n'),
     )
   }
 

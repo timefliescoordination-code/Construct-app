@@ -88,6 +88,17 @@ export type PublicSpendShare = {
   percent: number
 }
 
+export type PublicExpenseSheetRow = {
+  category: SpendCategory
+  subcategory: string | null
+  percent: number
+}
+
+export type PublicSubcategoryGroup = {
+  category: SpendCategory
+  names: string[]
+}
+
 export type PublicCaseStudy = {
   title: string
   buildingType: 'Residential construction'
@@ -96,6 +107,8 @@ export type PublicCaseStudy = {
   durationBand?: DurationBand
   proposalMethod?: PublicProposalMethod
   spendMix?: PublicSpendShare[]
+  expenseSheet?: PublicExpenseSheetRow[]
+  subcategoriesByCategory?: PublicSubcategoryGroup[]
   stages: StandardMilestone[]
   qualityAreas: SafeQualityArea[]
   scopeChangeSummary?: ScopeChangeSummary
@@ -110,6 +123,7 @@ export type RawExpenseInput = {
   vendorName?: string | null
   billNumber?: string | null
   description?: string | null
+  subcategoryName?: string | null
 }
 
 export type RawChangeRequestInput = {
@@ -178,6 +192,9 @@ export type MarketingPortfolioItem = {
   markdown: string
   copySafe: boolean
   privacyIssues: string[]
+  spendMix: PublicSpendShare[]
+  expenseSheet: PublicExpenseSheetRow[]
+  subcategories: PublicSubcategoryGroup[]
 }
 
 export const PRIVACY_CHECKLIST = [

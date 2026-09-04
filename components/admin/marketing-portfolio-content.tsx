@@ -13,6 +13,7 @@ import {
   ShieldCheck,
 } from "lucide-react"
 import { toast } from "sonner"
+import { MarketingExpenseSheet } from "@/components/admin/marketing-expense-sheet"
 import { DashboardHeader } from "@/components/dashboard/header"
 import { PageHeader, PageMain, PageShell } from "@/components/layout/page"
 import { ScrollTable } from "@/components/layout/scroll-table"
@@ -363,12 +364,19 @@ function ProjectDraftPanel({
         </Alert>
       ) : null}
 
+      <MarketingExpenseSheet
+        spendMix={item.spendMix ?? []}
+        expenseSheet={item.expenseSheet ?? []}
+        subcategories={item.subcategories ?? []}
+      />
+
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle className="text-base">Markdown preview</CardTitle>
             <CardDescription>
-              Copy Markdown copies only the sanitized article — never the real project name.
+              Copy Markdown copies only the sanitized article — including the expense table, never the
+              real project name.
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">

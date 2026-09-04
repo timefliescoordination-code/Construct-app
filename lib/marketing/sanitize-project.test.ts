@@ -30,7 +30,15 @@ const FIXTURE: RawProjectInput = {
   ],
   expenses: [
     {
-      amount: 4783,
+      amount: 2391,
+      category: 'Materials',
+      status: 'approved',
+      vendorName: 'ABC Steel Suppliers',
+      billNumber: 'INV-2026-001',
+      description: 'Cement - bags',
+    },
+    {
+      amount: 2392,
       category: 'Materials',
       status: 'approved',
       vendorName: 'ABC Steel Suppliers',
@@ -38,7 +46,7 @@ const FIXTURE: RawProjectInput = {
       description: 'Steel delivery for villa',
     },
     { amount: 3127, category: 'Labour', status: 'approved', vendorName: 'Local Crew', description: 'Mason wages' },
-    { amount: 1211, category: 'Equipment', status: 'approved', vendorName: 'Hire Co', description: 'Mixer hire' },
+    { amount: 1211, category: 'Equipment', status: 'approved', vendorName: 'Hire Co', description: 'Mixer - daily hire' },
     { amount: 879, category: 'Miscellaneous', status: 'approved', description: 'Night haul of leftover shuttering' },
     { amount: 99999, category: 'Materials', status: 'pending', vendorName: 'Should Ignore', description: 'Rejected leak' },
   ],
@@ -104,6 +112,7 @@ const LEAKS = [
   'https://cdn.example.com/site-photos/front.jpg',
   'front.jpg',
   'Night haul of leftover shuttering',
+  'Steel delivery for villa',
   'CR-001',
   'Local Crew',
 ]
@@ -136,6 +145,23 @@ describe('sanitizeProject fixture', () => {
       [50, 30, 10, 10],
     )
     assert.equal(publicData.spendMix?.reduce((sum, row) => sum + row.percent, 0), 100)
+    assert.deepEqual(publicData.expenseSheet, [
+      { category: 'Materials', subcategory: 'Cement', percent: 25 },
+      { category: 'Materials', subcategory: 'Other', percent: 25 },
+      { category: 'Labour', subcategory: null, percent: 30 },
+      { category: 'Equipment', subcategory: 'Mixer', percent: 10 },
+      { category: 'Miscellaneous', subcategory: 'Other', percent: 10 },
+    ])
+    assert.equal(
+      publicData.expenseSheet
+        ?.filter((row) => row.category === 'Materials')
+        .reduce((sum, row) => sum + row.percent, 0),
+      50,
+    )
+    assert.deepEqual(publicData.subcategoriesByCategory, [
+      { category: 'Materials', names: ['Cement'] },
+      { category: 'Equipment', names: ['Mixer'] },
+    ])
     assert.ok(publicData.stages.includes('Foundation'))
     assert.ok(publicData.stages.includes('Masonry'))
     assert.ok(publicData.stages.includes('Electrical'))
@@ -162,7 +188,14 @@ describe('marketing draft fixture', () => {
     assert.match(draft.markdown, /1,500–2,500 sq\.ft/)
     assert.match(draft.markdown, /Under ₹50 lakh/)
     assert.match(draft.markdown, /12–18 months/)
-    assert.match(draft.markdown, /Materials \| 50%/)
+    assert.match(draft.markdown, /Categories recorded: Materials, Labour, Equipment, Miscellaneous/)
+    assert.match(draft.markdown, /Subcategories recorded: Cement, Mixer/)
+    assert.match(draft.markdown, /\| Materials \| Cement \| 25% \|/)
+    assert.match(draft.markdown, /\| Materials \| Other \| 25% \|/)
+    assert.match(draft.markdown, /\| Labour \|  \| 30% \|/)
+    assert.match(draft.markdown, /\| Equipment \| Mixer \| 10% \|/)
+    assert.equal(draft.markdown.includes('Steel delivery for villa'), false)
+    assert.equal(draft.expenseSheet.some((row) => row.subcategory === 'Steel'), false)
     assert.ok(countWords(draft.markdown) >= 1500)
   })
 

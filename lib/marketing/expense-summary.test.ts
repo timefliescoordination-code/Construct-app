@@ -45,16 +45,90 @@ describe('summarizeApprovedExpenses', () => {
   })
 
   it('maps custom category names into the four public buckets', () => {
-    const mix = summarizeApprovedExpenses([
+    const summary = summarizeApprovedExpenses([
       { amount: 70, category: 'Site Materials', status: 'approved' },
       { amount: 30, category: 'Daily wages', status: 'approved' },
     ])
-    assert.ok(mix)
+    assert.ok(summary)
+    const mix = summary.spendMix
     assert.equal(mix.find((row) => row.category === 'Materials')?.percent, 70)
     assert.equal(mix.find((row) => row.category === 'Labour')?.percent, 30)
     assert.deepEqual(
       mix.map((row) => row.category),
       ['Materials', 'Labour'],
     )
+  })
+
+  it('publishes catalog subcategories and rolls custom wording into Other', () => {
+    const summary = summarizeApprovedExpenses([
+      { amount: 2391, category: 'Materials', status: 'approved', description: 'Cement - bags' },
+      {
+        amount: 2392,
+        category: 'Materials',
+        status: 'approved',
+        description: 'Steel delivery for villa',
+      },
+      { amount: 3127, category: 'Labour', status: 'approved', description: 'Mason wages' },
+      {
+        amount: 1211,
+        category: 'Equipment',
+        status: 'approved',
+        description: 'Mixer - daily hire',
+      },
+      {
+        amount: 879,
+        category: 'Miscellaneous',
+        status: 'approved',
+        description: 'Night haul of leftover shuttering',
+        subcategoryName: 'Villa special tiles',
+      },
+    ])
+    assert.ok(summary)
+    assert.deepEqual(
+      summary.spendMix.map((row) => row.percent),
+      [50, 30, 10, 10],
+    )
+    assert.equal(
+      summary.spendMix.reduce((sum, row) => sum + row.percent, 0),
+      100,
+    )
+    assert.deepEqual(summary.expenseSheet, [
+      { category: 'Materials', subcategory: 'Cement', percent: 25 },
+      { category: 'Materials', subcategory: 'Other', percent: 25 },
+      { category: 'Labour', subcategory: null, percent: 30 },
+      { category: 'Equipment', subcategory: 'Mixer', percent: 10 },
+      { category: 'Miscellaneous', subcategory: 'Other', percent: 10 },
+    ])
+    assert.equal(
+      summary.expenseSheet
+        .filter((row) => row.category === 'Materials')
+        .reduce((sum, row) => sum + row.percent, 0),
+      50,
+    )
+    assert.deepEqual(summary.subcategoriesByCategory, [
+      { category: 'Materials', names: ['Cement'] },
+      { category: 'Equipment', names: ['Mixer'] },
+    ])
+    const blob = JSON.stringify(summary)
+    assert.equal(blob.includes('Steel delivery'), false)
+    assert.equal(blob.includes('villa'), false)
+    assert.equal(blob.includes('Villa special'), false)
+    assert.equal(blob.includes('Night haul'), false)
+  })
+
+  it('prefers a catalog split subcategory over a custom description', () => {
+    const summary = summarizeApprovedExpenses([
+      {
+        amount: 100,
+        category: 'Materials',
+        status: 'approved',
+        subcategoryName: 'Steel',
+        description: 'Steel delivery for villa',
+      },
+    ])
+    assert.deepEqual(summary?.expenseSheet, [
+      { category: 'Materials', subcategory: 'Steel', percent: 100 },
+    ])
+    assert.equal(JSON.stringify(summary).includes('Steel delivery'), false)
   })
 })

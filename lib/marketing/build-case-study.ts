@@ -64,6 +64,9 @@ export function buildMarketingDraft(raw: RawProjectInput): Omit<
     markdown,
     copySafe: privacy.ok,
     privacyIssues: privacy.issues,
+    spendMix: publicData.spendMix ?? [],
+    expenseSheet: publicData.expenseSheet ?? [],
+    subcategories: publicData.subcategoriesByCategory ?? [],
   }
 }
 

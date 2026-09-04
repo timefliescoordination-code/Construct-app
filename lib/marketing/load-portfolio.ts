@@ -65,6 +65,48 @@ function pickProposal(rows: ProposalRow[]): ProposalRow | null {
   return (accepted[0] ?? rows[0]) ?? null
 }
 
+const EXPENSE_COLUMNS =
+  'project_id, amount, category, status, vendor_name, bill_number, description'
+
+type ExpenseRow = {
+  project_id?: unknown
+  amount?: unknown
+  category?: unknown
+  status?: unknown
+  vendor_name?: unknown
+  bill_number?: unknown
+  description?: unknown
+  split_group_id?: unknown
+}
+
+function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  return error.code === '42703' || /split_group_id/i.test(error.message ?? '')
+}
+
+async function loadApprovedExpenses(
+  supabase: AnyClient,
+  projectIds: string[],
+): Promise<ExpenseRow[]> {
+  const withSplit = await supabase
+    .from('expenses')
+    .select(`${EXPENSE_COLUMNS}, split_group_id`)
+    .in('project_id', projectIds)
+    .eq('status', 'approved')
+
+  if (!withSplit.error) return (withSplit.data ?? []) as ExpenseRow[]
+  if (isMissingColumnError(withSplit.error) || isSkippableLookupError(withSplit.error)) {
+    return optionalRows(
+      supabase
+        .from('expenses')
+        .select(EXPENSE_COLUMNS)
+        .in('project_id', projectIds)
+        .eq('status', 'approved'),
+    )
+  }
+  throw withSplit.error
+}
+
 export async function loadRawProjectsForMarketing(supabase: AnyClient): Promise<RawProjectInput[]> {
   const projectsResult = await supabase
     .from('projects')
@@ -88,13 +130,7 @@ export async function loadRawProjectsForMarketing(supabase: AnyClient): Promise<
       optionalRows(
         supabase.from('milestones').select('project_id, name').in('project_id', projectIds),
       ),
-      optionalRows(
-        supabase
-          .from('expenses')
-          .select('project_id, amount, category, status, vendor_name, bill_number, description')
-          .in('project_id', projectIds)
-          .eq('status', 'approved'),
-      ),
+      loadApprovedExpenses(supabase, projectIds),
       optionalRows(
         supabase
           .from('additional_works')
@@ -164,6 +200,27 @@ export async function loadRawProjectsForMarketing(supabase: AnyClient): Promise<
     itemsByVersion.set(versionId, list)
   }
 
+  const splitIds = Array.from(
+    new Set(
+      expenses
+        .map((row) => row.split_group_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  )
+  const splitGroups = splitIds.length
+    ? await optionalRows(
+        supabase.from('expense_split_groups').select('id, subcategory_name').in('id', splitIds),
+      )
+    : []
+  const subcategoryByGroupId = new Map<string, string>()
+  for (const group of splitGroups) {
+    const id = String(group.id ?? '')
+    const name = group.subcategory_name
+    if (id && typeof name === 'string' && name.trim()) {
+      subcategoryByGroupId.set(id, name)
+    }
+  }
+
   const milestonesByProject = groupByProject(milestones)
   const expensesByProject = groupByProject(expenses)
   const additionalByProject = groupByProject(additionalWorks)
@@ -215,6 +272,10 @@ export async function loadRawProjectsForMarketing(supabase: AnyClient): Promise<
           vendorName: (row.vendor_name as string | null) ?? null,
           billNumber: (row.bill_number as string | null) ?? null,
           description: (row.description as string | null) ?? null,
+          subcategoryName:
+            typeof row.split_group_id === 'string'
+              ? subcategoryByGroupId.get(row.split_group_id) ?? null
+              : null,
         }),
       ),
       additionalWorks: (additionalByProject.get(id) ?? []).map(

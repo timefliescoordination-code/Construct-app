@@ -47,7 +47,7 @@ export function sanitizeProject(raw: RawProjectInput): PublicCaseStudy {
   const sizeBand = sizeBandFromSqft(builtUp ?? null)
   const costBand = costBandFromRupees(raw.contractValue)
   const durationBand = durationBandFromDates(raw.startDate, raw.expectedCompletionDate)
-  const spendMix = summarizeApprovedExpenses(raw.expenses)
+  const expenseSummary = summarizeApprovedExpenses(raw.expenses)
   const stages = mapProjectMilestones(raw.milestones)
   const qualityAreas = mapInspectionWorkTypes(raw.inspectionWorkTypes)
   const scope = summarizeScopeChanges(raw.changeRequests)
@@ -63,7 +63,9 @@ export function sanitizeProject(raw: RawProjectInput): PublicCaseStudy {
     costBand,
     durationBand,
     proposalMethod: proposalMethodLabel(raw.proposal?.method),
-    spendMix,
+    spendMix: expenseSummary?.spendMix,
+    expenseSheet: expenseSummary?.expenseSheet,
+    subcategoriesByCategory: expenseSummary?.subcategoriesByCategory,
     stages,
     qualityAreas,
     scopeChangeSummary: scope.summary,
