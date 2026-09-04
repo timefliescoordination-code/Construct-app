@@ -233,9 +233,6 @@ function renderSection(section: VraBlogSection, index: number) {
     case "faq":
       return (
         <section key={index} className="space-y-3">
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">
-            Questions homeowners actually ask
-          </h2>
           <div className="divide-y divide-border rounded-xl border border-border">
             {section.items.map((item) => (
               <article key={item.q} className="px-4 py-4">
@@ -279,7 +276,7 @@ function renderSection(section: VraBlogSection, index: number) {
             ) : null}
             {section.paragraphs?.length ? <Paragraphs paragraphs={section.paragraphs} /> : null}
           </div>
-          <BlogImage src={section.src} />
+          <BlogImage src={section.src} caption={section.heading} />
         </section>
       )
     case "gallery":

@@ -76,6 +76,18 @@ gallery
 Write in a human voice — a Chennai architect talking to a new homeowner over tea. Warm, specific, never like a policy document or an AI system.
 Use Crore for house scale (1.2 Cr residence). Never write 100 lakh, ₹100–200 lakh, or 1 Cr to 2 Cr ranges.
 For a new homeowner, show what a project of this scale actually requires.
+SEO (required):
+- Primary search phrase: house construction cost in Chennai. Use it naturally in the title, first paragraph, one H2, and the slug. Do not stuff.
+- category: "House construction". theme: "House construction cost in Chennai".
+- title: 50–60 characters. Front-load the Crore scale and Chennai. Example shape: "0.5 Cr house construction cost in Chennai".
+- excerpt: 150–160 characters. This is the Google meta description. One clear promise, no fluff.
+- slug: kebab-case, include house-construction-cost-chennai plus the Crore figure. No stop words like "a" or "the" if they add nothing.
+- hero.title must equal the root title (one H1).
+- text.heading values are H2s: write them as questions or phrases people search (cost breakdown, construction stages, how long it takes).
+- faq: 5–6 items. Must include "How much does it cost to build a house in Chennai?" and "How long does it take to build a house in Chennai?". Answers 40–70 words, specific to this house.
+- Image captions: short and descriptive (house construction in Chennai / design drawing). Never a file name.
+- cta href stays /contact.
+- Do not invent reviews, star ratings, years, street names, or fake statistics.
 cost_grid rows: item = category, spec = subcategory plus the expense description, note = amount.
 Show the first 30 cost_grid rows in the published table; a Read more control reveals the rest.
 If image URLs are listed after this topic, set featured_image and add image_text plus gallery. If none are listed, omit those sections — do not invent photos. When Design-tab drawings or site photos are added to the project, those slots fill automatically.

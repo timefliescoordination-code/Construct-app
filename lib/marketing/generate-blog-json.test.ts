@@ -55,7 +55,34 @@ describe('generateVraBlogJson', () => {
     const post = generateVraBlogJson(data)
     assert.equal(post.type, 'blog')
     assert.ok(post.title)
-    assert.equal(post.category, 'Case Study')
+    assert.equal(post.category, 'House construction')
+    assert.equal(post.theme, 'House construction cost in Chennai')
+    assert.ok(post.title.length <= 60)
+    assert.match(post.title, /0\.5 Cr/)
+    assert.match(post.title, /house construction cost in Chennai/i)
+    assert.equal(post.title.includes('residence house'), false)
+    assert.ok(post.excerpt)
+    assert.ok(post.excerpt.length >= 120)
+    assert.ok(post.excerpt.length <= 160)
+    assert.match(post.excerpt, /house construction cost in Chennai/i)
+    assert.match(post.slug ?? '', /house-construction-cost-chennai/)
+    assert.match(post.slug ?? '', /0-5-cr/)
+    const hero = post.sections.find((section) => section.type === 'hero')
+    assert.ok(hero && hero.type === 'hero')
+    assert.equal(hero.title, post.title)
+    const intro = post.sections.find((section) => section.type === 'text')
+    assert.ok(intro && intro.type === 'text')
+    assert.match(intro.paragraphs.join(' '), /house construction cost in Chennai/i)
+    const faq = post.sections.find((section) => section.type === 'faq')
+    assert.ok(faq && faq.type === 'faq')
+    assert.equal(
+      faq.items.some((item) => item.q === 'How much does it cost to build a house in Chennai?'),
+      true,
+    )
+    assert.equal(
+      faq.items.some((item) => item.q === 'How long does it take to build a house in Chennai?'),
+      true,
+    )
     assert.ok(post.sections.length > 0)
     assert.ok(post.sections.every((section) => isAllowedBlogSectionType(section.type)))
     assert.equal(
@@ -74,7 +101,6 @@ describe('generateVraBlogJson', () => {
       grid.rows.some((row) => (row.spec ?? '').includes('Steel delivery for villa')),
       true,
     )
-    assert.equal(post.title.includes('0.5 Cr residence'), true)
     assert.equal(JSON.stringify(post).includes('100 lakh'), false)
     assert.equal(JSON.stringify(post).includes('Why is the overall contract value hidden'), false)
     const json = serializeVraBlogJson(post)
@@ -105,6 +131,8 @@ describe('JSON prompt', () => {
     assert.match(prompt, /none yet/)
     assert.equal(isWebsiteJsonPayload(prompt), false)
     assert.match(prompt, /cost_grid/)
+    assert.match(prompt, /SEO \(required\)/)
+    assert.match(prompt, /house construction cost in Chennai/)
     assert.equal(prompt.includes('```'), false)
     const bundle = buildBlogJsonBundle(data)
     assert.equal(bundle.jsonPrompt, prompt)
@@ -135,6 +163,19 @@ describe('JSON prompt', () => {
     )
     assert.equal(
       post.sections.some((section) => section.type === 'image_text'),
+      true,
+    )
+    const gallery = post.sections.find((section) => section.type === 'gallery')
+    assert.ok(gallery && gallery.type === 'gallery')
+    const captions = gallery.images.map((image) =>
+      typeof image === 'string' ? '' : image.caption ?? '',
+    )
+    assert.equal(
+      captions.some((caption) => caption.includes('Design drawing for a house in Chennai')),
+      true,
+    )
+    assert.equal(
+      captions.some((caption) => caption.includes('house construction in Chennai')),
       true,
     )
     const prompt = buildBlogJsonBundle(withPhotos).jsonPrompt

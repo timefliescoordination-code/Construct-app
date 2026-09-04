@@ -2,6 +2,15 @@ import { formatINR } from '../currency.ts'
 import { formatBlogImagePromptNote } from './blog-images.ts'
 import { COST_GRID_VISIBLE_ROWS } from './blog-limits.ts'
 import {
+  seoExcerpt,
+  seoFaqItems,
+  seoImageCaption,
+  seoSlug,
+  seoTagline,
+  seoTitle,
+  scaleForSeo,
+} from './blog-seo.ts'
+import {
   VRA_BLOG_SECTION_TYPES,
   type ComparisonVariant,
   type VraBlogPost,
@@ -23,19 +32,13 @@ const COMPARISON_VARIANT: Record<string, ComparisonVariant> = {
   Miscellaneous: 'warning',
 }
 
-export function slugifyBlogTitle(title: string): string {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return slug.slice(0, 80) || 'vra-homes-case-study'
-}
+export { slugifyBlogTitle } from './blog-seo.ts'
 
 export function buildBlogTopic(data: PublicCaseStudy): string {
   const details = [data.sizeBand, data.costBand, data.durationBand].filter(Boolean)
   const detailText = details.length ? ` (${details.join(', ')})` : ''
   const scale = data.costBand ?? 'a Chennai home'
-  return `A ${scale}: what it took to build ${data.title}${detailText}. Write for a new homeowner who wants to know what a project of this scale requires — materials, people, machines, and the sequence of work. Put every approved expense in cost_grid (item = category, spec = subcategory and description, note = amount). The live table shows the first ${COST_GRID_VISIBLE_ROWS} rows; Read more opens the rest. Do not name a client, street, vendor, or invoice.`
+  return `SEO target: homeowners searching house construction cost in Chennai. Title under 60 characters with that phrase and the Crore scale. Excerpt 150–160 characters for the meta description. Slug kebab-case with house-construction-cost-chennai. Hero title must match the root title (one H1). H2s should be search questions. FAQ must answer How much does it cost to build a house in Chennai, how long it takes, and what is included. A ${scale}: what it took to build ${data.title}${detailText}. Write for a new homeowner who wants to know what a project of this scale requires — materials, people, machines, and the sequence of work. Put every approved expense in cost_grid (item = category, spec = subcategory and description, note = amount). The live table shows the first ${COST_GRID_VISIBLE_ROWS} rows; Read more opens the rest. Do not name a client, street, vendor, or invoice.`
 }
 
 function expenseRows(data: PublicCaseStudy): PublicExpenseLineItem[] {
@@ -79,19 +82,20 @@ function spendMixSentence(mix: PublicSpendShare[]): string {
 function appendImageSections(sections: VraBlogSection[], images: PublicBlogImage[]) {
   if (!images.length) return
   const first = images[0]
+  const firstCaption = seoImageCaption(first)
   sections.push({
     type: 'image_text',
     src: first.src,
     position: 'right',
-    heading: 'A house, not a rate card',
+    heading: 'House construction in Chennai, as it looks on site',
     paragraphs: [
-      'For a new homeowner, this is the kind of picture that makes the scale feel real: drawings on the table, work on the ground, rooms starting to exist.',
-      first.caption ? first.caption : 'Design drawings and site photos from the job.',
+      'Drawings and site photos help a new homeowner feel the scale — not a rate card, a house going up in Chennai.',
+      firstCaption,
     ],
   })
   sections.push({
     type: 'gallery',
-    images: images.map((image) => ({ src: image.src, caption: image.caption })),
+    images: images.map((image) => ({ src: image.src, caption: seoImageCaption(image) })),
   })
 }
 
@@ -100,14 +104,15 @@ export function generateVraBlogJson(data: PublicCaseStudy): VraBlogPost {
   const mix = data.spendMix ?? []
   const images = data.blogImages ?? []
   const sections: VraBlogSection[] = []
+  const title = seoTitle(data)
 
   sections.push({
     type: 'hero',
-    eyebrow: 'VRA Homes · Chennai',
-    title: data.title,
+    eyebrow: 'VRA Homes · House construction in Chennai',
+    title,
     subtitle: data.costBand
-      ? `A ${data.costBand}. Here is what it actually took to get it standing.`
-      : 'A Chennai home. Here is what it actually took to get it standing.',
+      ? `${data.title}. A ${data.costBand} — here is what it actually took to get it standing.`
+      : `${data.title}. Here is what it actually took to get it standing.`,
   })
 
   const stats = [
@@ -129,7 +134,7 @@ export function generateVraBlogJson(data: PublicCaseStudy): VraBlogPost {
   })
 
   const intro: string[] = [
-    `We built ${data.title} the way we build most Chennai houses: drawings, a clear sequence, and a ledger that a homeowner can sit with. Not a mystery lump sum.`,
+    `If you are searching house construction cost in Chennai, this is a clearer starting point than a lump sum: ${data.title}, built the way we build most independent houses — drawings, a sequence, and a spend list you can sit with.`,
   ]
   if (data.sizeBand && data.costBand) {
     intro.push(
@@ -150,7 +155,9 @@ export function generateVraBlogJson(data: PublicCaseStudy): VraBlogPost {
   }
   sections.push({
     type: 'text',
-    heading: 'What a homeowner should take from this',
+    heading: data.costBand
+      ? `What a ${scaleForSeo(data.costBand)} house in Chennai actually requires`
+      : 'What house construction in Chennai actually requires',
     paragraphs: intro,
   })
 
@@ -164,7 +171,7 @@ export function generateVraBlogJson(data: PublicCaseStudy): VraBlogPost {
     })
     sections.push({
       type: 'comparison',
-      title: 'Where the money went',
+      title: 'Where house construction money went',
       items: mix.map((row) => ({
         title: row.category,
         text: `About ${row.percent}% of recorded spend. ${formatINR(row.amount)} across ${row.count} ${row.count === 1 ? 'entry' : 'entries'}.`,
@@ -180,7 +187,7 @@ export function generateVraBlogJson(data: PublicCaseStudy): VraBlogPost {
         : 'Each row is something that actually happened on this job — cement, a crew, a machine day — not just a category label.'
     sections.push({
       type: 'text',
-      heading: 'The spend, line by line',
+      heading: 'House construction cost breakdown',
       paragraphs: [
         'Category and subcategory tell you the bucket. The description is the interesting part: what was bought, who worked, what the day was for.',
         previewNote,
@@ -189,7 +196,7 @@ export function generateVraBlogJson(data: PublicCaseStudy): VraBlogPost {
     })
     sections.push({
       type: 'cost_grid',
-      title: 'Approved spend',
+      title: 'House construction cost — approved spend',
       rows: lines.map((row) => ({
         item: row.category,
         spec: costGridSpec(row),
@@ -206,13 +213,13 @@ export function generateVraBlogJson(data: PublicCaseStudy): VraBlogPost {
   if (data.stages.length) {
     sections.push({
       type: 'process',
-      title: 'How the house actually moved',
+      title: 'Construction stages for an independent house',
       tone: 'professional',
       steps: data.stages.map((stage) => `${stage} was on the recorded sequence.`),
     })
     sections.push({
       type: 'timeline',
-      title: 'The usual path from ground to keys',
+      title: 'How long house construction takes in Chennai',
       tone: 'professional',
       steps: [
         'Foundation and plinth put the house on the ground and above the rain.',
@@ -271,27 +278,15 @@ export function generateVraBlogJson(data: PublicCaseStudy): VraBlogPost {
   })
 
   sections.push({
-    type: 'faq',
-    items: [
-      {
-        q: 'What should a new homeowner take from this?',
-        a: data.costBand
-          ? `A sense of what a ${data.costBand} requires: the mix of materials and people, the sequence of work, and a spend list you can actually read.`
-          : 'A sense of what a house of this scale requires: the mix of materials and people, the sequence of work, and a spend list you can actually read.',
-      },
-      {
-        q: 'What does the size band mean?',
-        a: 'It tells you whether the home is compact, mid-size, or large. It is not a survey number and it is not the plot size. Drawings still decide the rooms.',
-      },
-      {
-        q: 'Can I treat these numbers as a quotation?',
-        a: 'No. This is one house, already built. Your soil, access, specification, and timing will move the mix. Use it to ask better questions, not to copy a rate.',
-      },
-      {
-        q: 'What should I ask a builder after reading this?',
-        a: 'Walk me through materials versus labour at this scale. Show me a spend list with descriptions, not only category names. Tell me which stages you will report, and how extras get written down.',
-      },
+    type: 'text',
+    heading: 'House construction FAQs for Chennai homeowners',
+    paragraphs: [
+      'These are the questions people type before they call a builder. The answers come from this house — not from a rate card.',
     ],
+  })
+  sections.push({
+    type: 'faq',
+    items: seoFaqItems(data),
   })
 
   sections.push({
@@ -301,7 +296,7 @@ export function generateVraBlogJson(data: PublicCaseStudy): VraBlogPost {
 
   sections.push({
     type: 'cta',
-    headline: 'Planning a home in Chennai?',
+    headline: 'Planning house construction in Chennai?',
     body: data.costBand
       ? `Bring the scale you have in mind — a ${data.costBand} is a real starting point — and we will talk materials versus labour, how extras are written down, and which work gets checked before it disappears behind plaster.`
       : 'Bring the scale of house you have in mind. We will talk materials versus labour, how extras are written down, and which work gets checked before it disappears behind plaster.',
@@ -309,19 +304,14 @@ export function generateVraBlogJson(data: PublicCaseStudy): VraBlogPost {
     href: '/contact',
   })
 
-  const details = [data.sizeBand, data.costBand, data.durationBand].filter(Boolean).join(' · ')
   return {
     type: 'blog',
-    title: data.costBand
-      ? `${data.title}: a ${data.costBand}`
-      : `${data.title}: what a Chennai home actually took`,
-    category: 'Case Study',
-    theme: 'Residential construction',
-    tagline: details || 'Architecture-led residential construction in Chennai',
-    excerpt: data.costBand
-      ? `For a new homeowner: what a ${data.costBand} required, line by line — materials, people, machines, and the sequence of work.`
-      : `For a new homeowner: what this scale of house required, line by line — materials, people, machines, and the sequence of work.`,
-    slug: slugifyBlogTitle(`${data.title} chennai home`),
+    title,
+    category: 'House construction',
+    theme: 'House construction cost in Chennai',
+    tagline: seoTagline(data),
+    excerpt: seoExcerpt(data),
+    slug: seoSlug(data),
     featured_image: images[0]?.src,
     sections,
   }
