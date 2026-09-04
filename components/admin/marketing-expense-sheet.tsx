@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import {
   Boxes,
   HardHat,
@@ -9,11 +10,13 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { formatINR } from "@/lib/currency"
+import { COST_GRID_VISIBLE_ROWS } from "@/lib/marketing/blog-limits"
 import type {
   PublicExpenseLineItem,
   PublicSpendShare,
   PublicSubcategoryGroup,
 } from "@/lib/marketing/types"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 const CATEGORY_STYLE: Record<
@@ -69,6 +72,7 @@ export function MarketingExpenseSheet({
       : spendMix.map((row) => ({
           category: row.category,
           subcategory: null,
+          description: null,
           amount: row.amount,
         }))
 
@@ -83,8 +87,8 @@ export function MarketingExpenseSheet({
             Spending by category
           </h2>
           <p className="text-sm text-muted-foreground">
-            Every approved expense row is listed below. Vendors, invoices, and client identity stay
-            out of this draft.
+            For a new homeowner, this is what a project of this scale required — every approved
+            line, with a short description of what it was for.
           </p>
         </div>
         <div className="flex gap-6 rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-sm">
@@ -147,8 +151,20 @@ export function MarketingExpenseSheet({
         </p>
       ) : null}
 
+      <ExpenseLineTable rows={rows} />
+    </section>
+  )
+}
+
+function ExpenseLineTable({ rows }: { rows: PublicExpenseLineItem[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const hidden = Math.max(0, rows.length - COST_GRID_VISIBLE_ROWS)
+  const visible = expanded ? rows : rows.slice(0, COST_GRID_VISIBLE_ROWS)
+
+  return (
+    <div className="space-y-3">
       <div className="overflow-x-auto rounded-md border border-border bg-background">
-        <table className="w-full min-w-[32rem] border-collapse text-sm">
+        <table className="w-full min-w-[40rem] border-collapse text-sm">
           <thead>
             <tr className="bg-muted/70">
               <th className="border-b border-r border-border px-3 py-2 text-left font-semibold">
@@ -157,19 +173,23 @@ export function MarketingExpenseSheet({
               <th className="border-b border-r border-border px-3 py-2 text-left font-semibold">
                 Subcategory / team
               </th>
-              <th className="border-b border-border px-3 py-2 text-right font-semibold">
-                Amount
+              <th className="border-b border-r border-border px-3 py-2 text-left font-semibold">
+                Description
               </th>
+              <th className="border-b border-border px-3 py-2 text-right font-semibold">Amount</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => (
+            {visible.map((row, index) => (
               <tr key={`${row.category}-${row.subcategory ?? ""}-${row.amount}-${index}`}>
-                <td className="border-b border-r border-border px-3 py-2">{row.category}</td>
-                <td className="border-b border-r border-border px-3 py-2 text-muted-foreground">
+                <td className="border-b border-r border-border px-3 py-2 align-top">{row.category}</td>
+                <td className="border-b border-r border-border px-3 py-2 align-top text-muted-foreground">
                   {row.subcategory ?? "—"}
                 </td>
-                <td className="border-b border-border px-3 py-2 text-right font-medium tabular-nums">
+                <td className="border-b border-r border-border px-3 py-2 align-top text-muted-foreground">
+                  {row.description ?? "—"}
+                </td>
+                <td className="border-b border-border px-3 py-2 align-top text-right font-medium tabular-nums">
                   {formatINR(row.amount)}
                 </td>
               </tr>
@@ -177,6 +197,11 @@ export function MarketingExpenseSheet({
           </tbody>
         </table>
       </div>
-    </section>
+      {hidden > 0 ? (
+        <Button type="button" variant="outline" size="sm" onClick={() => setExpanded((value) => !value)}>
+          {expanded ? "Show less" : `Read more · ${hidden} more rows`}
+        </Button>
+      ) : null}
+    </div>
   )
 }

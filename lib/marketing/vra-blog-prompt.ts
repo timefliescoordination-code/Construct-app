@@ -1,3 +1,5 @@
+import { formatBlogImagePromptNote } from './blog-images.ts'
+
 export const VRA_BLOG_JSON_INSTRUCTION = `Generate a VRA Homes blog post as JSON only. No markdown, no commentary, no code fences.
 
 The JSON must match this exact structure:
@@ -71,9 +73,16 @@ faq
 gallery
 { "type": "gallery", "images": ["https://..."] or [{ "src": "required", "caption": "optional" }] }
 
-Write in VRA Homes voice: architecture-led residential construction in Chennai. Practical, calm, specific. Topic for this post: "`
+Write in a human voice — a Chennai architect talking to a new homeowner over tea. Warm, specific, never like a policy document or an AI system.
+Use Crore for house scale (1.2 Cr residence). Never write 100 lakh, ₹100–200 lakh, or 1 Cr to 2 Cr ranges.
+For a new homeowner, show what a project of this scale actually requires.
+cost_grid rows: item = category, spec = subcategory plus the expense description, note = amount.
+Show the first 30 cost_grid rows in the published table; a Read more control reveals the rest.
+If image URLs are listed after this topic, set featured_image and add image_text plus gallery. If none are listed, omit those sections — do not invent photos. When Design-tab drawings or site photos are added to the project, those slots fill automatically.
+Topic for this post: "`
 
-export function buildVraBlogJsonPrompt(topic: string): string {
+export function buildVraBlogJsonPrompt(topic: string, imageNote?: string): string {
   const trimmed = topic.replace(/\s+/g, ' ').trim()
-  return `${VRA_BLOG_JSON_INSTRUCTION}${trimmed}"`
+  const extra = (imageNote ?? formatBlogImagePromptNote([])).trim()
+  return `${VRA_BLOG_JSON_INSTRUCTION}${trimmed}"\n\n${extra}`
 }

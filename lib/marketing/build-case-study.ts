@@ -33,7 +33,6 @@ export function forbiddenTokensFromProject(raw: RawProjectInput): string[] {
     ...(raw.expenses ?? []).flatMap((expense) => [
       expense.vendorName,
       expense.billNumber,
-      longPrivateSnippet(expense.description),
     ]),
     ...(raw.additionalWorks ?? []).map((work) => longPrivateSnippet(work.description)),
     ...(raw.changeRequests ?? []).flatMap((request) => [
@@ -52,7 +51,10 @@ export function buildMarketingDraft(raw: RawProjectInput): Omit<
   const markdown = generateCaseStudyMarkdown(publicData)
   const { blogJson, jsonPrompt, jsonText } = buildBlogJsonBundle(publicData)
   const forbidden = forbiddenTokensFromProject(raw)
-  const privacy = checkMarkdownPrivacy([markdown, jsonText].join('\n\n'), forbidden)
+  const allowedUrls = publicData.blogImages?.map((image) => image.src) ?? []
+  const privacy = checkMarkdownPrivacy([markdown, jsonText].join('\n\n'), forbidden, {
+    allowedUrls,
+  })
 
   return {
     internalId: raw.id,

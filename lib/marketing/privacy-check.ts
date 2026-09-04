@@ -1,6 +1,6 @@
-import { COST_BANDS, DURATION_BANDS, SIZE_BANDS, type PrivacyCheckResult } from './types.ts'
+import { DURATION_BANDS, SIZE_BANDS, type PrivacyCheckResult } from './types.ts'
 
-const ALLOWED_PHRASES = [...SIZE_BANDS, ...COST_BANDS, ...DURATION_BANDS, 'Based on an itemized BOQ']
+const ALLOWED_PHRASES = [...SIZE_BANDS, ...DURATION_BANDS, 'Based on an itemized BOQ']
 
 function normalizeForSearch(value: string): string {
   return value
@@ -14,6 +14,18 @@ function stripAllowedPhrases(markdown: string): string {
   let next = markdown
   for (const phrase of ALLOWED_PHRASES) {
     next = next.split(phrase).join(' ')
+  }
+  next = next.replace(/\d+(?:\.\d+)? Cr residence/gi, ' ')
+  next = next.replace(/Under 0\.1 Cr residence/gi, ' ')
+  return next
+}
+
+function stripAllowedUrls(markdown: string, allowedUrls: string[]): string {
+  let next = markdown
+  for (const url of allowedUrls) {
+    const trimmed = url.trim()
+    if (!trimmed) continue
+    next = next.split(trimmed).join(' ')
   }
   return next
 }
@@ -111,9 +123,11 @@ const PATTERN_RULES: PatternRule[] = [
 export function checkMarkdownPrivacy(
   markdown: string,
   forbiddenTokens: string[] = [],
+  options?: { allowedUrls?: string[] },
 ): PrivacyCheckResult {
   const issues: string[] = []
-  const scanned = stripAllowedPhrases(markdown)
+  const allowedUrls = options?.allowedUrls ?? []
+  const scanned = stripAllowedUrls(stripAllowedPhrases(markdown), allowedUrls)
 
   for (const token of forbiddenTokens) {
     if (phraseFound(markdown, String(token))) {

@@ -1,11 +1,14 @@
 "use client"
 
+import { useState } from "react"
 import type {
   ComparisonVariant,
   HighlightVariant,
   VraBlogPost,
   VraBlogSection,
 } from "@/lib/marketing/blog-types"
+import { COST_GRID_VISIBLE_ROWS } from "@/lib/marketing/blog-limits"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 const HIGHLIGHT_CLASS: Record<HighlightVariant, string> = {
@@ -39,6 +42,67 @@ function Paragraphs({ paragraphs }: { paragraphs: string[] }) {
         </p>
       ))}
     </div>
+  )
+}
+
+function galleryItems(
+  images: string[] | Array<{ src: string; caption?: string }>,
+): Array<{ src: string; caption?: string }> {
+  return images.map((image) => (typeof image === "string" ? { src: image } : image))
+}
+
+function BlogImage({ src, caption, className }: { src: string; caption?: string; className?: string }) {
+  return (
+    <figure className={cn("overflow-hidden rounded-xl border border-border bg-muted/30", className)}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={caption || "Project photo"} className="h-auto w-full object-cover" />
+      {caption ? (
+        <figcaption className="px-3 py-2 text-xs text-muted-foreground">{caption}</figcaption>
+      ) : null}
+    </figure>
+  )
+}
+
+function CostGridSection({
+  section,
+}: {
+  section: Extract<VraBlogSection, { type: "cost_grid" }>
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const hidden = Math.max(0, section.rows.length - COST_GRID_VISIBLE_ROWS)
+  const visible = expanded ? section.rows : section.rows.slice(0, COST_GRID_VISIBLE_ROWS)
+
+  return (
+    <section className="space-y-3">
+      {section.title ? (
+        <h2 className="text-xl font-semibold tracking-tight text-foreground">{section.title}</h2>
+      ) : null}
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full min-w-[40rem] border-collapse text-sm">
+          <thead>
+            <tr className="bg-foreground text-background">
+              <th className="px-3 py-2.5 text-left font-semibold">Category</th>
+              <th className="px-3 py-2.5 text-left font-semibold">Description</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((row, rowIndex) => (
+              <tr key={`${row.item}-${rowIndex}`} className="odd:bg-background even:bg-muted/40">
+                <td className="px-3 py-2 align-top font-medium">{row.item}</td>
+                <td className="px-3 py-2 align-top text-muted-foreground">{row.spec || "—"}</td>
+                <td className="px-3 py-2 align-top text-right tabular-nums">{row.note}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hidden > 0 ? (
+        <Button type="button" variant="outline" size="sm" onClick={() => setExpanded((value) => !value)}>
+          {expanded ? "Show less" : `Read more · ${hidden} more rows`}
+        </Button>
+      ) : null}
+    </section>
   )
 }
 
@@ -165,33 +229,7 @@ function renderSection(section: VraBlogSection, index: number) {
         </section>
       )
     case "cost_grid":
-      return (
-        <section key={index} className="space-y-3">
-          {section.title ? (
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">{section.title}</h2>
-          ) : null}
-          <div className="overflow-x-auto rounded-xl border border-border">
-            <table className="w-full min-w-[32rem] border-collapse text-sm">
-              <thead>
-                <tr className="bg-foreground text-background">
-                  <th className="px-3 py-2.5 text-left font-semibold">Item</th>
-                  <th className="px-3 py-2.5 text-left font-semibold">Spec</th>
-                  <th className="px-3 py-2.5 text-right font-semibold">Note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {section.rows.map((row, rowIndex) => (
-                  <tr key={`${row.item}-${rowIndex}`} className="odd:bg-background even:bg-muted/40">
-                    <td className="px-3 py-2 font-medium">{row.item}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{row.spec || "—"}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{row.note}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )
+      return <CostGridSection key={index} section={section} />
     case "faq":
       return (
         <section key={index} className="space-y-3">
@@ -225,9 +263,33 @@ function renderSection(section: VraBlogSection, index: number) {
         </section>
       )
     case "image":
+      return <BlogImage key={index} src={section.src} caption={section.caption} />
     case "image_text":
+      return (
+        <section
+          key={index}
+          className={cn(
+            "grid gap-6 sm:grid-cols-2 sm:items-center",
+            section.position === "left" && "sm:[&>figure]:order-first",
+          )}
+        >
+          <div className="space-y-3">
+            {section.heading ? (
+              <h2 className="text-xl font-semibold tracking-tight text-foreground">{section.heading}</h2>
+            ) : null}
+            {section.paragraphs?.length ? <Paragraphs paragraphs={section.paragraphs} /> : null}
+          </div>
+          <BlogImage src={section.src} />
+        </section>
+      )
     case "gallery":
-      return null
+      return (
+        <section key={index} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {galleryItems(section.images).map((image) => (
+            <BlogImage key={image.src} src={image.src} caption={image.caption} />
+          ))}
+        </section>
+      )
     default:
       return null
   }

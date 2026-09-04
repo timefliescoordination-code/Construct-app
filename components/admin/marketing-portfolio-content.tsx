@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Check,
   Copy,
+  Download,
   Loader2,
   Newspaper,
   RefreshCw,
@@ -39,6 +40,7 @@ import {
 } from "@/components/ui/table"
 import { useAuth } from "@/lib/hooks/use-auth"
 import { assignRecognitionRisk } from "@/lib/marketing/recognition-risk"
+import { websiteJsonPayload } from "@/lib/marketing/website-json"
 import { PRIVACY_CHECKLIST, type MarketingPortfolioItem } from "@/lib/marketing/types"
 import { PROJECT_STATUS_BADGE, PROJECT_STATUS_LABELS } from "@/lib/project-status"
 import type { ProjectStatus } from "@/lib/types/database"
@@ -116,26 +118,56 @@ export function MarketingPortfolioContent() {
       toast.error("This draft is not marked safe to copy.")
       return
     }
-    const text =
-      kind === "json"
-        ? `${JSON.stringify(selected.blogJson, null, 2)}\n`
-        : kind === "prompt"
-          ? selected.jsonPrompt
-          : selected.markdown
+    let text: string
+    try {
+      text =
+        kind === "json"
+          ? websiteJsonPayload(selected.blogJson)
+          : kind === "prompt"
+            ? selected.jsonPrompt
+            : selected.markdown
+    } catch {
+      toast.error("Could not build website JSON for this draft.")
+      return
+    }
+    if (kind === "json" && text[0] !== "{") {
+      toast.error("Website JSON must start with { — not the AI instruction.")
+      return
+    }
     setCopying(kind)
     try {
       await navigator.clipboard.writeText(text)
       toast.success(
         kind === "json"
-          ? "Blog JSON copied"
+          ? "Website JSON copied. Paste this object — it starts with {."
           : kind === "prompt"
-            ? "JSON prompt copied"
+            ? "AI instruction copied. Do not upload this to the website."
             : "Blog markdown copied",
       )
     } catch {
       toast.error("Could not copy")
     } finally {
       setCopying(null)
+    }
+  }
+
+  function downloadWebsiteJson() {
+    if (!selected?.copySafe || !selected.blogJson) {
+      toast.error("This draft is not marked safe to copy.")
+      return
+    }
+    try {
+      const text = websiteJsonPayload(selected.blogJson)
+      const blob = new Blob([text], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${selected.blogJson.slug || "vra-homes-blog"}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+      toast.success("JSON file downloaded for website upload")
+    } catch {
+      toast.error("Could not download website JSON")
     }
   }
 
@@ -215,7 +247,7 @@ export function MarketingPortfolioContent() {
                         <TableHead>Project</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Size</TableHead>
-                        <TableHead>Cost</TableHead>
+                        <TableHead>Scale</TableHead>
                         <TableHead>Duration</TableHead>
                         <TableHead>Risk</TableHead>
                       </TableRow>
@@ -266,6 +298,7 @@ export function MarketingPortfolioContent() {
               copying={copying}
               regenerating={regenerating}
               onCopy={copyDraft}
+              onDownloadJson={downloadWebsiteJson}
               onRegenerate={() => void load("refresh")}
             /> : null}
           </div>
@@ -295,12 +328,14 @@ function ProjectDraftPanel({
   copying,
   regenerating,
   onCopy,
+  onDownloadJson,
   onRegenerate,
 }: {
   item: MarketingPortfolioItem & { recognitionRisk: "LOW" | "HIGH" }
   copying: "json" | "prompt" | "markdown" | null
   regenerating: boolean
   onCopy: (kind: "json" | "prompt" | "markdown") => void
+  onDownloadJson: () => void
   onRegenerate: () => void
 }) {
   const chips = [item.bands.size, item.bands.cost, item.bands.duration].filter(Boolean)
@@ -311,7 +346,8 @@ function ProjectDraftPanel({
         <CardHeader>
           <CardTitle className="text-base">Public Data Preview</CardTitle>
           <CardDescription>
-            Only these banded values appear in the copied article.
+            Size, the rounded Crore figure, and how long the job ran — the scale a homeowner can
+            picture.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
@@ -323,7 +359,7 @@ function ProjectDraftPanel({
             ))
           ) : (
             <p className="text-sm text-muted-foreground">
-              No public size, cost, or duration bands were available for this project.
+              No size, Crore figure, or duration was available for this project.
             </p>
           )}
         </CardContent>
@@ -348,7 +384,7 @@ function ProjectDraftPanel({
           <ShieldAlert className="h-4 w-4" />
           <AlertTitle>HIGH RECOGNITION RISK</AlertTitle>
           <AlertDescription>
-            This project&apos;s size + cost + duration combination is unique among the currently
+            This project&apos;s size + scale + duration combination is unique among the currently
             loaded projects. Consider not publishing this case study.
           </AlertDescription>
         </Alert>
@@ -357,7 +393,7 @@ function ProjectDraftPanel({
           <ShieldCheck className="h-4 w-4" />
           <AlertTitle>Recognition Risk: LOW</AlertTitle>
           <AlertDescription>
-            At least one other loaded project shares this size + cost + duration combination.
+            At least one other loaded project shares this size + scale + duration combination.
           </AlertDescription>
         </Alert>
       )}
@@ -382,6 +418,7 @@ function ProjectDraftPanel({
         copying={copying}
         regenerating={regenerating}
         onCopy={onCopy}
+        onDownloadJson={onDownloadJson}
         onRegenerate={onRegenerate}
       />
     </div>
@@ -393,22 +430,31 @@ function BlogDraftCard({
   copying,
   regenerating,
   onCopy,
+  onDownloadJson,
   onRegenerate,
 }: {
   item: MarketingPortfolioItem
   copying: "json" | "prompt" | "markdown" | null
   regenerating: boolean
   onCopy: (kind: "json" | "prompt" | "markdown") => void
+  onDownloadJson: () => void
   onRegenerate: () => void
 }) {
+  let jsonText = ""
+  try {
+    jsonText = item.blogJson ? websiteJsonPayload(item.blogJson) : ""
+  } catch {
+    jsonText = ""
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
           <CardTitle className="text-base">Blog draft</CardTitle>
           <CardDescription>
-            Styled preview of the VRA Homes JSON blog. Copy JSON for the website, or copy the admin
-            prompt with this project&apos;s topic filled in.
+            Upload the JSON object that starts with {"{"} — not the AI instruction that starts with
+            Generate a.
           </CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -422,15 +468,11 @@ function BlogDraftCard({
           </Button>
           <Button
             variant="outline"
-            onClick={() => onCopy("prompt")}
-            disabled={!item.copySafe || copying !== null}
+            onClick={onDownloadJson}
+            disabled={!item.copySafe || !item.blogJson}
           >
-            {copying === "prompt" ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Copy className="mr-2 h-4 w-4" />
-            )}
-            Copy JSON prompt
+            <Download className="mr-2 h-4 w-4" />
+            Download JSON
           </Button>
           <Button onClick={() => onCopy("json")} disabled={!item.copySafe || copying !== null}>
             {copying === "json" ? (
@@ -438,31 +480,39 @@ function BlogDraftCard({
             ) : (
               <Copy className="mr-2 h-4 w-4" />
             )}
-            Copy JSON
+            Copy for website
           </Button>
         </div>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="preview" key={item.internalId}>
+        <Tabs defaultValue="json" key={item.internalId}>
           <TabsList className="h-auto flex-wrap">
+            <TabsTrigger value="json">Website JSON</TabsTrigger>
             <TabsTrigger value="preview">Preview</TabsTrigger>
-            <TabsTrigger value="json">JSON</TabsTrigger>
-            <TabsTrigger value="prompt">JSON prompt</TabsTrigger>
+            <TabsTrigger value="prompt">AI instruction</TabsTrigger>
             <TabsTrigger value="markdown">Markdown</TabsTrigger>
           </TabsList>
+          <TabsContent value="json" className="mt-4 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              This is what the website upload field accepts. It must parse as JSON and start with
+              {" {"}.
+            </p>
+            <pre className="max-h-[42rem] overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-4 text-sm leading-relaxed">
+              {jsonText}
+            </pre>
+          </TabsContent>
           <TabsContent value="preview" className="mt-4">
             {item.blogJson ? <MarketingBlogPreview post={item.blogJson} /> : null}
           </TabsContent>
-          <TabsContent value="json" className="mt-4">
-            <pre className="max-h-[42rem] overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-4 text-sm leading-relaxed">
-              {JSON.stringify(item.blogJson, null, 2)}
-            </pre>
-          </TabsContent>
           <TabsContent value="prompt" className="mt-4 space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Website admin instruction with this case study filled in as the topic. No markdown
-              fences.
-            </p>
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Do not upload this to the website</AlertTitle>
+              <AlertDescription>
+                This is an instruction for an AI writer. The website JSON parser will fail with
+                Unexpected token G if you paste this. Use Copy for website instead.
+              </AlertDescription>
+            </Alert>
             <pre className="max-h-[42rem] overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-4 text-sm leading-relaxed">
               {item.jsonPrompt}
             </pre>
@@ -476,7 +526,7 @@ function BlogDraftCard({
               ) : (
                 <Copy className="mr-2 h-4 w-4" />
               )}
-              Copy JSON prompt
+              Copy AI instruction
             </Button>
           </TabsContent>
           <TabsContent value="markdown" className="mt-4 space-y-3">

@@ -1,16 +1,6 @@
-import {
-  COST_BANDS,
-  DURATION_BANDS,
-  SIZE_BANDS,
-  type CostBand,
-  type DurationBand,
-  type SizeBand,
-} from './types.ts'
+import { DURATION_BANDS, SIZE_BANDS, type CostBand, type DurationBand, type SizeBand } from './types.ts'
 
-const LAKH = 100_000
-const FIFTY_LAKH = 50 * LAKH
-const HUNDRED_LAKH = 100 * LAKH
-const TWO_HUNDRED_LAKH = 200 * LAKH
+const CRORE = 10_000_000
 
 function asFiniteNumber(value: number | string | null | undefined): number | null {
   if (value == null || value === '') return null
@@ -28,15 +18,20 @@ export function sizeBandFromSqft(sqft: number | string | null | undefined): Size
   return SIZE_BANDS[3]
 }
 
+/** Round rupees to one decimal Crore, e.g. 12,300,000 → "1.2 Cr residence". */
+export function formatCroreResidence(amount: number): string {
+  const rounded = Math.round((amount / CRORE) * 10) / 10
+  if (rounded < 0.1) return 'Under 0.1 Cr residence'
+  if (Number.isInteger(rounded)) return `${rounded} Cr residence`
+  return `${rounded.toFixed(1)} Cr residence`
+}
+
 export function costBandFromRupees(
   amount: number | string | null | undefined,
 ): CostBand | undefined {
   const value = asFiniteNumber(amount)
   if (value == null) return undefined
-  if (value < FIFTY_LAKH) return COST_BANDS[0]
-  if (value < HUNDRED_LAKH) return COST_BANDS[1]
-  if (value < TWO_HUNDRED_LAKH) return COST_BANDS[2]
-  return COST_BANDS[3]
+  return formatCroreResidence(value)
 }
 
 function parseIsoDate(value: string): Date | null {

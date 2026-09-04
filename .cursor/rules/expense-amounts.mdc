@@ -1,0 +1,14 @@
+---
+description: Marketing drafts may show expense rupee totals; still hide identity and vendors
+globs: lib/marketing/**,components/admin/marketing-*.tsx
+alwaysApply: false
+---
+
+# Marketing expense figures
+
+- Admin Marketing Case Studies may show **each approved expense row** (category, subcategory, description, amount).
+- Round house scale to a single Crore figure homeowners actually say, e.g. **1.2 Cr residence**. Do not write 100 lakh or 1 Cr to 2 Cr ranges.
+- The published table shows the first 30 rows; Read more opens the rest.
+- Write for a new homeowner: what a project of this scale requires. Do not lecture about why other details are hidden.
+- Still omit client identity, addresses, vendors, invoices, dates, BOQ lines, and the exact contract rupee total.
+- When Design-tab drawings or site photos exist, fill `featured_image` / `gallery` / `image_text` automatically. Never invent photos. Never use a file name as a caption.

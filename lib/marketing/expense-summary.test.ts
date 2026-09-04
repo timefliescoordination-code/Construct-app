@@ -110,11 +110,21 @@ describe('summarizeApprovedExpenses', () => {
       },
     ])
     assert.deepEqual(summary.expenseLines, [
-      { category: 'Materials', subcategory: 'Cement', amount: 2391 },
-      { category: 'Materials', subcategory: null, amount: 2392 },
-      { category: 'Labour', subcategory: null, amount: 3127 },
-      { category: 'Equipment', subcategory: 'Mixer', amount: 1211 },
-      { category: 'Miscellaneous', subcategory: 'Villa special tiles', amount: 879 },
+      { category: 'Materials', subcategory: 'Cement', description: 'bags', amount: 2391 },
+      {
+        category: 'Materials',
+        subcategory: null,
+        description: 'Steel delivery for villa',
+        amount: 2392,
+      },
+      { category: 'Labour', subcategory: null, description: 'Mason wages', amount: 3127 },
+      { category: 'Equipment', subcategory: 'Mixer', description: 'daily hire', amount: 1211 },
+      {
+        category: 'Miscellaneous',
+        subcategory: 'Villa special tiles',
+        description: 'Night haul of leftover shuttering',
+        amount: 879,
+      },
     ])
     assert.equal(
       summary.expenseSheet
@@ -128,8 +138,8 @@ describe('summarizeApprovedExpenses', () => {
       { category: 'Miscellaneous', names: ['Villa special tiles'] },
     ])
     const blob = JSON.stringify(summary)
-    assert.equal(blob.includes('Steel delivery'), false)
-    assert.equal(blob.includes('Night haul'), false)
+    assert.equal(blob.includes('Steel delivery for villa'), true)
+    assert.equal(blob.includes('Night haul of leftover shuttering'), true)
   })
 
   it('prefers a split subcategory over a custom description', () => {
@@ -146,9 +156,14 @@ describe('summarizeApprovedExpenses', () => {
       { category: 'Materials', subcategory: 'Steel', percent: 100, amount: 100, count: 1 },
     ])
     assert.deepEqual(summary?.expenseLines, [
-      { category: 'Materials', subcategory: 'Steel', amount: 100 },
+      {
+        category: 'Materials',
+        subcategory: 'Steel',
+        description: 'Steel delivery for villa',
+        amount: 100,
+      },
     ])
-    assert.equal(JSON.stringify(summary).includes('Steel delivery'), false)
+    assert.equal(JSON.stringify(summary).includes('Steel delivery'), true)
   })
 
   it('keeps every approved expense as its own row', () => {
@@ -158,9 +173,9 @@ describe('summarizeApprovedExpenses', () => {
       { amount: 150, category: 'Labour', status: 'approved' },
     ])
     assert.deepEqual(summary?.expenseLines, [
-      { category: 'Materials', subcategory: 'Cement', amount: 100 },
-      { category: 'Materials', subcategory: 'Cement', amount: 250 },
-      { category: 'Labour', subcategory: null, amount: 150 },
+      { category: 'Materials', subcategory: 'Cement', description: 'bags', amount: 100 },
+      { category: 'Materials', subcategory: 'Cement', description: 'extra bags', amount: 250 },
+      { category: 'Labour', subcategory: null, description: null, amount: 150 },
     ])
     assert.deepEqual(summary?.expenseSheet, [
       { category: 'Materials', subcategory: 'Cement', percent: 70, amount: 350, count: 2 },

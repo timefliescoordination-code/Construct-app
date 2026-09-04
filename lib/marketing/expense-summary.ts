@@ -84,6 +84,22 @@ export function resolvePublicSubcategory(
   return matchCatalogSubcategory(category, parsed.subcategory)
 }
 
+const FILE_LIKE_DESCRIPTION = /\.(jpg|jpeg|png|webp|gif|pdf|dwg|xlsx|docx)$/i
+
+/** Public-facing remainder of an expense note — what was bought or who worked. */
+export function resolvePublicExpenseDescription(
+  expense: Pick<RawExpenseInput, 'description'>,
+): string | null {
+  const raw = expense.description?.trim() ?? ''
+  if (!raw) return null
+  if (FILE_LIKE_DESCRIPTION.test(raw) || /https?:\/\//i.test(raw)) return null
+  const parsed = parseExpenseSubcategory(raw)
+  if (parsed.subcategory && parsed.description && parsed.description !== raw) {
+    return parsed.description
+  }
+  return raw
+}
+
 type SharePart<K extends string> = { key: K; amount: number }
 
 function roundPartsToNearestFive<K extends string>(
@@ -267,6 +283,7 @@ export function summarizeApprovedExpenses(
       expenseLines.push({
         category: mix.category,
         subcategory: resolveSheetSubcategory(expense),
+        description: resolvePublicExpenseDescription(expense),
         amount,
       })
     }

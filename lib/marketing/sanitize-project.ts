@@ -72,5 +72,6 @@ export function sanitizeProject(raw: RawProjectInput): PublicCaseStudy {
     scopeChangeSummary: scope.summary,
     scopeChangeCategories: scope.categories,
     additionalWorksSummary,
+    blogImages: raw.blogImages?.length ? raw.blogImages : undefined,
   }
 }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   costBandFromRupees,
   durationBandFromDates,
+  formatCroreResidence,
   monthsBetweenDates,
   sizeBandFromSqft,
 } from './bands.ts'
@@ -20,11 +21,14 @@ describe('sizeBandFromSqft', () => {
 })
 
 describe('costBandFromRupees', () => {
-  it('maps lakh bands without exposing the exact rupee amount', () => {
-    assert.equal(costBandFromRupees(4_872_319), 'Under ₹50 lakh')
-    assert.equal(costBandFromRupees(5_000_000), '₹50–100 lakh')
-    assert.equal(costBandFromRupees(10_000_000), '₹100–200 lakh')
-    assert.equal(costBandFromRupees(20_000_000), '₹200 lakh+')
+  it('rounds to a single Crore figure a homeowner would say', () => {
+    assert.equal(formatCroreResidence(12_300_000), '1.2 Cr residence')
+    assert.equal(costBandFromRupees(4_872_319), '0.5 Cr residence')
+    assert.equal(costBandFromRupees(5_000_000), '0.5 Cr residence')
+    assert.equal(costBandFromRupees(10_000_000), '1 Cr residence')
+    assert.equal(costBandFromRupees(12_300_000), '1.2 Cr residence')
+    assert.equal(costBandFromRupees(20_000_000), '2 Cr residence')
+    assert.equal(costBandFromRupees(80_000), 'Under 0.1 Cr residence')
     assert.equal(costBandFromRupees(0), undefined)
     assert.equal(costBandFromRupees(null), undefined)
   })

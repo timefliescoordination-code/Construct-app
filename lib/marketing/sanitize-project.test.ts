@@ -112,8 +112,6 @@ const LEAKS = [
   'Rahul Site Engineer',
   'https://cdn.example.com/site-photos/front.jpg',
   'front.jpg',
-  'Night haul of leftover shuttering',
-  'Steel delivery for villa',
   'CR-001',
   'Local Crew',
 ]
@@ -138,7 +136,7 @@ describe('sanitizeProject fixture', () => {
     assert.equal(publicData.title, anonymousProjectTitle(FIXTURE.id))
     assert.notEqual(publicData.title, FIXTURE.name)
     assert.equal(publicData.sizeBand, '1,500–2,500 sq.ft')
-    assert.equal(publicData.costBand, 'Under ₹50 lakh')
+    assert.equal(publicData.costBand, '0.5 Cr residence')
     assert.equal(publicData.durationBand, '12–18 months')
     assert.equal(publicData.proposalMethod, 'Quoted on a built-up-area basis')
     assert.deepEqual(
@@ -154,11 +152,21 @@ describe('sanitizeProject fixture', () => {
       { category: 'Miscellaneous', subcategory: null, percent: 10, amount: 879, count: 1 },
     ])
     assert.deepEqual(publicData.expenseLines, [
-      { category: 'Materials', subcategory: 'Cement', amount: 2391 },
-      { category: 'Materials', subcategory: null, amount: 2392 },
-      { category: 'Labour', subcategory: null, amount: 3127 },
-      { category: 'Equipment', subcategory: 'Mixer', amount: 1211 },
-      { category: 'Miscellaneous', subcategory: null, amount: 879 },
+      { category: 'Materials', subcategory: 'Cement', description: 'bags', amount: 2391 },
+      {
+        category: 'Materials',
+        subcategory: null,
+        description: 'Steel delivery for villa',
+        amount: 2392,
+      },
+      { category: 'Labour', subcategory: null, description: 'Mason wages', amount: 3127 },
+      { category: 'Equipment', subcategory: 'Mixer', description: 'daily hire', amount: 1211 },
+      {
+        category: 'Miscellaneous',
+        subcategory: null,
+        description: 'Night haul of leftover shuttering',
+        amount: 879,
+      },
     ])
     assert.equal(
       publicData.expenseSheet
@@ -197,15 +205,16 @@ describe('marketing draft fixture', () => {
     assert.equal(draft.blogJson.type, 'blog')
     assert.ok(draft.jsonPrompt.startsWith('Generate a VRA Homes blog post as JSON only'))
     assert.equal(draft.jsonPrompt.includes('```'), false)
-    assert.match(draft.markdown, /1,500–2,500 sq\.ft/)
-    assert.match(draft.markdown, /Under ₹50 lakh/)
+    assert.match(draft.markdown, /0\.5 Cr residence/)
     assert.match(draft.markdown, /12–18 months/)
     assert.match(draft.markdown, /Categories recorded: Materials, Labour, Equipment, Miscellaneous/)
     assert.match(draft.markdown, /Subcategories recorded: Cement, Mixer/)
-    assert.match(draft.markdown, /\| Materials \| Cement \| ₹2,391 \|/)
-    assert.match(draft.markdown, /\| Equipment \| Mixer \| ₹1,211 \|/)
-    assert.match(draft.markdown, /\| Labour \|  \| ₹3,127 \|/)
-    assert.equal(draft.markdown.includes('Steel delivery for villa'), false)
+    assert.match(draft.markdown, /\| Materials \| Cement \| bags \| ₹2,391 \|/)
+    assert.match(draft.markdown, /\| Equipment \| Mixer \| daily hire \| ₹1,211 \|/)
+    assert.match(draft.markdown, /\| Labour \|  \| Mason wages \| ₹3,127 \|/)
+    assert.equal(draft.markdown.includes('Steel delivery for villa'), true)
+    assert.equal(draft.markdown.includes('Why is the overall contract value hidden'), false)
+    assert.equal(draft.markdown.includes('100 lakh'), false)
     assert.equal(draft.expenseSheet.some((row) => row.subcategory === 'Steel'), false)
     assert.equal(draft.expenseLines.length, 5)
     assert.deepEqual(
@@ -218,6 +227,23 @@ describe('marketing draft fixture', () => {
     assert.equal(split.before.includes('| Materials | Cement |'), false)
     assert.equal(split.after.includes('| Materials | Cement |'), false)
     assert.ok(countWords(draft.markdown) >= 1500)
+  })
+
+  it('stays copy-safe when Design and site photo URLs are attached', () => {
+    const withPhotos: RawProjectInput = {
+      ...FIXTURE,
+      blogImages: [
+        {
+          src: 'https://vraconstruction.app/api/projects/11111111-1111-4111-8111-111111111111/design-files/aaaa/view',
+          caption: 'Design drawing',
+          kind: 'design',
+        },
+      ],
+    }
+    const draft = buildMarketingDraft(withPhotos)
+    assert.equal(draft.copySafe, true, draft.privacyIssues.join(', '))
+    assert.ok(draft.blogJson.featured_image)
+    assert.equal(draft.jsonPrompt.includes('none yet'), false)
   })
 
   it('omits missing data instead of inventing bands or spend mix', () => {

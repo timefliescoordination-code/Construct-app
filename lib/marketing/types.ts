@@ -9,14 +9,8 @@ export const SIZE_BANDS = [
 
 export type SizeBand = (typeof SIZE_BANDS)[number]
 
-export const COST_BANDS = [
-  'Under ₹50 lakh',
-  '₹50–100 lakh',
-  '₹100–200 lakh',
-  '₹200 lakh+',
-] as const
-
-export type CostBand = (typeof COST_BANDS)[number]
+/** Rounded Crore label, e.g. "1.2 Cr residence". Not a 1 Cr to 2 Cr range. */
+export type CostBand = string
 
 export const DURATION_BANDS = [
   'Under 12 months',
@@ -103,7 +97,14 @@ export type PublicExpenseSheetRow = {
 export type PublicExpenseLineItem = {
   category: SpendCategory
   subcategory: string | null
+  description: string | null
   amount: number
+}
+
+export type PublicBlogImage = {
+  src: string
+  caption: string
+  kind: 'site' | 'design'
 }
 
 export type PublicSubcategoryGroup = {
@@ -127,6 +128,7 @@ export type PublicCaseStudy = {
   scopeChangeSummary?: ScopeChangeSummary
   scopeChangeCategories: SafeChangeCategory[]
   additionalWorksSummary?: AdditionalWorksSummary
+  blogImages?: PublicBlogImage[]
 }
 
 export type RawExpenseInput = {
@@ -185,6 +187,7 @@ export type RawProjectInput = {
   contractorNames?: string[]
   /** Raw text that must never appear in markdown (BOQ lines, custom notes, etc.). */
   privateSnippets?: string[]
+  blogImages?: PublicBlogImage[]
 }
 
 export type PrivacyCheckResult = {
@@ -218,9 +221,9 @@ export const PRIVACY_CHECKLIST = [
   'Address removed',
   'Location removed',
   'Year removed',
-  'Contract total kept as a band',
+  'Scale shown as a rounded Crore figure',
   'Exact measurements removed',
-  'Photos excluded',
+  'Photos only from Design / site uploads',
   'Vendors excluded',
   'Invoices excluded',
   'Proposal numbers excluded',

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isDatabaseSetupError } from '@/lib/supabase/db-errors'
 import { isMissingQualityTablesError } from '@/lib/quality/db'
+import { collectProjectBlogImages } from '@/lib/marketing/blog-images'
 import { builtUpSqftFromItems } from '@/lib/marketing/sanitize-project'
 import type { RawAdditionalWorkInput, RawChangeRequestInput, RawExpenseInput, RawProjectInput } from '@/lib/marketing/types'
 
@@ -125,7 +126,16 @@ export async function loadRawProjectsForMarketing(supabase: AnyClient): Promise<
 
   const projectIds = projects.map((row) => row.id as string)
 
-  const [milestones, expenses, additionalWorks, changeRequests, proposals, inspections] =
+  const [
+    milestones,
+    expenses,
+    additionalWorks,
+    changeRequests,
+    proposals,
+    inspections,
+    sitePhotos,
+    designFiles,
+  ] =
     await Promise.all([
       optionalRows(
         supabase.from('milestones').select('project_id, name').in('project_id', projectIds),
@@ -156,6 +166,18 @@ export async function loadRawProjectsForMarketing(supabase: AnyClient): Promise<
         supabase
           .from('quality_inspections')
           .select('project_id, template:quality_checklist_templates(work_type)')
+          .in('project_id', projectIds),
+      ),
+      optionalRows(
+        supabase
+          .from('project_site_photos' as never)
+          .select('id, project_id, stage_label, caption, file_mime_type')
+          .in('project_id', projectIds),
+      ),
+      optionalRows(
+        supabase
+          .from('project_design_files')
+          .select('id, project_id, title, revision_label, file_mime_type')
           .in('project_id', projectIds),
       ),
     ])
@@ -241,6 +263,8 @@ export async function loadRawProjectsForMarketing(supabase: AnyClient): Promise<
     list.push(workType)
     workTypesByProject.set(projectId, list)
   }
+  const sitePhotosByProject = groupByProject(sitePhotos)
+  const designFilesByProject = groupByProject(designFiles)
 
   return projects.map((project) => {
     const id = project.id as string
@@ -306,6 +330,11 @@ export async function loadRawProjectsForMarketing(supabase: AnyClient): Promise<
           }
         : null,
       inspectionWorkTypes: workTypesByProject.get(id) ?? [],
+      blogImages: collectProjectBlogImages({
+        projectId: id,
+        sitePhotos: sitePhotosByProject.get(id) ?? [],
+        designFiles: designFilesByProject.get(id) ?? [],
+      }),
     }
   })
 }

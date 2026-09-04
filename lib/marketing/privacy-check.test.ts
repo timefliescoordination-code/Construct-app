@@ -48,8 +48,8 @@ describe('checkMarkdownPrivacy', () => {
     const clean = `# A Mid-Size Family Home
 
 - Approximate size band: 1,500–2,500 sq.ft
-- Approximate cost band: Under ₹50 lakh
-- Approximate construction duration: 12–18 months
+- This home: 0.5 Cr residence
+- On site: 12–18 months
 
 Quoted on a built-up-area basis.
 
@@ -57,13 +57,13 @@ Categories recorded: Materials, Labour, Equipment, Miscellaneous.
 
 Subcategories recorded: Cement, Mixer.
 
-| Category | Subcategory | Amount |
-|---|---|---:|
-| Materials | Cement | ₹2,391 |
-| Materials |  | ₹2,392 |
-| Labour |  | ₹3,127 |
-| Equipment | Mixer | ₹1,211 |
-| Miscellaneous |  | ₹879 |
+| Category | Subcategory | Description | Amount |
+|---|---|---|---:|
+| Materials | Cement | bags | ₹2,391 |
+| Materials |  | Steel delivery for villa | ₹2,392 |
+| Labour |  | Mason wages | ₹3,127 |
+| Equipment | Mixer | daily hire | ₹1,211 |
+| Miscellaneous |  | Night haul of leftover shuttering | ₹879 |
 `
     const result = checkMarkdownPrivacy(clean, [
       'John Example',
@@ -72,6 +72,17 @@ Subcategories recorded: Cement, Mixer.
       '2478',
       '4872319',
     ])
+    assert.equal(result.ok, true, result.issues.join(', '))
+  })
+
+  it('allows listed project photo URLs', () => {
+    const url =
+      'https://vraconstruction.app/api/projects/11111111-1111-4111-8111-111111111111/site-photos/bbbb/view'
+    const result = checkMarkdownPrivacy(
+      `See the site: ${url}`,
+      [],
+      { allowedUrls: [url] },
+    )
     assert.equal(result.ok, true, result.issues.join(', '))
   })
 })
