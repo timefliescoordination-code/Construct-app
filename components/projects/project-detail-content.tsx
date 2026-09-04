@@ -556,6 +556,10 @@ export function ProjectDetailContent({ projectId }: ProjectDetailContentProps) {
             projectName={project.name}
             canUpload={canUploadProjectPhotos}
             customerMode={isCustomer}
+            milestones={(project.milestones ?? []).map((milestone) => ({
+              id: milestone.id,
+              name: milestone.name,
+            }))}
           />
         )
       case "quality":

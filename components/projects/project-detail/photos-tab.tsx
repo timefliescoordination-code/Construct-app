@@ -16,6 +16,7 @@ interface PhotosTabProps {
   projectName?: string
   canUpload?: boolean
   customerMode?: boolean
+  milestones?: Array<{ id: string; name: string }>
 }
 
 export function PhotosTab({
@@ -23,6 +24,7 @@ export function PhotosTab({
   projectName: propProjectName,
   canUpload = false,
   customerMode = false,
+  milestones = [],
 }: PhotosTabProps = {}) {
   const params = useParams()
   const projectId = propProjectId || (params?.id as string)
@@ -169,6 +171,8 @@ export function PhotosTab({
           <SitePhotosGallery
             projectId={projectId}
             customerMode={customerMode}
+            canManage={canUpload && !customerMode}
+            milestones={milestones}
             refreshKey={galleryRefreshKey}
             emptyMessage={
               canUpload

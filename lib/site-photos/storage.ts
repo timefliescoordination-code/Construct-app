@@ -66,9 +66,17 @@ export async function deleteSitePhotoFromStorage(
   supabase: SupabaseClient,
   filePath: string,
 ): Promise<{ ok: true } | { error: string }> {
-  const { error } = await supabase.storage
-    .from(PROJECT_SITE_PHOTOS_BUCKET)
-    .remove([filePath])
+  return deleteSitePhotosFromStorage(supabase, [filePath])
+}
+
+export async function deleteSitePhotosFromStorage(
+  supabase: SupabaseClient,
+  filePaths: string[],
+): Promise<{ ok: true } | { error: string }> {
+  const paths = [...new Set(filePaths.filter(Boolean))]
+  if (paths.length === 0) return { ok: true }
+
+  const { error } = await supabase.storage.from(PROJECT_SITE_PHOTOS_BUCKET).remove(paths)
 
   if (error) {
     return { error: getSupabaseErrorMessage(error) }

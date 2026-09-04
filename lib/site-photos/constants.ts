@@ -9,4 +9,6 @@ export const SITE_PHOTO_UPLOAD_CONFIG = {
   allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'] as const,
   allowedExtensions: ['.jpg', '.jpeg', '.png', '.webp'] as const,
   maxFilesPerBatch: 20,
+  maxManageBatch: 50,
+  maxCaptionLength: 200,
 }

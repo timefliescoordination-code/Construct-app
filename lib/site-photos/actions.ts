@@ -7,16 +7,58 @@ import { notifySitePhotosBatch } from '@/lib/notifications'
 import { canUserUploadSitePhotosToProject } from '@/lib/site-photos/access'
 import { getCompanyWatermarkDetails } from '@/lib/site-photos/company-watermark'
 import { compressAndWatermarkSitePhoto } from '@/lib/site-photos/process'
-import { uploadSitePhotoFile } from '@/lib/site-photos/storage'
+import { deleteSitePhotosFromStorage, uploadSitePhotoFile } from '@/lib/site-photos/storage'
+import type { TabActionResult } from '@/lib/projects/tab-actions'
+import { formatStageLabel } from '@/lib/site-photos/stage-label'
 import { resolveSitePhotoMimeType, validateSitePhotoFile } from '@/lib/site-photos/validate'
 import { SITE_PHOTO_UPLOAD_CONFIG } from '@/lib/site-photos/constants'
-import type { ProjectSitePhoto } from '@/lib/types/database'
 import { getLatestProjectStageFromExpenses } from '@/lib/site-photos/stage'
-import type { UserRole } from '@/lib/types/database'
+import type { ProjectSitePhoto, UserRole } from '@/lib/types/database'
 
 function revalidatePhotoPaths(projectId: string) {
   revalidatePath(`/projects/${projectId}`)
   revalidatePath('/customer')
+}
+
+async function requireSitePhotoManager(
+  projectId: string,
+): Promise<
+  | { ok: true; supabase: Awaited<ReturnType<typeof createClient>> }
+  | { ok: false; error: string }
+> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { ok: false, error: 'You must be signed in.' }
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  const role = profile?.role as UserRole | undefined
+  if (!role) {
+    return { ok: false, error: 'Your account role could not be determined.' }
+  }
+
+  const canManage = await canUserUploadSitePhotosToProject(supabase, user.id, role, projectId)
+  if (!canManage) {
+    return {
+      ok: false,
+      error: 'You do not have permission to manage site photos for this project.',
+    }
+  }
+
+  return { ok: true, supabase }
+}
+
+function uniquePhotoIds(photoIds: string[]): string[] {
+  return [...new Set(photoIds.map((id) => id.trim()).filter(Boolean))]
 }
 
 export async function uploadSitePhotosAction(
@@ -188,4 +230,159 @@ export async function listSitePhotosForProject(
   }
 
   return { data: (data ?? []) as ProjectSitePhoto[], error: null }
+}
+
+export async function deleteSitePhotosAction(input: {
+  projectId: string
+  photoIds: string[]
+}): Promise<TabActionResult<{ deleted: number }>> {
+  const projectId = input.projectId?.trim()
+  if (!projectId) {
+    return { ok: false, error: 'Project ID is required.' }
+  }
+
+  const ids = uniquePhotoIds(input.photoIds)
+  if (ids.length === 0) {
+    return { ok: false, error: 'Select at least one photo.' }
+  }
+  if (ids.length > SITE_PHOTO_UPLOAD_CONFIG.maxManageBatch) {
+    return {
+      ok: false,
+      error: `Delete up to ${SITE_PHOTO_UPLOAD_CONFIG.maxManageBatch} photos at a time.`,
+    }
+  }
+
+  const access = await requireSitePhotoManager(projectId)
+  if (!access.ok) return access
+
+  const { data: rows, error: fetchError } = await access.supabase
+    .from('project_site_photos')
+    .select('id, file_path')
+    .eq('project_id', projectId)
+    .in('id', ids)
+
+  if (fetchError) {
+    return { ok: false, error: getSupabaseErrorMessage(fetchError) }
+  }
+
+  const photos = (rows ?? []) as Array<{ id: string; file_path: string }>
+  if (photos.length === 0) {
+    return { ok: false, error: 'Those photos were not found on this project.' }
+  }
+
+  const { error: deleteError } = await access.supabase
+    .from('project_site_photos')
+    .delete()
+    .eq('project_id', projectId)
+    .in(
+      'id',
+      photos.map((photo) => photo.id),
+    )
+
+  if (deleteError) {
+    return { ok: false, error: getSupabaseErrorMessage(deleteError) }
+  }
+
+  const storageResult = await deleteSitePhotosFromStorage(
+    access.supabase,
+    photos.map((photo) => photo.file_path),
+  )
+  if ('error' in storageResult) {
+    console.error('[deleteSitePhotosAction] storage:', storageResult.error)
+  }
+
+  revalidatePhotoPaths(projectId)
+  return { ok: true, data: { deleted: photos.length } }
+}
+
+export async function updateSitePhotosAction(input: {
+  projectId: string
+  photoIds: string[]
+  caption?: string | null
+  milestoneId?: string | null
+}): Promise<TabActionResult<{ updated: number }>> {
+  const projectId = input.projectId?.trim()
+  if (!projectId) {
+    return { ok: false, error: 'Project ID is required.' }
+  }
+
+  const ids = uniquePhotoIds(input.photoIds)
+  if (ids.length === 0) {
+    return { ok: false, error: 'Select at least one photo.' }
+  }
+  if (ids.length > SITE_PHOTO_UPLOAD_CONFIG.maxManageBatch) {
+    return {
+      ok: false,
+      error: `Edit up to ${SITE_PHOTO_UPLOAD_CONFIG.maxManageBatch} photos at a time.`,
+    }
+  }
+
+  const hasCaption = Object.prototype.hasOwnProperty.call(input, 'caption')
+  const hasMilestone = Object.prototype.hasOwnProperty.call(input, 'milestoneId')
+  if (!hasCaption && !hasMilestone) {
+    return { ok: false, error: 'Choose a caption or a stage to update.' }
+  }
+
+  const access = await requireSitePhotoManager(projectId)
+  if (!access.ok) return access
+
+  const updates: Record<string, unknown> = {}
+
+  if (hasCaption) {
+    if (ids.length !== 1) {
+      return { ok: false, error: 'Caption can only be edited for one photo at a time.' }
+    }
+    const trimmed = input.caption?.trim() ?? ''
+    if (trimmed.length > SITE_PHOTO_UPLOAD_CONFIG.maxCaptionLength) {
+      return {
+        ok: false,
+        error: `Caption must be ${SITE_PHOTO_UPLOAD_CONFIG.maxCaptionLength} characters or fewer.`,
+      }
+    }
+    updates.caption = trimmed || null
+  }
+
+  if (hasMilestone) {
+    const milestoneId = input.milestoneId?.trim() || null
+    if (!milestoneId) {
+      updates.milestone_id = null
+      updates.stage_label = null
+    } else {
+      const { data: milestone, error: milestoneError } = await access.supabase
+        .from('milestones')
+        .select('id, name')
+        .eq('id', milestoneId)
+        .eq('project_id', projectId)
+        .maybeSingle()
+
+      if (milestoneError) {
+        return { ok: false, error: getSupabaseErrorMessage(milestoneError) }
+      }
+      if (!milestone?.name?.trim()) {
+        return { ok: false, error: 'That stage was not found on this project.' }
+      }
+
+      updates.milestone_id = milestone.id
+      updates.stage_label = formatStageLabel(milestone.name)
+    }
+  }
+
+  const { data, error } = await access.supabase
+    .from('project_site_photos')
+    .update(updates)
+    .eq('project_id', projectId)
+    .in('id', ids)
+    .select('id')
+
+  if (error) {
+    return { ok: false, error: getSupabaseErrorMessage(error) }
+  }
+
+  const updated = data?.length ?? 0
+  if (updated === 0) {
+    return { ok: false, error: 'Those photos were not found on this project.' }
+  }
+
+  revalidatePhotoPaths(projectId)
+  return { ok: true, data: { updated } }
 }
