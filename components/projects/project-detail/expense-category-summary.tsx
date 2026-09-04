@@ -10,7 +10,11 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { formatINR } from "@/lib/currency"
+import { formatINRDetailed } from "@/lib/currency"
+import {
+  buildExpenseDetailRows,
+  type ExpenseSpendingInput,
+} from "@/lib/expense/spending-detail"
 
 export type ExpenseCategoryStat = {
   category: string
@@ -58,7 +62,7 @@ function styleForCategory(category: string) {
 }
 
 export function buildExpenseCategoryStats(
-  expenses: Array<{ category: string; amount: number; status: string }>,
+  expenses: ExpenseSpendingInput[],
   categoryNames: string[],
   options?: { statusFilter?: string },
 ): ExpenseCategoryStat[] {
@@ -118,7 +122,7 @@ export function buildExpenseCategoryStats(
 }
 
 interface ExpenseCategorySummaryProps {
-  expenses: Array<{ category: string; amount: number; status: string }>
+  expenses: ExpenseSpendingInput[]
   categoryNames: string[]
   statusFilter?: string
   activeCategory?: string
@@ -137,6 +141,15 @@ export function ExpenseCategorySummary({
   const stats = useMemo(
     () => buildExpenseCategoryStats(expenses, categoryNames, { statusFilter }),
     [expenses, categoryNames, statusFilter],
+  )
+
+  const detailRows = useMemo(
+    () =>
+      buildExpenseDetailRows(expenses, categoryNames, {
+        statusFilter,
+        categoryFilter: activeCategory,
+      }),
+    [expenses, categoryNames, statusFilter, activeCategory],
   )
 
   const grandTotal = useMemo(
@@ -167,7 +180,7 @@ export function ExpenseCategorySummary({
           <div>
             <p className="text-muted-foreground">Total</p>
             <p className="font-semibold tabular-nums text-foreground">
-              {formatINR(grandTotal)}
+              {formatINRDetailed(grandTotal)}
             </p>
           </div>
           <div>
@@ -217,19 +230,19 @@ export function ExpenseCategorySummary({
 
               <p className="mt-3 text-sm font-medium text-foreground">{stat.category}</p>
               <p className="mt-1 text-xl font-semibold tabular-nums tracking-tight text-foreground">
-                {formatINR(stat.total)}
+                {formatINRDetailed(stat.total)}
               </p>
 
               {hasSpend ? (
                 <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                   {stat.approved > 0 && (
                     <span className="text-green-600 dark:text-green-500">
-                      {formatINR(stat.approved)} approved
+                      {formatINRDetailed(stat.approved)} approved
                     </span>
                   )}
                   {stat.pending > 0 && (
                     <span className="text-amber-600 dark:text-amber-500">
-                      {formatINR(stat.pending)} pending
+                      {formatINRDetailed(stat.pending)} pending
                     </span>
                   )}
                 </div>
@@ -240,6 +253,51 @@ export function ExpenseCategorySummary({
           )
         })}
       </div>
+
+      {detailRows.length > 0 ? (
+        <div className="overflow-x-auto rounded-md border border-border bg-background">
+          <table className="w-full min-w-[36rem] border-collapse text-sm">
+            <thead>
+              <tr className="bg-muted/70">
+                <th className="border-b border-r border-border px-3 py-2 text-left font-semibold">
+                  Category
+                </th>
+                <th className="border-b border-r border-border px-3 py-2 text-left font-semibold">
+                  Subcategory / team
+                </th>
+                <th className="border-b border-r border-border px-3 py-2 text-right font-semibold">
+                  Amount
+                </th>
+                <th className="border-b border-r border-border px-3 py-2 text-right font-semibold">
+                  Approved
+                </th>
+                <th className="border-b border-border px-3 py-2 text-right font-semibold">
+                  Entries
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {detailRows.map((row) => (
+                <tr key={`${row.category}-${row.subcategory ?? ""}`}>
+                  <td className="border-b border-r border-border px-3 py-2">{row.category}</td>
+                  <td className="border-b border-r border-border px-3 py-2 text-muted-foreground">
+                    {row.subcategory ?? "—"}
+                  </td>
+                  <td className="border-b border-r border-border px-3 py-2 text-right font-medium tabular-nums">
+                    {formatINRDetailed(row.total)}
+                  </td>
+                  <td className="border-b border-r border-border px-3 py-2 text-right tabular-nums text-muted-foreground">
+                    {formatINRDetailed(row.approved)}
+                  </td>
+                  <td className="border-b border-border px-3 py-2 text-right tabular-nums">
+                    {row.count}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       {onCategoryClick && activeCategory !== "all" && (
         <p className="text-xs text-muted-foreground">

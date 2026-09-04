@@ -71,8 +71,9 @@ import type {
   InvoiceItem,
   ProjectWithDetails,
 } from "@/lib/types/database"
-import { formatINR } from "@/lib/currency"
+import { formatINRDetailed } from "@/lib/currency"
 import { cn } from "@/lib/utils"
+import { expenseLineLabels } from "@/lib/expense/spending-detail"
 import { milestoneNameById } from "@/lib/project-tab-hydration"
 import {
   bulkCreateExpensesAction,
@@ -133,7 +134,6 @@ function categoryUsesLabourTeams(
   return categoryName.trim().toLowerCase() === "labour"
 }
 const statuses = ["pending", "approved", "rejected"]
-const EXPENSE_LIST_PREVIEW_LIMIT = 15
 const EXPENSE_DIALOG_CLASS =
   "flex max-h-[min(92dvh,100dvh)] flex-col gap-0 overflow-hidden border-border bg-card p-0 sm:max-w-[600px]"
 const EXPENSE_FORM_ROW = "grid grid-cols-1 gap-4 sm:grid-cols-2"
@@ -353,7 +353,6 @@ export function ExpensesTab({
   const [isLoading, setIsLoading] = useState(!project)
   const [filterCategory, setFilterCategory] = useState<string>("all")
   const [filterStatus, setFilterStatus] = useState<string>("all")
-  const [showAllExpenses, setShowAllExpenses] = useState(false)
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(
     () => new Set(),
   )
@@ -616,6 +615,22 @@ export function ExpensesTab({
   const categoryNames = useMemo(
     () => expenseCategories.map((c) => c.name),
     [expenseCategories],
+  )
+
+  const spendingInputs = useMemo(
+    () =>
+      expenses.map((expense) => ({
+        category: expense.category,
+        amount: expense.amount,
+        status: expense.status,
+        description: expense.description,
+        subcategoryName: expense.split_group_subcategory_name ?? null,
+        labourTeamName:
+          labourTeamNameById.get(
+            expense.labour_team_id || expense.split_group_labour_team_id || "",
+          ) ?? null,
+      })),
+    [expenses, labourTeamNameById],
   )
 
   const milestoneNameByIdMap = useMemo(
@@ -1290,7 +1305,7 @@ export function ExpensesTab({
               <div key={item.id} className="text-sm">
                 <p className="font-medium">{item.material_description_original}</p>
                 <p className="text-muted-foreground">{formatInvoiceLineQuantity(item)}</p>
-                <p>{formatINR(Number(item.total_amount))}</p>
+                <p>{formatINRDetailed(Number(item.total_amount))}</p>
               </div>
             ))}
           </div>
@@ -2043,21 +2058,8 @@ export function ExpensesTab({
       )
   }, [expenses, filterCategory, filterStatus])
 
-  const visibleExpenses = useMemo(
-    () =>
-      showAllExpenses
-        ? filteredExpenses
-        : filteredExpenses.slice(0, EXPENSE_LIST_PREVIEW_LIMIT),
-    [filteredExpenses, showAllExpenses],
-  )
-  const hiddenExpenseCount = Math.max(
-    0,
-    filteredExpenses.length - EXPENSE_LIST_PREVIEW_LIMIT,
-  )
-
   useEffect(() => {
     setSelectedExpenseIds(new Set())
-    setShowAllExpenses(false)
   }, [filterCategory, filterStatus])
 
   const allFilteredSelected =
@@ -2083,7 +2085,7 @@ export function ExpensesTab({
     }
   }
 
-  const tableColSpan = canEnterData ? 9 : 7
+  const tableColSpan = canEnterData ? 10 : 8
 
   const getApprovalBadge = (status: string) => {
     switch (status) {
@@ -2149,7 +2151,7 @@ export function ExpensesTab({
       <Card className="section-card border-border overflow-hidden">
         <CardContent className="pt-6">
           <ExpenseCategorySummary
-            expenses={expenses}
+            expenses={spendingInputs}
             categoryNames={categoryNames}
             statusFilter={filterStatus}
             activeCategory={filterCategory}
@@ -2735,6 +2737,7 @@ export function ExpensesTab({
                   )}
                   <TableHead>Date</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Subcategory</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Vendor</TableHead>
                   <TableHead>Stage</TableHead>
@@ -2751,7 +2754,7 @@ export function ExpensesTab({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  visibleExpenses.map((expense) => {
+                  filteredExpenses.map((expense) => {
                     const isSplit = Boolean(expense.split_group_id && expense.split_number)
                     const groupPaymentStatus = expense.split_group_id
                       ? splitPaymentByGroupId.get(expense.split_group_id)
@@ -2761,6 +2764,17 @@ export function ExpensesTab({
                     const isInvoiceExpanded = expandedInvoiceExpenseIds.has(expense.id)
                     const invoiceDetails = invoiceDetailsByExpenseId[expense.id]
                     const isSelected = selectedExpenseIds.has(expense.id)
+                    const lineLabels = expenseLineLabels({
+                      category: expense.category,
+                      amount: expense.amount,
+                      status: expense.status,
+                      description: expense.description,
+                      subcategoryName: expense.split_group_subcategory_name,
+                      labourTeamName:
+                        labourTeamNameById.get(
+                          expense.labour_team_id || expense.split_group_labour_team_id || "",
+                        ) ?? null,
+                    })
 
                     return (
                     <Fragment key={expense.id}>
@@ -2807,8 +2821,13 @@ export function ExpensesTab({
                       <TableCell>
                         <p className="font-medium">{expense.category}</p>
                       </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {lineLabels.subcategory ?? "—"}
+                      </TableCell>
                       <TableCell className="max-w-[200px]">
-                        <p className="truncate">{expense.description}</p>
+                        <p className="truncate" title={expense.description}>
+                          {lineLabels.description || expense.description}
+                        </p>
                         {uploadingInvoiceExpenseIds.has(expense.id) ? (
                           <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -2850,8 +2869,8 @@ export function ExpensesTab({
                           </Badge>
                         ) : '-'}
                       </TableCell>
-                      <TableCell className="text-right font-medium">
-                        Rs {Number(expense.amount).toLocaleString()}
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {formatINRDetailed(Number(expense.amount))}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1 items-start">
@@ -2920,21 +2939,6 @@ export function ExpensesTab({
               </TableBody>
             </Table>
           </div>
-          {hiddenExpenseCount > 0 && (
-            <div className="pt-3 flex justify-center">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-primary"
-                onClick={() => setShowAllExpenses((prev) => !prev)}
-              >
-                {showAllExpenses
-                  ? "Show less"
-                  : `Show more (${hiddenExpenseCount} more)`}
-              </Button>
-            </div>
-          )}
         </CardContent>
       </Card>
 
