@@ -65,6 +65,7 @@ export function sanitizeProject(raw: RawProjectInput): PublicCaseStudy {
     proposalMethod: proposalMethodLabel(raw.proposal?.method),
     spendMix: expenseSummary?.spendMix,
     expenseSheet: expenseSummary?.expenseSheet,
+    expenseLines: expenseSummary?.expenseLines,
     subcategoriesByCategory: expenseSummary?.subcategoriesByCategory,
     stages,
     qualityAreas,

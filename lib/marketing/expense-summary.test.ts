@@ -109,6 +109,13 @@ describe('summarizeApprovedExpenses', () => {
         count: 1,
       },
     ])
+    assert.deepEqual(summary.expenseLines, [
+      { category: 'Materials', subcategory: 'Cement', amount: 2391 },
+      { category: 'Materials', subcategory: null, amount: 2392 },
+      { category: 'Labour', subcategory: null, amount: 3127 },
+      { category: 'Equipment', subcategory: 'Mixer', amount: 1211 },
+      { category: 'Miscellaneous', subcategory: 'Villa special tiles', amount: 879 },
+    ])
     assert.equal(
       summary.expenseSheet
         .filter((row) => row.category === 'Materials')
@@ -138,6 +145,26 @@ describe('summarizeApprovedExpenses', () => {
     assert.deepEqual(summary?.expenseSheet, [
       { category: 'Materials', subcategory: 'Steel', percent: 100, amount: 100, count: 1 },
     ])
+    assert.deepEqual(summary?.expenseLines, [
+      { category: 'Materials', subcategory: 'Steel', amount: 100 },
+    ])
     assert.equal(JSON.stringify(summary).includes('Steel delivery'), false)
+  })
+
+  it('keeps every approved expense as its own row', () => {
+    const summary = summarizeApprovedExpenses([
+      { amount: 100, category: 'Materials', status: 'approved', description: 'Cement - bags' },
+      { amount: 250, category: 'Materials', status: 'approved', description: 'Cement - extra bags' },
+      { amount: 150, category: 'Labour', status: 'approved' },
+    ])
+    assert.deepEqual(summary?.expenseLines, [
+      { category: 'Materials', subcategory: 'Cement', amount: 100 },
+      { category: 'Materials', subcategory: 'Cement', amount: 250 },
+      { category: 'Labour', subcategory: null, amount: 150 },
+    ])
+    assert.deepEqual(summary?.expenseSheet, [
+      { category: 'Materials', subcategory: 'Cement', percent: 70, amount: 350, count: 2 },
+      { category: 'Labour', subcategory: null, percent: 30, amount: 150, count: 1 },
+    ])
   })
 })

@@ -98,6 +98,12 @@ export type PublicExpenseSheetRow = {
   count: number
 }
 
+export type PublicExpenseLineItem = {
+  category: SpendCategory
+  subcategory: string | null
+  amount: number
+}
+
 export type PublicSubcategoryGroup = {
   category: SpendCategory
   names: string[]
@@ -112,6 +118,7 @@ export type PublicCaseStudy = {
   proposalMethod?: PublicProposalMethod
   spendMix?: PublicSpendShare[]
   expenseSheet?: PublicExpenseSheetRow[]
+  expenseLines?: PublicExpenseLineItem[]
   subcategoriesByCategory?: PublicSubcategoryGroup[]
   stages: StandardMilestone[]
   qualityAreas: SafeQualityArea[]
@@ -198,6 +205,7 @@ export type MarketingPortfolioItem = {
   privacyIssues: string[]
   spendMix: PublicSpendShare[]
   expenseSheet: PublicExpenseSheetRow[]
+  expenseLines: PublicExpenseLineItem[]
   subcategories: PublicSubcategoryGroup[]
 }
 
@@ -206,7 +214,7 @@ export const PRIVACY_CHECKLIST = [
   'Address removed',
   'Location removed',
   'Year removed',
-  'Exact costs removed',
+  'Contract total kept as a band',
   'Exact measurements removed',
   'Photos excluded',
   'Vendors excluded',

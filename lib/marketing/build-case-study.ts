@@ -65,6 +65,7 @@ export function buildMarketingDraft(raw: RawProjectInput): Omit<
     privacyIssues: privacy.issues,
     spendMix: publicData.spendMix ?? [],
     expenseSheet: publicData.expenseSheet ?? [],
+    expenseLines: publicData.expenseLines ?? [],
     subcategories: publicData.subcategoriesByCategory ?? [],
   }
 }

@@ -2,6 +2,7 @@ import { DEFAULT_EXPENSE_CATEGORIES } from '../expense-categories/constants.ts'
 import { parseExpenseSubcategory } from '../expense/export/parse.ts'
 import {
   SPEND_CATEGORIES,
+  type PublicExpenseLineItem,
   type PublicExpenseSheetRow,
   type PublicSpendShare,
   type PublicSubcategoryGroup,
@@ -157,6 +158,7 @@ export function roundPercentsToNearestFive(
 export type ApprovedExpenseSummary = {
   spendMix: PublicSpendShare[]
   expenseSheet: PublicExpenseSheetRow[]
+  expenseLines: PublicExpenseLineItem[]
   subcategoriesByCategory: PublicSubcategoryGroup[]
 }
 
@@ -249,6 +251,7 @@ export function summarizeApprovedExpenses(
   })
 
   const expenseSheet: PublicExpenseSheetRow[] = []
+  const expenseLines: PublicExpenseLineItem[] = []
   const subcategoriesByCategory: PublicSubcategoryGroup[] = []
 
   for (const mix of spendMix) {
@@ -258,7 +261,16 @@ export function summarizeApprovedExpenses(
     if (built.names.length) {
       subcategoriesByCategory.push({ category: mix.category, names: built.names })
     }
+    for (const expense of rowsForCategory) {
+      const amount = Number(expense.amount)
+      if (!Number.isFinite(amount) || amount <= 0) continue
+      expenseLines.push({
+        category: mix.category,
+        subcategory: resolveSheetSubcategory(expense),
+        amount,
+      })
+    }
   }
 
-  return { spendMix, expenseSheet, subcategoriesByCategory }
+  return { spendMix, expenseSheet, expenseLines, subcategoriesByCategory }
 }

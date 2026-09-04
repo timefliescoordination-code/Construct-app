@@ -57,13 +57,13 @@ Categories recorded: Materials, Labour, Equipment, Miscellaneous.
 
 Subcategories recorded: Cement, Mixer.
 
-| Category | Subcategory | Amount | Entries |
-|---|---|---:|---:|
-| Materials | Cement | ₹2,391 | 1 |
-| Materials |  | ₹2,392 | 1 |
-| Labour |  | ₹3,127 | 1 |
-| Equipment | Mixer | ₹1,211 | 1 |
-| Miscellaneous |  | ₹879 | 1 |
+| Category | Subcategory | Amount |
+|---|---|---:|
+| Materials | Cement | ₹2,391 |
+| Materials |  | ₹2,392 |
+| Labour |  | ₹3,127 |
+| Equipment | Mixer | ₹1,211 |
+| Miscellaneous |  | ₹879 |
 `
     const result = checkMarkdownPrivacy(clean, [
       'John Example',

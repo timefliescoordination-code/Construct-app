@@ -10,7 +10,7 @@ import {
 } from "lucide-react"
 import { formatINR } from "@/lib/currency"
 import type {
-  PublicExpenseSheetRow,
+  PublicExpenseLineItem,
   PublicSpendShare,
   PublicSubcategoryGroup,
 } from "@/lib/marketing/types"
@@ -54,28 +54,26 @@ function styleForCategory(category: string) {
 
 export function MarketingExpenseSheet({
   spendMix,
-  expenseSheet,
+  expenseLines,
   subcategories,
 }: {
   spendMix: PublicSpendShare[]
-  expenseSheet: PublicExpenseSheetRow[]
+  expenseLines: PublicExpenseLineItem[]
   subcategories: PublicSubcategoryGroup[]
 }) {
-  if (!spendMix.length) return null
+  if (!spendMix.length && !expenseLines.length) return null
 
-  const sheet =
-    expenseSheet.length > 0
-      ? expenseSheet
+  const rows: PublicExpenseLineItem[] =
+    expenseLines.length > 0
+      ? expenseLines
       : spendMix.map((row) => ({
           category: row.category,
           subcategory: null,
-          percent: row.percent,
           amount: row.amount,
-          count: row.count,
         }))
 
-  const grandTotal = spendMix.reduce((sum, row) => sum + row.amount, 0)
-  const grandCount = spendMix.reduce((sum, row) => sum + row.count, 0)
+  const grandTotal = rows.reduce((sum, row) => sum + row.amount, 0)
+  const grandCount = rows.length
 
   return (
     <section className="space-y-4">
@@ -85,8 +83,8 @@ export function MarketingExpenseSheet({
             Spending by category
           </h2>
           <p className="text-sm text-muted-foreground">
-            Showing approved expenses only. Vendors, invoices, and client identity stay out of this
-            draft.
+            Every approved expense row is listed below. Vendors, invoices, and client identity stay
+            out of this draft.
           </p>
         </div>
         <div className="flex gap-6 rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-sm">
@@ -101,42 +99,44 @@ export function MarketingExpenseSheet({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {spendMix.map((row) => {
-          const { icon: Icon, accent, iconBg } = styleForCategory(row.category)
-          return (
-            <div
-              key={row.category}
-              className={cn(
-                "relative flex flex-col rounded-xl border border-border bg-card p-4 text-left shadow-sm",
-                "border-l-4",
-                accent,
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div
-                  className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-                    iconBg,
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
+      {spendMix.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {spendMix.map((row) => {
+            const { icon: Icon, accent, iconBg } = styleForCategory(row.category)
+            return (
+              <div
+                key={row.category}
+                className={cn(
+                  "relative flex flex-col rounded-xl border border-border bg-card p-4 text-left shadow-sm",
+                  "border-l-4",
+                  accent,
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                      iconBg,
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    {row.count} {row.count === 1 ? "entry" : "entries"}
+                  </span>
                 </div>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  {row.count} {row.count === 1 ? "entry" : "entries"}
-                </span>
+                <p className="mt-3 text-sm font-medium text-foreground">{row.category}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums tracking-tight text-foreground">
+                  {formatINR(row.amount)}
+                </p>
+                <p className="mt-2 text-[11px] text-green-600 dark:text-green-500">
+                  {formatINR(row.amount)} approved
+                </p>
               </div>
-              <p className="mt-3 text-sm font-medium text-foreground">{row.category}</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums tracking-tight text-foreground">
-                {formatINR(row.amount)}
-              </p>
-              <p className="mt-2 text-[11px] text-green-600 dark:text-green-500">
-                {formatINR(row.amount)} approved
-              </p>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      ) : null}
 
       {subcategories.length > 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -148,7 +148,7 @@ export function MarketingExpenseSheet({
       ) : null}
 
       <div className="overflow-x-auto rounded-md border border-border bg-background">
-        <table className="w-full min-w-[36rem] border-collapse text-sm">
+        <table className="w-full min-w-[32rem] border-collapse text-sm">
           <thead>
             <tr className="bg-muted/70">
               <th className="border-b border-r border-border px-3 py-2 text-left font-semibold">
@@ -157,26 +157,20 @@ export function MarketingExpenseSheet({
               <th className="border-b border-r border-border px-3 py-2 text-left font-semibold">
                 Subcategory / team
               </th>
-              <th className="border-b border-r border-border px-3 py-2 text-right font-semibold">
-                Amount
-              </th>
               <th className="border-b border-border px-3 py-2 text-right font-semibold">
-                Entries
+                Amount
               </th>
             </tr>
           </thead>
           <tbody>
-            {sheet.map((row, index) => (
-              <tr key={`${row.category}-${row.subcategory ?? ""}-${index}`}>
+            {rows.map((row, index) => (
+              <tr key={`${row.category}-${row.subcategory ?? ""}-${row.amount}-${index}`}>
                 <td className="border-b border-r border-border px-3 py-2">{row.category}</td>
                 <td className="border-b border-r border-border px-3 py-2 text-muted-foreground">
                   {row.subcategory ?? "—"}
                 </td>
-                <td className="border-b border-r border-border px-3 py-2 text-right font-medium tabular-nums">
+                <td className="border-b border-border px-3 py-2 text-right font-medium tabular-nums">
                   {formatINR(row.amount)}
-                </td>
-                <td className="border-b border-border px-3 py-2 text-right tabular-nums">
-                  {row.count}
                 </td>
               </tr>
             ))}

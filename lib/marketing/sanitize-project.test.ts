@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildMarketingDraft, buildMarketingPortfolio, forbiddenTokensFromProject } from './build-case-study.ts'
 import { countWords } from './generate-markdown.ts'
+import { splitCaseStudyAroundExpenses } from './split-case-study.ts'
 import { anonymousProjectTitle } from './fake-title.ts'
 import { sanitizeProject } from './sanitize-project.ts'
 import type { RawProjectInput } from './types.ts'
@@ -152,6 +153,13 @@ describe('sanitizeProject fixture', () => {
       { category: 'Equipment', subcategory: 'Mixer', percent: 10, amount: 1211, count: 1 },
       { category: 'Miscellaneous', subcategory: null, percent: 10, amount: 879, count: 1 },
     ])
+    assert.deepEqual(publicData.expenseLines, [
+      { category: 'Materials', subcategory: 'Cement', amount: 2391 },
+      { category: 'Materials', subcategory: null, amount: 2392 },
+      { category: 'Labour', subcategory: null, amount: 3127 },
+      { category: 'Equipment', subcategory: 'Mixer', amount: 1211 },
+      { category: 'Miscellaneous', subcategory: null, amount: 879 },
+    ])
     assert.equal(
       publicData.expenseSheet
         ?.filter((row) => row.category === 'Materials')
@@ -190,11 +198,21 @@ describe('marketing draft fixture', () => {
     assert.match(draft.markdown, /12–18 months/)
     assert.match(draft.markdown, /Categories recorded: Materials, Labour, Equipment, Miscellaneous/)
     assert.match(draft.markdown, /Subcategories recorded: Cement, Mixer/)
-    assert.match(draft.markdown, /\| Materials \| Cement \| ₹2,391 \| 1 \|/)
-    assert.match(draft.markdown, /\| Equipment \| Mixer \| ₹1,211 \| 1 \|/)
-    assert.match(draft.markdown, /\| Labour \|  \| ₹3,127 \| 1 \|/)
+    assert.match(draft.markdown, /\| Materials \| Cement \| ₹2,391 \|/)
+    assert.match(draft.markdown, /\| Equipment \| Mixer \| ₹1,211 \|/)
+    assert.match(draft.markdown, /\| Labour \|  \| ₹3,127 \|/)
     assert.equal(draft.markdown.includes('Steel delivery for villa'), false)
     assert.equal(draft.expenseSheet.some((row) => row.subcategory === 'Steel'), false)
+    assert.equal(draft.expenseLines.length, 5)
+    assert.deepEqual(
+      draft.expenseLines.map((row) => row.amount),
+      [2391, 2392, 3127, 1211, 879],
+    )
+    const split = splitCaseStudyAroundExpenses(draft.markdown)
+    assert.match(split.before, /Project Overview/)
+    assert.match(split.after, /Construction Stages/)
+    assert.equal(split.before.includes('| Materials | Cement |'), false)
+    assert.equal(split.after.includes('| Materials | Cement |'), false)
     assert.ok(countWords(draft.markdown) >= 1500)
   })
 

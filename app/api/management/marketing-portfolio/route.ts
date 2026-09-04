@@ -27,6 +27,7 @@ export async function GET() {
         privacyIssues: item.privacyIssues,
         spendMix: item.spendMix,
         expenseSheet: item.expenseSheet,
+        expenseLines: item.expenseLines,
         subcategories: item.subcategories,
       })),
     })

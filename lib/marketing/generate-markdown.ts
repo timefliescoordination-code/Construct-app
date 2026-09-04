@@ -1,7 +1,8 @@
 import { formatINR } from '../currency.ts'
+import { EXPENSE_DISTRIBUTION_HEADING } from './split-case-study.ts'
 import type {
   PublicCaseStudy,
-  PublicExpenseSheetRow,
+  PublicExpenseLineItem,
   PublicSpendShare,
   PublicSubcategoryGroup,
   SafeChangeCategory,
@@ -73,14 +74,11 @@ function subcategoriesRecordedLine(groups: PublicSubcategoryGroup[] | undefined)
   return `Subcategories recorded: ${names.join(', ')}.`
 }
 
-function expenseSheetTable(sheet: PublicExpenseSheetRow[]): string {
-  const rows = sheet
-    .map(
-      (row) =>
-        `| ${row.category} | ${row.subcategory ?? ''} | ${formatINR(row.amount)} | ${row.count} |`,
-    )
+function expenseLineTable(lines: PublicExpenseLineItem[]): string {
+  const rows = lines
+    .map((row) => `| ${row.category} | ${row.subcategory ?? ''} | ${formatINR(row.amount)} |`)
     .join('\n')
-  return `| Category | Subcategory | Amount | Entries |\n|---|---|---:|---:|\n${rows}`
+  return `| Category | Subcategory | Amount |\n|---|---|---:|\n${rows}`
 }
 
 function genericCostEducation(): string {
@@ -93,8 +91,8 @@ function genericCostEducation(): string {
     'These groups are educational categories. They are not a full chart of accounts, and they are not a promise that every home will split in the same way.',
     'A useful planning habit is to treat the largest group as the one that needs the most procurement discipline, while still reserving attention for labour productivity and equipment hire periods.',
     'Homeowners often focus only on quoted material rates. In practice, waste, rework, access constraints, and idle time can move the mix even when the original specification stays the same.',
-    'This article reports approved expense totals by category and subcategory, the same grouping used on the project expense tab. Individual vendor bills, invoice numbers, and dates are omitted so the draft cannot be used as a ledger.',
-    'The overall project cost is still described only as a public band. Line-item invoices and contract figures stay out of the copied article.',
+    'This article lists every approved expense row by category and subcategory, the same grouping used on the project expense tab. Individual vendor bills, invoice numbers, and dates are omitted so the draft cannot be used as a ledger.',
+    'The overall project cost is still described only as a public band. Vendor invoices and contract figures stay out of the copied article.',
   ].join('\n\n')
 }
 
@@ -219,7 +217,7 @@ function faqs(): string {
   const items: Array<[string, string]> = [
     [
       'Why is the overall contract value hidden?',
-      'The full contract figure can identify a household or a negotiated rate. A public lakh band still shows scale. Approved expense totals by category are shown the same way they appear on the project expense tab; vendor bills and invoice numbers are not.',
+      'The full contract figure can identify a household or a negotiated rate. A public lakh band still shows scale. Approved expense rows are listed with category, subcategory, and amount, the same way they appear on the project expense tab; vendor bills and invoice numbers are not.',
     ],
     [
       'What does a built-up area band mean?',
@@ -296,24 +294,28 @@ export function generateCaseStudyMarkdown(data: PublicCaseStudy): string {
   sections.push(costIntro.filter(Boolean).join('\n\n'))
 
   if (data.spendMix?.length) {
-    const sheet =
-      data.expenseSheet?.length
-        ? data.expenseSheet
-        : data.spendMix.map((row) => ({
-            category: row.category,
-            subcategory: null,
-            percent: row.percent,
-            amount: row.amount,
-            count: row.count,
-          }))
+    const lines =
+      data.expenseLines?.length
+        ? data.expenseLines
+        : data.expenseSheet?.length
+          ? data.expenseSheet.map((row) => ({
+              category: row.category,
+              subcategory: row.subcategory,
+              amount: row.amount,
+            }))
+          : data.spendMix.map((row) => ({
+              category: row.category,
+              subcategory: null,
+              amount: row.amount,
+            }))
     const subcategoryLine = subcategoriesRecordedLine(data.subcategoriesByCategory)
-    sections.push('## Expense Distribution')
+    sections.push(EXPENSE_DISTRIBUTION_HEADING)
     sections.push(
       [
-        'The table uses approved project expenses only, grouped the same way as Spending by category on the expenses tab. Individual bills, vendors, and dates are not shown. Category shares are rounded to the nearest five percent and total one hundred percent.',
+        'The table lists every approved expense row, the same way Manage Expenses does on the project expenses tab. Individual bills, vendors, and dates are not shown. Category shares in the narrative are rounded to the nearest five percent and total one hundred percent.',
         categoriesRecordedLine(data.spendMix),
         subcategoryLine,
-        expenseSheetTable(sheet),
+        expenseLineTable(lines),
         'Categories with no supporting records are omitted rather than filled with guesses.',
       ]
         .filter((block): block is string => Boolean(block))
