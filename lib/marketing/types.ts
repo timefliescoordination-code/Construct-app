@@ -1,3 +1,5 @@
+import type { VraBlogPost } from './blog-types.ts'
+
 export const SIZE_BANDS = [
   'Under 1,500 sq.ft',
   '1,500–2,500 sq.ft',
@@ -201,6 +203,8 @@ export type MarketingPortfolioItem = {
     duration?: string
   }
   markdown: string
+  blogJson: VraBlogPost
+  jsonPrompt: string
   copySafe: boolean
   privacyIssues: string[]
   spendMix: PublicSpendShare[]

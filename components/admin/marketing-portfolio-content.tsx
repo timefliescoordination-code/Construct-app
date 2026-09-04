@@ -13,8 +13,7 @@ import {
   ShieldCheck,
 } from "lucide-react"
 import { toast } from "sonner"
-import { MarketingExpenseSheet } from "@/components/admin/marketing-expense-sheet"
-import { MarketingMarkdownPreview } from "@/components/admin/marketing-markdown-preview"
+import { MarketingBlogPreview } from "@/components/admin/marketing-blog-preview"
 import { DashboardHeader } from "@/components/dashboard/header"
 import { PageHeader, PageMain, PageShell } from "@/components/layout/page"
 import { ScrollTable } from "@/components/layout/scroll-table"
@@ -39,7 +38,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useAuth } from "@/lib/hooks/use-auth"
-import { splitCaseStudyAroundExpenses } from "@/lib/marketing/split-case-study"
 import { assignRecognitionRisk } from "@/lib/marketing/recognition-risk"
 import { PRIVACY_CHECKLIST, type MarketingPortfolioItem } from "@/lib/marketing/types"
 import { PROJECT_STATUS_BADGE, PROJECT_STATUS_LABELS } from "@/lib/project-status"
@@ -64,7 +62,7 @@ export function MarketingPortfolioContent() {
   const [regenerating, setRegenerating] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("completed")
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [copying, setCopying] = useState(false)
+  const [copying, setCopying] = useState<"json" | "prompt" | "markdown" | null>(null)
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "refresh") setRegenerating(true)
@@ -113,19 +111,31 @@ export function MarketingPortfolioContent() {
 
   const selected = filtered.find((item) => item.internalId === selectedId) ?? null
 
-  async function copyMarkdown() {
+  async function copyDraft(kind: "json" | "prompt" | "markdown") {
     if (!selected?.copySafe) {
       toast.error("This draft is not marked safe to copy.")
       return
     }
-    setCopying(true)
+    const text =
+      kind === "json"
+        ? `${JSON.stringify(selected.blogJson, null, 2)}\n`
+        : kind === "prompt"
+          ? selected.jsonPrompt
+          : selected.markdown
+    setCopying(kind)
     try {
-      await navigator.clipboard.writeText(selected.markdown)
-      toast.success("Blog markdown copied")
+      await navigator.clipboard.writeText(text)
+      toast.success(
+        kind === "json"
+          ? "Blog JSON copied"
+          : kind === "prompt"
+            ? "JSON prompt copied"
+            : "Blog markdown copied",
+      )
     } catch {
-      toast.error("Could not copy markdown")
+      toast.error("Could not copy")
     } finally {
-      setCopying(false)
+      setCopying(null)
     }
   }
 
@@ -255,7 +265,7 @@ export function MarketingPortfolioContent() {
               item={selected}
               copying={copying}
               regenerating={regenerating}
-              onCopy={() => void copyMarkdown()}
+              onCopy={copyDraft}
               onRegenerate={() => void load("refresh")}
             /> : null}
           </div>
@@ -288,9 +298,9 @@ function ProjectDraftPanel({
   onRegenerate,
 }: {
   item: MarketingPortfolioItem & { recognitionRisk: "LOW" | "HIGH" }
-  copying: boolean
+  copying: "json" | "prompt" | "markdown" | null
   regenerating: boolean
-  onCopy: () => void
+  onCopy: (kind: "json" | "prompt" | "markdown") => void
   onRegenerate: () => void
 }) {
   const chips = [item.bands.size, item.bands.cost, item.bands.duration].filter(Boolean)
@@ -386,22 +396,19 @@ function BlogDraftCard({
   onRegenerate,
 }: {
   item: MarketingPortfolioItem
-  copying: boolean
+  copying: "json" | "prompt" | "markdown" | null
   regenerating: boolean
-  onCopy: () => void
+  onCopy: (kind: "json" | "prompt" | "markdown") => void
   onRegenerate: () => void
 }) {
-  const { before, after } = splitCaseStudyAroundExpenses(item.markdown)
-  const hasExpenseBlock = Boolean(item.spendMix?.length || item.expenseLines?.length)
-
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div>
           <CardTitle className="text-base">Blog draft</CardTitle>
           <CardDescription>
-            Preview shows the article with every approved expense row in the middle. Copy as blog
-            copies the same sanitized markdown, never the real project name.
+            Styled preview of the VRA Homes JSON blog. Copy JSON for the website, or copy the admin
+            prompt with this project&apos;s topic filled in.
           </CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -413,36 +420,78 @@ function BlogDraftCard({
             )}
             Regenerate
           </Button>
-          <Button onClick={onCopy} disabled={!item.copySafe || copying}>
-            {copying ? (
+          <Button
+            variant="outline"
+            onClick={() => onCopy("prompt")}
+            disabled={!item.copySafe || copying !== null}
+          >
+            {copying === "prompt" ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Copy className="mr-2 h-4 w-4" />
             )}
-            Copy as blog
+            Copy JSON prompt
+          </Button>
+          <Button onClick={() => onCopy("json")} disabled={!item.copySafe || copying !== null}>
+            {copying === "json" ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Copy className="mr-2 h-4 w-4" />
+            )}
+            Copy JSON
           </Button>
         </div>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="preview" key={item.internalId}>
-          <TabsList>
+          <TabsList className="h-auto flex-wrap">
             <TabsTrigger value="preview">Preview</TabsTrigger>
+            <TabsTrigger value="json">JSON</TabsTrigger>
+            <TabsTrigger value="prompt">JSON prompt</TabsTrigger>
             <TabsTrigger value="markdown">Markdown</TabsTrigger>
           </TabsList>
           <TabsContent value="preview" className="mt-4">
-            <div className="space-y-8 rounded-lg border border-border bg-background p-4 sm:p-6">
-              <MarketingMarkdownPreview markdown={before} />
-              {hasExpenseBlock ? (
-                <MarketingExpenseSheet
-                  spendMix={item.spendMix ?? []}
-                  expenseLines={item.expenseLines ?? []}
-                  subcategories={item.subcategories ?? []}
-                />
-              ) : null}
-              {after ? <MarketingMarkdownPreview markdown={after} /> : null}
-            </div>
+            {item.blogJson ? <MarketingBlogPreview post={item.blogJson} /> : null}
           </TabsContent>
-          <TabsContent value="markdown" className="mt-4">
+          <TabsContent value="json" className="mt-4">
+            <pre className="max-h-[42rem] overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-4 text-sm leading-relaxed">
+              {JSON.stringify(item.blogJson, null, 2)}
+            </pre>
+          </TabsContent>
+          <TabsContent value="prompt" className="mt-4 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Website admin instruction with this case study filled in as the topic. No markdown
+              fences.
+            </p>
+            <pre className="max-h-[42rem] overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-4 text-sm leading-relaxed">
+              {item.jsonPrompt}
+            </pre>
+            <Button
+              variant="secondary"
+              onClick={() => onCopy("prompt")}
+              disabled={!item.copySafe || copying !== null}
+            >
+              {copying === "prompt" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Copy className="mr-2 h-4 w-4" />
+              )}
+              Copy JSON prompt
+            </Button>
+          </TabsContent>
+          <TabsContent value="markdown" className="mt-4 space-y-3">
+            <Button
+              variant="secondary"
+              onClick={() => onCopy("markdown")}
+              disabled={!item.copySafe || copying !== null}
+            >
+              {copying === "markdown" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Copy className="mr-2 h-4 w-4" />
+              )}
+              Copy markdown
+            </Button>
             <pre className="max-h-[42rem] overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-4 text-sm leading-relaxed">
               {item.markdown}
             </pre>

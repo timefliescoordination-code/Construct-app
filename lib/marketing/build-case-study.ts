@@ -1,4 +1,5 @@
 import { bandCombinationKey } from './bands.ts'
+import { buildBlogJsonBundle } from './generate-blog-json.ts'
 import { generateCaseStudyMarkdown } from './generate-markdown.ts'
 import { checkMarkdownPrivacy, collectForbiddenTokens } from './privacy-check.ts'
 import { sanitizeProject } from './sanitize-project.ts'
@@ -49,7 +50,9 @@ export function buildMarketingDraft(raw: RawProjectInput): Omit<
 > {
   const publicData = sanitizeProject(raw)
   const markdown = generateCaseStudyMarkdown(publicData)
-  const privacy = checkMarkdownPrivacy(markdown, forbiddenTokensFromProject(raw))
+  const { blogJson, jsonPrompt, jsonText } = buildBlogJsonBundle(publicData)
+  const forbidden = forbiddenTokensFromProject(raw)
+  const privacy = checkMarkdownPrivacy([markdown, jsonText].join('\n\n'), forbidden)
 
   return {
     internalId: raw.id,
@@ -61,6 +64,8 @@ export function buildMarketingDraft(raw: RawProjectInput): Omit<
       duration: publicData.durationBand,
     },
     markdown,
+    blogJson,
+    jsonPrompt,
     copySafe: privacy.ok,
     privacyIssues: privacy.issues,
     spendMix: publicData.spendMix ?? [],

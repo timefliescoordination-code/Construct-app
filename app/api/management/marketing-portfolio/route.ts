@@ -23,6 +23,8 @@ export async function GET() {
         recognitionRisk: item.recognitionRisk,
         bands: item.bands,
         markdown: item.markdown,
+        blogJson: item.blogJson,
+        jsonPrompt: item.jsonPrompt,
         copySafe: item.copySafe,
         privacyIssues: item.privacyIssues,
         spendMix: item.spendMix,
