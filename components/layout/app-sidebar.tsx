@@ -13,6 +13,7 @@ import {
   FileText,
   ClipboardList,
   ClipboardCheck,
+  Newspaper,
   Settings,
   Tags,
   Flag,
@@ -99,7 +100,15 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
         ]
       : []),
     ...(role === "admin"
-      ? [{ id: "expenses", href: "/admin/expenses", label: "All expenses", icon: Wallet }]
+      ? [
+          { id: "expenses", href: "/admin/expenses", label: "All expenses", icon: Wallet },
+          {
+            id: "marketing",
+            href: "/admin/marketing",
+            label: "Marketing Case Studies",
+            icon: Newspaper,
+          },
+        ]
       : []),
   ]
 
@@ -168,6 +177,9 @@ export function AppSidebar({ className, onNavigate }: AppSidebarProps) {
     }
     if (href === "/admin/expenses") {
       return pathname.startsWith("/admin/expenses")
+    }
+    if (href === "/admin/marketing") {
+      return pathname.startsWith("/admin/marketing")
     }
     if (href === "/change-requests") {
       return pathname.startsWith("/change-requests")
