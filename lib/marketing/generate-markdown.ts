@@ -1,3 +1,4 @@
+import { formatINR } from '../currency.ts'
 import type {
   PublicCaseStudy,
   PublicExpenseSheetRow,
@@ -74,9 +75,12 @@ function subcategoriesRecordedLine(groups: PublicSubcategoryGroup[] | undefined)
 
 function expenseSheetTable(sheet: PublicExpenseSheetRow[]): string {
   const rows = sheet
-    .map((row) => `| ${row.category} | ${row.subcategory ?? ''} | ${row.percent}% |`)
+    .map(
+      (row) =>
+        `| ${row.category} | ${row.subcategory ?? ''} | ${formatINR(row.amount)} | ${row.count} |`,
+    )
     .join('\n')
-  return `| Category | Subcategory | Approximate share |\n|---|---|---:|\n${rows}`
+  return `| Category | Subcategory | Amount | Entries |\n|---|---|---:|---:|\n${rows}`
 }
 
 function genericCostEducation(): string {
@@ -89,8 +93,8 @@ function genericCostEducation(): string {
     'These groups are educational categories. They are not a full chart of accounts, and they are not a promise that every home will split in the same way.',
     'A useful planning habit is to treat the largest group as the one that needs the most procurement discipline, while still reserving attention for labour productivity and equipment hire periods.',
     'Homeowners often focus only on quoted material rates. In practice, waste, rework, access constraints, and idle time can move the mix even when the original specification stays the same.',
-    'Publishing exact rupee amounts for a single house can identify the client, the contractor, or the site. Banded figures and rounded shares avoid that problem while still showing how money tends to be distributed.',
-    'The figures in this article are rounded to coarse increments so that they cannot be reverse-engineered into invoices, vendor bills, or a contract total.',
+    'This article reports approved expense totals by category and subcategory, the same grouping used on the project expense tab. Individual vendor bills, invoice numbers, and dates are omitted so the draft cannot be used as a ledger.',
+    'The overall project cost is still described only as a public band. Line-item invoices and contract figures stay out of the copied article.',
   ].join('\n\n')
 }
 
@@ -214,16 +218,16 @@ function takeaways(): string {
 function faqs(): string {
   const items: Array<[string, string]> = [
     [
-      'Why are exact costs hidden?',
-      'Exact rupee figures can identify a household, a contractor relationship, or a negotiated rate. Coarse bands still help a reader understand scale without turning a private contract into a public price list.',
+      'Why is the overall contract value hidden?',
+      'The full contract figure can identify a household or a negotiated rate. A public lakh band still shows scale. Approved expense totals by category are shown the same way they appear on the project expense tab; vendor bills and invoice numbers are not.',
     ],
     [
       'What does a built-up area band mean?',
       'It is a range, not a survey measurement. It tells you whether the home is compact, mid-size, large, or very large. It is not a substitute for drawings, and it is not a claim about plot size.',
     ],
     [
-      'Why round expense shares to steps of five percent?',
-      'Fine percentages can be reversed into invoice totals when someone already knows one bill. Five-percent steps are coarse enough to describe mix and blunt enough to protect suppliers and clients.',
+      'Why still round the spend mix to steps of five percent?',
+      'The category mix is a coarse reading of share. The rupee columns next to it are the approved totals. Rounding the mix keeps the narrative from implying a false precision about any one invoice.',
     ],
     [
       'Does a longer duration band mean the job was delayed?',
@@ -299,12 +303,14 @@ export function generateCaseStudyMarkdown(data: PublicCaseStudy): string {
             category: row.category,
             subcategory: null,
             percent: row.percent,
+            amount: row.amount,
+            count: row.count,
           }))
     const subcategoryLine = subcategoriesRecordedLine(data.subcategoriesByCategory)
     sections.push('## Expense Distribution')
     sections.push(
       [
-        'The table uses approved project expenses only. Individual bills, vendors, and dates are not shown. Category shares are rounded to the nearest five percent and total one hundred percent. Subcategory shares are rounded the same way within each category.',
+        'The table uses approved project expenses only, grouped the same way as Spending by category on the expenses tab. Individual bills, vendors, and dates are not shown. Category shares are rounded to the nearest five percent and total one hundred percent.',
         categoriesRecordedLine(data.spendMix),
         subcategoryLine,
         expenseSheetTable(sheet),

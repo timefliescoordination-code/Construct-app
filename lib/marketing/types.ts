@@ -86,12 +86,16 @@ export type RecognitionRisk = 'LOW' | 'HIGH'
 export type PublicSpendShare = {
   category: SpendCategory
   percent: number
+  amount: number
+  count: number
 }
 
 export type PublicExpenseSheetRow = {
   category: SpendCategory
   subcategory: string | null
   percent: number
+  amount: number
+  count: number
 }
 
 export type PublicSubcategoryGroup = {

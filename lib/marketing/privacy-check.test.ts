@@ -36,7 +36,7 @@ describe('checkMarkdownPrivacy', () => {
     assert.match(blob, /dream villa/)
     assert.match(blob, /vra-/)
     assert.match(blob, /year/)
-    assert.match(blob, /rupee/)
+    assert.match(blob, /4872319/)
     assert.match(blob, /sq\.?ft|2478/)
     assert.match(blob, /invoice/)
     assert.match(blob, /boq|tmt|supply/)
@@ -57,13 +57,13 @@ Categories recorded: Materials, Labour, Equipment, Miscellaneous.
 
 Subcategories recorded: Cement, Mixer.
 
-| Category | Subcategory | Approximate share |
-|---|---|---:|
-| Materials | Cement | 25% |
-| Materials | Other | 25% |
-| Labour |  | 30% |
-| Equipment | Mixer | 10% |
-| Miscellaneous | Other | 10% |
+| Category | Subcategory | Amount | Entries |
+|---|---|---:|---:|
+| Materials | Cement | ₹2,391 | 1 |
+| Materials |  | ₹2,392 | 1 |
+| Labour |  | ₹3,127 | 1 |
+| Equipment | Mixer | ₹1,211 | 1 |
+| Miscellaneous |  | ₹879 | 1 |
 `
     const result = checkMarkdownPrivacy(clean, [
       'John Example',

@@ -84,11 +84,10 @@ const PATTERN_RULES: PatternRule[] = [
   { id: 'vra-prefix', pattern: /VRA-/i, label: 'VRA- identifier' },
   { id: 'invoice', pattern: /\bINV[-_]\S+/i, label: 'invoice number' },
   { id: 'change-request-no', pattern: /\bCR[-_]\d+/i, label: 'change-request number' },
-  { id: 'rupee-amount', pattern: /₹\s*[\d,]+(?:\.\d+)?/, label: 'exact rupee value' },
-  { id: 'rs-amount', pattern: /\bRs\.?\s*[\d,]{4,}(?:\.\d+)?\b/i, label: 'exact rupee value' },
   {
     id: 'sqft-exact',
-    pattern: /\b\d{1,3}(?:,\d{2,3})+|\d{4,}(?=\s*(?:sq\.?\s*ft|sqft|sft)\b)/i,
+    pattern:
+      /\b(?:\d{1,3}(?:,\d{2,3})+|\d{4,})\s*(?:sq\.?\s*ft|sqft|sft)\b/i,
     label: 'exact sq.ft value',
   },
   {

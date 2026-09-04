@@ -364,11 +364,15 @@ function ProjectDraftPanel({
         </Alert>
       ) : null}
 
-      <MarketingExpenseSheet
-        spendMix={item.spendMix ?? []}
-        expenseSheet={item.expenseSheet ?? []}
-        subcategories={item.subcategories ?? []}
-      />
+      <Card className="section-card border-border overflow-hidden">
+        <CardContent className="pt-6">
+          <MarketingExpenseSheet
+            spendMix={item.spendMix ?? []}
+            expenseSheet={item.expenseSheet ?? []}
+            subcategories={item.subcategories ?? []}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">

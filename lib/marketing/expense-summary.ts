@@ -26,8 +26,6 @@ const CATEGORY_ALIASES: Record<string, SpendCategory> = {
   transportation: 'Miscellaneous',
 }
 
-const OTHER_LABEL = 'Other'
-
 export function mapExpenseCategory(category: string): SpendCategory {
   const normalized = category.trim().toLowerCase()
   if (!normalized) return 'Miscellaneous'
@@ -65,6 +63,14 @@ export function matchCatalogSubcategory(
   return (
     catalogSubcategoriesFor(category).find((name) => name.toLowerCase() === normalized) ?? null
   )
+}
+
+export function resolveSheetSubcategory(
+  expense: Pick<RawExpenseInput, 'description' | 'subcategoryName'>,
+): string | null {
+  const fromSplit = expense.subcategoryName?.trim()
+  if (fromSplit) return fromSplit
+  return parseExpenseSubcategory(expense.description ?? '').subcategory
 }
 
 export function resolvePublicSubcategory(
@@ -137,7 +143,7 @@ function roundPartsToNearestFive<K extends string>(
  */
 export function roundPercentsToNearestFive(
   parts: Array<{ category: SpendCategory; amount: number }>,
-): PublicSpendShare[] {
+): Array<{ category: SpendCategory; percent: number }> {
   const rounded = roundPartsToNearestFive(
     parts.map((part) => ({ key: part.category, amount: part.amount })),
     100,
@@ -159,63 +165,57 @@ function buildSheetForCategory(
   parentPercent: number,
   expenses: Array<RawExpenseInput & { mappedCategory: SpendCategory }>,
 ): { rows: PublicExpenseSheetRow[]; names: string[] } {
-  const catalog = catalogSubcategoriesFor(category)
-  if (catalog.length === 0) {
-    return {
-      rows: [{ category, subcategory: null, percent: parentPercent }],
-      names: [],
-    }
-  }
-
-  const amounts = new Map<string, number>()
-  let leftover = 0
-  const appeared = new Set<string>()
+  const unlabeledKey = '__unlabeled__'
+  const amounts = new Map<string, { amount: number; count: number }>()
 
   for (const expense of expenses) {
     const amount = Number(expense.amount)
     if (!Number.isFinite(amount) || amount <= 0) continue
-    const matched = resolvePublicSubcategory(category, expense)
-    if (matched) {
-      amounts.set(matched, (amounts.get(matched) ?? 0) + amount)
-      appeared.add(matched)
-    } else {
-      leftover += amount
-    }
+    const label = resolveSheetSubcategory(expense)
+    const key = label ?? unlabeledKey
+    const current = amounts.get(key) ?? { amount: 0, count: 0 }
+    current.amount += amount
+    current.count += 1
+    amounts.set(key, current)
   }
 
-  if (leftover > 0) {
-    amounts.set(OTHER_LABEL, (amounts.get(OTHER_LABEL) ?? 0) + leftover)
+  if (amounts.size === 0) {
+    return { rows: [], names: [] }
   }
 
   const rounded = roundPartsToNearestFive(
-    Array.from(amounts.entries()).map(([key, amount]) => ({ key, amount })),
+    Array.from(amounts.entries()).map(([key, value]) => ({ key, amount: value.amount })),
     parentPercent,
   )
 
-  const catalogOrder = catalog.includes(OTHER_LABEL) ? [...catalog] : [...catalog, OTHER_LABEL]
-  const rows: PublicExpenseSheetRow[] = catalogOrder.flatMap((name) => {
-    const row = rounded.find((item) => item.key === name)
-    if (!row) return []
-    return [{ category, subcategory: name, percent: row.percent }]
+  const catalog = catalogSubcategoriesFor(category)
+  const labeledKeys = Array.from(amounts.keys()).filter((key) => key !== unlabeledKey)
+  const orderedKeys = [
+    ...catalog.filter((name) => labeledKeys.includes(name)),
+    ...labeledKeys
+      .filter((name) => !catalog.includes(name))
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+    ...(amounts.has(unlabeledKey) ? [unlabeledKey] : []),
+  ]
+
+  const rows: PublicExpenseSheetRow[] = orderedKeys.flatMap((key) => {
+    const stats = amounts.get(key)
+    const roundedRow = rounded.find((item) => item.key === key)
+    if (!stats) return []
+    return [
+      {
+        category,
+        subcategory: key === unlabeledKey ? null : key,
+        percent: roundedRow?.percent ?? 0,
+        amount: stats.amount,
+        count: stats.count,
+      },
+    ]
   })
-
-  const leftoverRows = rounded.filter((item) => !catalogOrder.includes(item.key))
-  for (const row of leftoverRows) {
-    const existing = rows.find((item) => item.subcategory === OTHER_LABEL)
-    if (existing) existing.percent += row.percent
-    else rows.push({ category, subcategory: OTHER_LABEL, percent: row.percent })
-  }
-
-  if (rows.length === 0) {
-    return {
-      rows: [{ category, subcategory: null, percent: parentPercent }],
-      names: [],
-    }
-  }
 
   return {
     rows,
-    names: catalog.filter((name) => appeared.has(name)),
+    names: orderedKeys.filter((key) => key !== unlabeledKey),
   }
 }
 
@@ -230,13 +230,23 @@ export function summarizeApprovedExpenses(
     }))
   if (approved.length === 0) return undefined
 
-  const spendMix = roundPercentsToNearestFive(
+  const percents = roundPercentsToNearestFive(
     approved.map((expense) => ({
       category: expense.mappedCategory,
       amount: Number(expense.amount),
     })),
   )
-  if (spendMix.length === 0) return undefined
+  if (percents.length === 0) return undefined
+
+  const spendMix: PublicSpendShare[] = percents.map((row) => {
+    const rowsForCategory = approved.filter((expense) => expense.mappedCategory === row.category)
+    return {
+      category: row.category,
+      percent: row.percent,
+      amount: rowsForCategory.reduce((sum, expense) => sum + Number(expense.amount), 0),
+      count: rowsForCategory.length,
+    }
+  })
 
   const expenseSheet: PublicExpenseSheetRow[] = []
   const subcategoriesByCategory: PublicSubcategoryGroup[] = []

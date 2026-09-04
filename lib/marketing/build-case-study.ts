@@ -1,6 +1,6 @@
 import { bandCombinationKey } from './bands.ts'
 import { generateCaseStudyMarkdown } from './generate-markdown.ts'
-import { checkMarkdownPrivacy, collectForbiddenTokens, numericSecretVariants } from './privacy-check.ts'
+import { checkMarkdownPrivacy, collectForbiddenTokens } from './privacy-check.ts'
 import { sanitizeProject } from './sanitize-project.ts'
 import type { MarketingPortfolioItem, RawProjectInput } from './types.ts'
 
@@ -33,7 +33,6 @@ export function forbiddenTokensFromProject(raw: RawProjectInput): string[] {
       expense.vendorName,
       expense.billNumber,
       longPrivateSnippet(expense.description),
-      ...numericSecretVariants(expense.amount),
     ]),
     ...(raw.additionalWorks ?? []).map((work) => longPrivateSnippet(work.description)),
     ...(raw.changeRequests ?? []).flatMap((request) => [

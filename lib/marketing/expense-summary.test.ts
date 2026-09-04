@@ -59,7 +59,7 @@ describe('summarizeApprovedExpenses', () => {
     )
   })
 
-  it('publishes catalog subcategories and rolls custom wording into Other', () => {
+  it('publishes recorded subcategory names with exact rupee totals', () => {
     const summary = summarizeApprovedExpenses([
       { amount: 2391, category: 'Materials', status: 'approved', description: 'Cement - bags' },
       {
@@ -88,35 +88,44 @@ describe('summarizeApprovedExpenses', () => {
       summary.spendMix.map((row) => row.percent),
       [50, 30, 10, 10],
     )
+    assert.deepEqual(
+      summary.spendMix.map((row) => row.amount),
+      [4783, 3127, 1211, 879],
+    )
     assert.equal(
       summary.spendMix.reduce((sum, row) => sum + row.percent, 0),
       100,
     )
     assert.deepEqual(summary.expenseSheet, [
-      { category: 'Materials', subcategory: 'Cement', percent: 25 },
-      { category: 'Materials', subcategory: 'Other', percent: 25 },
-      { category: 'Labour', subcategory: null, percent: 30 },
-      { category: 'Equipment', subcategory: 'Mixer', percent: 10 },
-      { category: 'Miscellaneous', subcategory: 'Other', percent: 10 },
+      { category: 'Materials', subcategory: 'Cement', percent: 25, amount: 2391, count: 1 },
+      { category: 'Materials', subcategory: null, percent: 25, amount: 2392, count: 1 },
+      { category: 'Labour', subcategory: null, percent: 30, amount: 3127, count: 1 },
+      { category: 'Equipment', subcategory: 'Mixer', percent: 10, amount: 1211, count: 1 },
+      {
+        category: 'Miscellaneous',
+        subcategory: 'Villa special tiles',
+        percent: 10,
+        amount: 879,
+        count: 1,
+      },
     ])
     assert.equal(
       summary.expenseSheet
         .filter((row) => row.category === 'Materials')
-        .reduce((sum, row) => sum + row.percent, 0),
-      50,
+        .reduce((sum, row) => sum + row.amount, 0),
+      4783,
     )
     assert.deepEqual(summary.subcategoriesByCategory, [
       { category: 'Materials', names: ['Cement'] },
       { category: 'Equipment', names: ['Mixer'] },
+      { category: 'Miscellaneous', names: ['Villa special tiles'] },
     ])
     const blob = JSON.stringify(summary)
     assert.equal(blob.includes('Steel delivery'), false)
-    assert.equal(blob.includes('villa'), false)
-    assert.equal(blob.includes('Villa special'), false)
     assert.equal(blob.includes('Night haul'), false)
   })
 
-  it('prefers a catalog split subcategory over a custom description', () => {
+  it('prefers a split subcategory over a custom description', () => {
     const summary = summarizeApprovedExpenses([
       {
         amount: 100,
@@ -127,7 +136,7 @@ describe('summarizeApprovedExpenses', () => {
       },
     ])
     assert.deepEqual(summary?.expenseSheet, [
-      { category: 'Materials', subcategory: 'Steel', percent: 100 },
+      { category: 'Materials', subcategory: 'Steel', percent: 100, amount: 100, count: 1 },
     ])
     assert.equal(JSON.stringify(summary).includes('Steel delivery'), false)
   })

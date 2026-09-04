@@ -146,17 +146,17 @@ describe('sanitizeProject fixture', () => {
     )
     assert.equal(publicData.spendMix?.reduce((sum, row) => sum + row.percent, 0), 100)
     assert.deepEqual(publicData.expenseSheet, [
-      { category: 'Materials', subcategory: 'Cement', percent: 25 },
-      { category: 'Materials', subcategory: 'Other', percent: 25 },
-      { category: 'Labour', subcategory: null, percent: 30 },
-      { category: 'Equipment', subcategory: 'Mixer', percent: 10 },
-      { category: 'Miscellaneous', subcategory: 'Other', percent: 10 },
+      { category: 'Materials', subcategory: 'Cement', percent: 25, amount: 2391, count: 1 },
+      { category: 'Materials', subcategory: null, percent: 25, amount: 2392, count: 1 },
+      { category: 'Labour', subcategory: null, percent: 30, amount: 3127, count: 1 },
+      { category: 'Equipment', subcategory: 'Mixer', percent: 10, amount: 1211, count: 1 },
+      { category: 'Miscellaneous', subcategory: null, percent: 10, amount: 879, count: 1 },
     ])
     assert.equal(
       publicData.expenseSheet
         ?.filter((row) => row.category === 'Materials')
-        .reduce((sum, row) => sum + row.percent, 0),
-      50,
+        .reduce((sum, row) => sum + row.amount, 0),
+      4783,
     )
     assert.deepEqual(publicData.subcategoriesByCategory, [
       { category: 'Materials', names: ['Cement'] },
@@ -190,10 +190,9 @@ describe('marketing draft fixture', () => {
     assert.match(draft.markdown, /12–18 months/)
     assert.match(draft.markdown, /Categories recorded: Materials, Labour, Equipment, Miscellaneous/)
     assert.match(draft.markdown, /Subcategories recorded: Cement, Mixer/)
-    assert.match(draft.markdown, /\| Materials \| Cement \| 25% \|/)
-    assert.match(draft.markdown, /\| Materials \| Other \| 25% \|/)
-    assert.match(draft.markdown, /\| Labour \|  \| 30% \|/)
-    assert.match(draft.markdown, /\| Equipment \| Mixer \| 10% \|/)
+    assert.match(draft.markdown, /\| Materials \| Cement \| ₹2,391 \| 1 \|/)
+    assert.match(draft.markdown, /\| Equipment \| Mixer \| ₹1,211 \| 1 \|/)
+    assert.match(draft.markdown, /\| Labour \|  \| ₹3,127 \| 1 \|/)
     assert.equal(draft.markdown.includes('Steel delivery for villa'), false)
     assert.equal(draft.expenseSheet.some((row) => row.subcategory === 'Steel'), false)
     assert.ok(countWords(draft.markdown) >= 1500)
