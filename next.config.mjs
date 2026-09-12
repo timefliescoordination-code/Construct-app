@@ -44,6 +44,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  serverExternalPackages: ['sharp'],
   async headers() {
     return [
       { source: '/login', headers: noStoreHeaders },
