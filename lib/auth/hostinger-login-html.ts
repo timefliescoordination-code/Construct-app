@@ -1,0 +1,73 @@
+export const HOSTINGER_LOGIN_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login | VRA HOMES</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      font-family: ui-sans-serif, system-ui, sans-serif; background: #f4f7f5; color: #14211a; }
+    .card { width: min(28rem, calc(100% - 2rem)); background: #fff; border: 1px solid #d8e4dc;
+      border-radius: 1rem; padding: 1.75rem; box-shadow: 0 12px 40px rgba(20, 33, 26, .06); }
+    img { width: 64px; height: 64px; border-radius: .75rem; display: block; margin: 0 auto 1rem; }
+    h1 { margin: 0; text-align: center; font-size: 1.5rem; }
+    p { text-align: center; color: #5b6b62; margin: .35rem 0 1.25rem; }
+    label { display: block; font-size: .85rem; font-weight: 600; margin: .75rem 0 .35rem; }
+    input { width: 100%; box-sizing: border-box; border: 1px solid #c9d6ce; border-radius: .6rem;
+      padding: .7rem .8rem; font-size: 1rem; }
+    button { width: 100%; margin-top: 1.1rem; border: 0; border-radius: .6rem; padding: .8rem;
+      font-size: 1rem; font-weight: 700; color: #04210f; background: #3DD67C; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    .err { min-height: 1.25rem; margin-top: .75rem; color: #b42318; font-size: .9rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <img src="/images/vra-logo.png" alt="VRA HOMES" />
+    <h1>VRA HOMES</h1>
+    <p>Sign in to your account</p>
+    <form id="login-form">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="username" required />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit">Sign in</button>
+      <div class="err" id="err" role="alert"></div>
+    </form>
+  </main>
+  <script>
+    const form = document.getElementById('login-form')
+    const err = document.getElementById('err')
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      err.textContent = ''
+      const button = form.querySelector('button')
+      button.disabled = true
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          credentials: 'include',
+          cache: 'no-store',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('email').value,
+            password: document.getElementById('password').value,
+          }),
+        })
+        const text = await res.text()
+        let json = {}
+        try { json = JSON.parse(text) } catch {
+          throw new Error('Sign in failed: invalid server response.')
+        }
+        if (!json.ok) throw new Error(json.error || 'Sign in failed.')
+        window.location.assign(json.redirectTo || '/admin')
+      } catch (error) {
+        err.textContent = error instanceof Error ? error.message : 'Sign in failed.'
+        button.disabled = false
+      }
+    })
+  </script>
+</body>
+</html>
+`

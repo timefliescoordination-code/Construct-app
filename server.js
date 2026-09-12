@@ -114,6 +114,7 @@ app
         })
 
         try {
+          res.setHeader('x-vra-handler', 'server')
           if (shouldBuffer(urlPath)) wrapForBuffering(res)
           await handle(req, res, parsedUrl)
         } catch (error) {

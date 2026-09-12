@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { absoluteAppUrl } from '@/lib/app-url'
 import { dashboardPath } from '@/lib/auth/dashboard-path'
+import { isHostingerPublicHost } from '@/lib/hostinger-fallback'
 import { getSupabaseEnv, isSupabaseConfigured } from '@/lib/supabase/env'
 
 // Public routes that don't require authentication
@@ -44,6 +45,10 @@ function withNoStore(response: NextResponse) {
     'private, no-cache, no-store, max-age=0, must-revalidate',
   )
   return response
+}
+
+function loginPath(request: NextRequest) {
+  return isHostingerPublicHost(request) ? '/hostinger-login.html' : '/login'
 }
 
 function redirectTo(request: NextRequest, pathname: string) {
@@ -106,7 +111,7 @@ export async function updateSession(request: NextRequest) {
         NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
       )
     }
-    return redirectTo(request, '/login')
+    return redirectTo(request, loginPath(request))
   }
 
   if (user) {
