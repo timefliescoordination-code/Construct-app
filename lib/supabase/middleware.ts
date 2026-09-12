@@ -38,8 +38,16 @@ function isPublicApiRoute(pathname: string) {
   )
 }
 
+function withNoStore(response: NextResponse) {
+  response.headers.set(
+    'Cache-Control',
+    'private, no-cache, no-store, max-age=0, must-revalidate',
+  )
+  return response
+}
+
 function redirectTo(request: NextRequest, pathname: string) {
-  return NextResponse.redirect(absoluteAppUrl(pathname, request))
+  return withNoStore(NextResponse.redirect(absoluteAppUrl(pathname, request)))
 }
 
 export async function updateSession(request: NextRequest) {
@@ -53,7 +61,7 @@ export async function updateSession(request: NextRequest) {
 
   if (!isSupabaseConfigured()) {
     if (pathname.startsWith('/setup') || isPublicRoute) {
-      return NextResponse.next()
+      return withNoStore(NextResponse.next())
     }
     return redirectTo(request, '/setup')
   }
@@ -94,7 +102,9 @@ export async function updateSession(request: NextRequest) {
   // If user is not logged in and trying to access protected route
   if (!user && !isPublicRoute) {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return withNoStore(
+        NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+      )
     }
     return redirectTo(request, '/login')
   }
@@ -149,5 +159,5 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  return supabaseResponse
+  return withNoStore(supabaseResponse)
 }

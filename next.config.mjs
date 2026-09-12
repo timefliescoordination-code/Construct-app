@@ -20,17 +20,38 @@ function ensureProductionServerActionsKey() {
 
 ensureProductionServerActionsKey()
 
+const noStoreHeaders = [
+  {
+    key: 'Cache-Control',
+    value: 'private, no-cache, no-store, max-age=0, must-revalidate',
+  },
+  { key: 'CDN-Cache-Control', value: 'no-store' },
+  { key: 'X-Accel-Buffering', value: 'no' },
+]
+
 const nextConfig = {
   allowedDevOrigins: ['127.0.0.1'],
-  deploymentId:
-    process.env.NEXT_DEPLOYMENT_ID ??
-    process.env.HOSTINGER_DEPLOYMENT_ID ??
-    undefined,
+  // Do not set deploymentId from HOSTINGER_DEPLOYMENT_ID. That value is often
+  // present only at runtime (or changes on restart), so Next.js looks for a
+  // deployment that was never built and App Router pages/API 500 while
+  // middleware redirects still work.
+  generateEtags: false,
+  // LiteSpeed / hCDN already gzip; Next compressing too can abort proxied HTML/JSON.
+  compress: false,
   typescript: {
     ignoreBuildErrors: true,
   },
   images: {
     unoptimized: true,
+  },
+  async headers() {
+    return [
+      { source: '/login', headers: noStoreHeaders },
+      { source: '/signup', headers: noStoreHeaders },
+      { source: '/setup', headers: noStoreHeaders },
+      { source: '/auth/:path*', headers: noStoreHeaders },
+      { source: '/api/:path*', headers: noStoreHeaders },
+    ]
   },
   async rewrites() {
     return [{ source: '/favicon.ico', destination: '/images/vra-logo.png' }]
